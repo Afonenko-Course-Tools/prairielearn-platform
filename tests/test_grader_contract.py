@@ -127,6 +127,19 @@ class GraderContract(unittest.TestCase):
         self.assertLessEqual(len(result.get("output", "").encode()), 65536)
         self.assertLess(len(json.dumps(result).encode()), 1024 * 1024)
 
+    def test_cli_harness_failure_is_diagnostic_and_never_a_score(self):
+        (self.job / "tests/Checks.java").unlink()
+        run = subprocess.run(
+            [os.sys.executable, str(GRADER), "--job-dir", str(self.job)],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("Grader failure", run.stderr)
+        result = json.loads((self.job / "results/results.json").read_text())
+        self.assertFalse(result["gradable"])
+        self.assertTrue(result["grading_error"])
+        self.assertNotIn("score", result)
+
     def test_cli_writes_results_for_prairielearn(self):
         self.grader()
         run = subprocess.run(

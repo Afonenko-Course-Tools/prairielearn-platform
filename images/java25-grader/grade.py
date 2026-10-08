@@ -8,6 +8,7 @@ import re
 import selectors
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -172,6 +173,7 @@ def main():
     try:
         result = grade(args.job_dir)
     except GraderError as exc:
+        print(f"Grader failure: {exc}", file=sys.stderr)
         result = {"gradable": False, "grading_error": True,
                   "format_errors": "Grader failure; contact your instructor.", "message": str(exc)}
         status = 2
