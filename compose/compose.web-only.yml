@@ -1,8 +1,0 @@
-# Local UI/health checks while host Docker-socket access is not authorized.
-services:
-  pl:
-    volumes: !override
-      - postgres:/var/postgres
-      - ../config/pl.local.example.json:/PrairieLearn/config.json:ro
-      - ${COURSE1_DIR:?Set COURSE1_DIR}:/course:ro
-      - ${COURSE2_DIR:?Set COURSE2_DIR}:/course2:ro

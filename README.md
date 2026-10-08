@@ -46,7 +46,7 @@ Real native-course import and browser grading acceptance are still pending.
 The jobs directory must exist on the Docker host and use an absolute path.
 Compose refuses a missing bind source; the entrypoint refuses relative paths.
 
-The Java grader contract lists allowed `submissionFiles`, trusted `testMain`,
+The Java grader contract lists allowed `sourceFiles`, trusted `mainClass`,
 and nonempty `requiredMethods` records (`className`, `methodName`, JVM method
 `descriptor`, and boolean `static`). Missing or incompatible public methods are
 invalid submissions. Trusted tests return normally on success, exit 1 for a

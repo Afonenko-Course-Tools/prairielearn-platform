@@ -198,7 +198,7 @@ def grade(job_dir: Path) -> dict:
         marker = "PL_CHECKS_COMPLETED_" + secrets.token_hex(32)
         runner_name = "_PL_RUN_" + secrets.token_hex(12)
         runner = stage / (runner_name + ".java")
-        runner.write_text(f'public final class {runner_name} {{ public static void main(String[] args) throws Exception {{ {main}.main(new String[0]); System.out.println("{marker}"); }} }}')
+        runner.write_text(f'public final class {runner_name} {{ public static void main(String[] args) throws Exception {{ {main}.main(new String[0]); System.out.println(); System.out.println("{marker}"); }} }}')
         code, output, reason = _run(
             [*compiler, "-cp", str(student_classes), "-d", str(harness_classes), "-sourcepath", "", *tests, str(runner)],
             job, COMPILE_TIMEOUT,

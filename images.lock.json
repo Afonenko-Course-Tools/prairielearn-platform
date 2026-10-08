@@ -8,7 +8,11 @@
   "javaGrader": {
     "baseImage": "docker.io/library/eclipse-temurin:25-jdk-noble@sha256:589ff4cc3f71aab462e7048a47a0d10edf57fbccde3fceea2281e610bf5880b4",
     "localImage": "ghcr.io/afonenko-course-tools/java25-grader:pilot-local-20261008-r2",
-    "status": "built; 22/22 tests passed in network-disabled container",
-    "localImageId": "sha256:d416d256313d60dc5cf2075e25748230db4cf74937603ea295517c9d7fd7e919"
+    "status": "built; 23/23 tests passed in network-disabled container",
+    "localImageId": "sha256:5d186d493ff3357237e3c5f7d4ed0f89420b9e3e3a23f519875275a9d8cdfd14"
+  },
+  "proxy": {
+    "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
+    "status": "pulled; routing acceptance pending"
   }
 }

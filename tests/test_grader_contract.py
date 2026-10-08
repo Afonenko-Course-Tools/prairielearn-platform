@@ -55,6 +55,12 @@ class GraderContract(unittest.TestCase):
     def test_correct_answer_gets_full_score_on_actual_java25(self):
         self.assertEqual(self.grader().grade(self.job)["score"], 1)
 
+    def test_correct_answer_can_print_without_a_final_newline(self):
+        self.source('System.out.print("debug"); return 42;')
+        result=self.grader().grade(self.job)
+        self.assertEqual(result['score'],1)
+        self.assertIn('debug',result['output'])
+
     def test_failed_checks_get_zero_score(self):
         self.source("return 41;")
         self.assertEqual(self.grader().grade(self.job)["score"], 0)
