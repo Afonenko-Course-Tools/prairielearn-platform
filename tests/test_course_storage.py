@@ -5,6 +5,7 @@ import http.server
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 import ssl
 import subprocess
@@ -50,6 +51,17 @@ class CourseStorageTests(unittest.TestCase):
     def test_dirty_existing_checkout_is_refused(self):
         path=self.stage();(path/'infoCourse.json').write_text('changed')
         with self.assertRaises(self.module.StorageError):self.stage()
+    def test_missing_provenance_commits_are_refused(self):
+        data=json.loads((self.repo/'provenance.json').read_text())
+        data['source'].pop('commit');data['builder'].pop('commit')
+        (self.repo/'provenance.json').write_text(json.dumps(data));self.git('add','.');self.git('commit','-qm','Missing provenance pins');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
+        with self.assertRaises(self.module.StorageError):self.stage()
+    def test_symlink_git_metadata_is_refused_before_git_execution(self):
+        path=self.stage();metadata=self.root/'external-git';shutil.move(path/'.git',metadata);(path/'.git').symlink_to(metadata)
+        with patch.object(self.module,'git',wraps=self.module.git) as invoked:
+            with self.assertRaises(self.module.StorageError):self.stage()
+            invoked.assert_not_called()
+
     def test_nonexistent_commit_leaves_no_published_directory(self):
         self.course['commit']='f'*40
         with self.assertRaises(self.module.StorageError):self.stage()

@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,6 +28,9 @@ def git(directory,*args):
     return result.stdout.strip()
 
 def validate_checkout(path,course):
+    metadata=path/'.git'
+    if metadata.is_symlink() or not metadata.is_dir():
+        raise StorageError('Native checkout requires a contained real Git directory')
     if path.is_symlink() or not path.is_dir() or git(path,'rev-parse','HEAD')!=course['commit'] or git(path,'remote','get-url','origin')!=course['repository'] or git(path,'status','--porcelain','--untracked-files=all'):
         raise StorageError('Existing checkout does not match its clean exact pin')
     try:
@@ -35,7 +39,7 @@ def validate_checkout(path,course):
             raise StorageError('Native delivery requires course metadata and content provenance')
         for key in ('source','builder'):
             record=provenance.get(key)
-            if not isinstance(record,dict) or record.get('dirty') is not False:
+            if not isinstance(record,dict) or record.get('dirty') is not False or not isinstance(record.get('commit'),str) or not re.fullmatch(r'[a-f0-9]{40}',record['commit']):
                 raise StorageError('Accepted native deliveries require clean source and builder commits')
         actual=set()
         for root,dirs,files in os.walk(path):
