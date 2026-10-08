@@ -41,7 +41,9 @@ docker compose --project-name prairielearn-local \
 The local development UI listens on `127.0.0.1:3000`. The PL service receives the
 host Docker socket to create isolated grading containers; grading containers do
 not receive the socket. Development authentication proves no Moodle identity.
-Real native-course import and browser grading acceptance are still pending.
+Real native Java import and browser grading have passed locally: compile-invalid keeps three attempts, wrong answer/timeout consume attempts, and a correct third attempt receives 1/1. These tests used the synthetic Dev User with staff override; Student ACL and Moodle login remain pending.
+
+Exact course storage and the local HTTPS proxy are described in [development.md](docs/development.md).
 
 The jobs directory must exist on the Docker host and use an absolute path.
 Compose refuses a missing bind source; the entrypoint refuses relative paths.

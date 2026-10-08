@@ -3,7 +3,7 @@
   "prairielearn": {
     "image": "docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63",
     "sourceCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
-    "status": "candidate; not integration-verified"
+    "status": "real native Java sync and Docker grading verified; auth integration pending"
   },
   "javaGrader": {
     "baseImage": "docker.io/library/eclipse-temurin:25-jdk-noble@sha256:589ff4cc3f71aab462e7048a47a0d10edf57fbccde3fceea2281e610bf5880b4",
@@ -13,6 +13,6 @@
   },
   "proxy": {
     "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
-    "status": "pulled; routing acceptance pending"
+    "status": "nginx config, verified local CA, 5/5 synthetic TLS route/header/WebSocket tests passed"
   }
 }
