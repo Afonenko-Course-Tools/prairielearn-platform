@@ -12,3 +12,33 @@ Local verification:
 ```sh
 JAVA_HOME=/usr/lib/jvm/java-25-openjdk PATH=/usr/lib/jvm/java-25-openjdk/bin:$PATH python3 -m unittest discover -s tests -v
 ```
+
+Build a native course from a clean source checkout:
+
+```sh
+python3 tools/build-course.py --source /path/to/source \
+  --config /path/to/source/prairielearn/export.json \
+  --output /path/to/fresh-delivery
+```
+
+The `pl-source-v1` config selects one native book, explicit work bindings and a
+native shell. The builder calls its installed owner exporter, rejects unsafe
+paths, symlinks, conflicting questions, missing assessment QIDs and UUID
+collisions, then publishes the complete tree and content hashes. It preserves
+native scoring policy exactly as authored. Existing outputs are rejected.
+Provenance records source/builder commits, source manifests, image locks and
+whether the builder checkout was dirty; accepted deliveries use clean commits.
+
+Local stack:
+
+```sh
+HOST_JOBS_DIR=/absolute/private/jobs \
+COURSE1_DIR=/absolute/course-a COURSE2_DIR=/absolute/course-b \
+docker compose --project-name prairielearn-local \
+  -f compose/compose.yml -f compose/compose.local.yml up -d
+```
+
+The local development UI listens on `127.0.0.1:3000`. The PL service receives the
+host Docker socket to create isolated grading containers; grading containers do
+not receive the socket. Development authentication proves no Moodle identity.
+Real native-course import and browser grading acceptance are still pending.

@@ -1,0 +1,10 @@
+services:
+  pl:
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ../config/pl.local.example.json:/PrairieLearn/config.json:ro
+      - ${COURSE1_DIR:?Set COURSE1_DIR to the native course directory}:/course:ro
+      - ${COURSE2_DIR:?Set COURSE2_DIR to a second synthetic native course directory}:/course2:ro
+    environment:
+      NODE_ENV: development

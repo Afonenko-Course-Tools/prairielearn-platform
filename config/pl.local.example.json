@@ -1,0 +1,6 @@
+{
+  "devMode": true,
+  "externalGradingUseAws": false,
+  "externalGradingPullImagesFromDockerHub": false,
+  "hasShib": false
+}
