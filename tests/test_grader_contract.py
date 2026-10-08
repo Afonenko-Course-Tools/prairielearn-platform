@@ -105,7 +105,8 @@ class GraderContract(unittest.TestCase):
 
     def test_additional_unlisted_submission_is_not_compiled(self):
         (self.job / "student/Unexpected.java").write_text("broken java")
-        self.assertEqual(self.grader().grade(self.job)["score"], 1)
+        result = self.grader().grade(self.job)
+        self.assertEqual(result.get("score"), 1, result)
 
     def test_source_traversal_is_configuration_error(self):
         self.config["sourceFiles"] = ["../tests/Checks.java"]

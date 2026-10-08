@@ -20,4 +20,10 @@ jobs:
       - name: Actual Java runtime and synthetic contracts
         run: |
           java -version
+          javac -version
+          # Exercise the compiler before the suite's intentionally bounded
+          # subprocesses. A cold runner exceeded the 5s compile budget once.
+          TASK_CI_WARMUP_DIR=$(mktemp -d)
+          echo 'public class CompilerReady {}' > "$TASK_CI_WARMUP_DIR/CompilerReady.java"
+          javac --release 25 -d "$TASK_CI_WARMUP_DIR" "$TASK_CI_WARMUP_DIR/CompilerReady.java"
           python3 -m unittest discover -s tests -v
