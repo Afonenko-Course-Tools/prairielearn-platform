@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.superpowers/
+.runtime/
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars*
+!*.example
+.env
+private/
+jobs/
