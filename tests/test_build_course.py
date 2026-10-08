@@ -95,6 +95,19 @@ shutil.copytree(fixture,output,symlinks=True)
         with self.assertRaises(self.module.BuildError): self.build()
         self.assertEqual((self.out/'sentinel').read_text(),'keep')
 
+    def test_output_created_at_publication_is_preserved(self):
+        publish=self.module.publish_directory
+        def concurrent_creation(source, destination):
+            destination.mkdir()
+            inode=destination.stat().st_ino
+            try:
+                publish(source,destination)
+            finally:
+                self.assertEqual(destination.stat().st_ino,inode)
+        with patch.object(self.module,'publish_directory',side_effect=concurrent_creation):
+            with self.assertRaises(self.module.BuildError): self.build()
+        self.assertEqual(list(self.out.iterdir()),[])
+
     def test_identical_question_in_two_works_is_reused(self):
         self.fixture('sec-b','course-a')
         self.config_data['works'].append({'id':'sec-b','binding':'prairielearn/binding.json'})
@@ -106,6 +119,26 @@ shutil.copytree(fixture,output,symlinks=True)
         self.fixture('sec-b','course-a','Different condition')
         self.config_data['works'].append({'id':'sec-b','binding':'prairielearn/binding.json'})
         self.write(self.config,self.config_data); self.commit(); self.refusal()
+
+    def test_arbitrary_native_comment_ids_are_not_question_references(self):
+        a=json.loads(self.assessment.read_text())
+        a['zones'][0]['comment']={'id':'teaching-note'}
+        a['zones'][0]['questions'][0]['comment']={'id':'other-note'}
+        self.write(self.assessment,a);self.commit();self.build()
+        self.assertTrue((self.out/'questions/course-a/exr-one/info.json').is_file())
+
+    def test_missing_question_in_alternatives_is_rejected(self):
+        a=json.loads(self.assessment.read_text())
+        a['zones'][0]['questions']=[{'alternatives':[{'id':'course-a/exr-missing','autoPoints':1}]}]
+        self.write(self.assessment,a);self.commit();self.refusal()
+
+    def test_malformed_native_json_container_is_rejected(self):
+        self.write(self.source/'prairielearn/native/infoCourse.json',None)
+        self.commit();self.refusal()
+
+    def test_missing_source_directory_is_rejected_cleanly(self):
+        self.source=self.root/'missing';self.config=self.source/'prairielearn/export.json'
+        self.refusal()
 
     def test_missing_assessment_question_is_rejected(self):
         a=json.loads(self.assessment.read_text());a['zones'][0]['questions'][0]['id']='course-a/exr-missing'

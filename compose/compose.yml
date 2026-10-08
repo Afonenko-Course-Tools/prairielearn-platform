@@ -1,10 +1,17 @@
 services:
   pl:
     image: docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63
+    entrypoint: ["/bin/sh", "/platform/start-pl.sh"]
+    command: ["/PrairieLearn/scripts/init.sh"]
     volumes:
       - postgres:/var/postgres
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOST_JOBS_DIR:?Set HOST_JOBS_DIR to an absolute existing directory}:/jobs
+      - type: bind
+        source: ${HOST_JOBS_DIR:?Set HOST_JOBS_DIR to an absolute existing directory}
+        target: /jobs
+        bind:
+          create_host_path: false
+      - ../tools/start-pl.sh:/platform/start-pl.sh:ro
     environment:
       HOST_JOBS_DIR: ${HOST_JOBS_DIR:?Set HOST_JOBS_DIR}
     mem_limit: 6g

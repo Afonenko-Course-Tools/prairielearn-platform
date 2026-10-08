@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Assemble a native PL course from a clean source checkout and owner exports."""
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -20,7 +21,10 @@ class BuildError(Exception):
 
 def read_json(path):
     try:
-        return json.loads(path.read_text())
+        value = json.loads(path.read_text())
+        if not isinstance(value, dict):
+            raise BuildError(f'Expected a JSON object: {path}')
+        return value
     except (OSError, ValueError) as error:
         raise BuildError(f'Cannot read JSON: {path}') from error
 
@@ -54,7 +58,7 @@ def git(root, *args):
     try:
         return subprocess.run(['git', *args], cwd=root, check=True,
                               capture_output=True, text=True).stdout.strip()
-    except subprocess.CalledProcessError as error:
+    except (OSError, subprocess.CalledProcessError) as error:
         raise BuildError(f'Git source validation failed: {root}') from error
 
 def write_json(path, value):
@@ -79,19 +83,42 @@ def validate_uuids_and_assessments(course, questions):
         if key in seen:
             raise BuildError(f'UUID collision: {path} and {seen[key]}')
         seen[key] = path
-    def visit(value):
-        if isinstance(value, dict):
-            if 'id' in value and value['id'] not in questions:
-                raise BuildError(f'Assessment refers to an absent question: {value["id"]}')
-            for child in value.values():
-                visit(child)
-        elif isinstance(value, list):
-            for child in value:
-                visit(child)
+    def visit(question):
+        if not isinstance(question, dict):
+            raise BuildError('Assessment question must be an object')
+        if 'id' in question:
+            if not isinstance(question['id'], str) or question['id'] not in questions:
+                raise BuildError(f'Assessment refers to an absent question: {question["id"]}')
+        elif 'alternatives' not in question:
+            raise BuildError('Assessment question requires an id or alternatives')
+        if 'alternatives' in question:
+            alternatives = question['alternatives']
+            if not isinstance(alternatives, list) or not alternatives:
+                raise BuildError('Question alternatives must be a nonempty list')
+            for alternative in alternatives:
+                visit(alternative)
     for path in assessments:
-        visit(read_json(path).get('zones', []))
+        zones = read_json(path).get('zones', [])
+        if not isinstance(zones, list):
+            raise BuildError(f'Assessment zones must be a list: {path}')
+        for zone in zones:
+            if not isinstance(zone, dict) or not isinstance(zone.get('questions'), list):
+                raise BuildError(f'Assessment zone requires a questions list: {path}')
+            for question in zone['questions']:
+                visit(question)
 
-def build_course(source: Path, config: Path, output: Path) -> None:
+def publish_directory(source, destination):
+    # Linux renameat2 makes the no-replacement promise atomic, including an
+    # empty directory created by another builder after our initial validation.
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = libc.renameat2
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    if rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1):
+        error = ctypes.get_errno()
+        raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
+
+def _build_course(source: Path, config: Path, output: Path) -> None:
     source = Path(source).absolute()
     if source.is_symlink() or source.resolve() != source:
         raise BuildError('Source path must not contain symlinks')
@@ -166,10 +193,12 @@ def build_course(source: Path, config: Path, output: Path) -> None:
             if not isinstance(exported_works, list) or len(exported_works) != 1:
                 raise BuildError('Owner export must contain one work')
             w = exported_works[0]
+            if not isinstance(w, dict) or not isinstance(w.get('assignments'), dict):
+                raise BuildError('Delivery work requires an assignments object')
             if w.get('owner') != course_id or w.get('id') != work['id'] or w.get('key') != course_id+'/'+work['id'] or w.get('items') != qids or set(w.get('assignments', {})) != set(qids):
                 raise BuildError('Delivery membership or assignments disagree')
             for assignment in w['assignments'].values():
-                if assignment.get('requirement') not in ('required','optional') or assignment.get('workMode') not in ('individual','pair','group'):
+                if not isinstance(assignment, dict) or assignment.get('requirement') not in ('required','optional') or assignment.get('workMode') not in ('individual','pair','group'):
                     raise BuildError('Invalid work assignment')
             claimed = {'delivery.json'}
             for qid in qids:
@@ -186,7 +215,12 @@ def build_course(source: Path, config: Path, output: Path) -> None:
                 for name, data in content.items():
                     p = native/'questions'/qid/name;p.parent.mkdir(parents=True, exist_ok=True);p.write_bytes(data)
                 info = read_json(native/'questions'/qid/'info.json')
-                image = info.get('externalGradingOptions', {}).get('image')
+                options = info.get('externalGradingOptions', {})
+                if not isinstance(options, dict):
+                    raise BuildError('External grading options must be an object')
+                image = options.get('image')
+                if image is not None and not isinstance(image, str):
+                    raise BuildError('Grading image must be a string')
                 if image:
                     grading_images.add(image)
             if claimed != set(files):
@@ -200,7 +234,13 @@ def build_course(source: Path, config: Path, output: Path) -> None:
             raise BuildError('Export changed tracked source files')
         if output.exists() or output.is_symlink():
             raise BuildError('Output appeared during build')
-        os.rename(native, output)
+        publish_directory(native, output)
+
+def build_course(source: Path, config: Path, output: Path) -> None:
+    try:
+        _build_course(source, config, output)
+    except OSError as error:
+        raise BuildError(f'Course filesystem operation failed: {error.strerror}') from error
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

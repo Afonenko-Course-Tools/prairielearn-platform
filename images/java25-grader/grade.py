@@ -6,6 +6,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import selectors
+import secrets
 import signal
 import subprocess
 import sys
@@ -106,6 +107,43 @@ def _invalid(message, output=""):
     return {"gradable": False, "format_errors": message, "output": output}
 
 
+JAVA_NAME = r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*"
+FIELD_TYPE = r"(?:\[*[BCDFIJSZ]|\[*L[A-Za-z_$][A-Za-z0-9_$]*(?:/[A-Za-z_$][A-Za-z0-9_$]*)*;)"
+METHOD_DESCRIPTOR = re.compile(r"\(" + FIELD_TYPE + r"*\)(?:V|" + FIELD_TYPE + r")")
+
+
+def _required_methods(config):
+    methods = config.get("requiredMethods")
+    if not isinstance(methods, list) or not 1 <= len(methods) <= 64:
+        raise GraderError("Declare the required public Java API")
+    for method in methods:
+        if (not isinstance(method, dict) or set(method) != {"className", "methodName", "descriptor", "static"}
+                or not isinstance(method["className"], str) or not re.fullmatch(JAVA_NAME, method["className"])
+                or not isinstance(method["methodName"], str) or not re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", method["methodName"])
+                or not isinstance(method["descriptor"], str) or len(method["descriptor"]) > 4096
+                or not METHOD_DESCRIPTOR.fullmatch(method["descriptor"])
+                or type(method["static"]) is not bool):
+            raise GraderError("Invalid required public Java API")
+    return methods
+
+
+def _api_probe(name, methods):
+    # Class.forName(false) and getMethod inspect the API without initializing
+    # student classes or calling their code. JVM descriptors preserve overloads.
+    statements = []
+    for method in methods:
+        classname, methodname, descriptor = (json.dumps(method[key]) for key in ("className", "methodName", "descriptor"))
+        expected_static = "true" if method["static"] else "false"
+        statements.append("{" +
+            f"Class<?> c = Class.forName({classname}, false, loader);" +
+            f"var t = java.lang.invoke.MethodType.fromMethodDescriptorString({descriptor}, loader);" +
+            f"var m = c.getMethod({methodname}, t.parameterArray());" +
+            f"if (m.getReturnType() != t.returnType() || java.lang.reflect.Modifier.isStatic(m.getModifiers()) != {expected_static}) System.exit(1);" + "}")
+    return (f"public final class {name} {{ public static void main(String[] args) {{" +
+            "try { var loader = ClassLoader.getSystemClassLoader();" + "".join(statements) +
+            "} catch (ReflectiveOperationException | LinkageError | TypeNotPresentException e) { System.exit(1); } } }")
+
+
 def grade(job_dir: Path) -> dict:
     job = Path(job_dir).absolute()
     config_path = job / "tests/grading.json"
@@ -117,6 +155,7 @@ def grade(job_dir: Path) -> dict:
             raise ValueError("Invalid grading configuration")
     except (OSError, ValueError) as exc:
         raise GraderError("Missing or invalid grading configuration") from exc
+    methods = _required_methods(config)
     source_names = _names(config, "sourceFiles")
     test_names = _names(config, "testFiles")
     main = config.get("mainClass")
@@ -138,30 +177,48 @@ def grade(job_dir: Path) -> dict:
     if code != 0 or reason or not re.search(r'version "25(?:[.\"+\-])', output):
         raise GraderError("The grader requires an actual JDK 25 runtime")
     with tempfile.TemporaryDirectory(prefix="java25-classes-") as directory:
-        classes = Path(directory)
+        stage = Path(directory)
+        student_classes, harness_classes = stage / "student", stage / "harness"
+        student_classes.mkdir(); harness_classes.mkdir()
+        probe_name = "_PL_API_" + secrets.token_hex(12)
+        probe = stage / (probe_name + ".java")
+        probe.write_text(_api_probe(probe_name, methods))
         compiler = ["javac", "--release", "25", "-encoding", "UTF-8", "-proc:none"]
         code, output, reason = _run(
-            [*compiler, "-d", str(classes), "-sourcepath", "", *sources], job, COMPILE_TIMEOUT,
+            [*compiler, "-d", str(student_classes), "-sourcepath", "", *sources, str(probe)], job, COMPILE_TIMEOUT,
         )
         if code != 0 or reason:
             return _invalid("Your submission could not be compiled.", output)
+        java = ["java", "-Xmx128m", "-XX:ActiveProcessorCount=2", "-XX:-UsePerfData"]
+        code, output, reason = _run([*java, "-cp", str(student_classes), probe_name], job, 3)
+        if code == 1 and not reason:
+            return _invalid("The required public Java API does not match the task.")
+        if code != 0 or reason:
+            raise GraderError("Java API conformance check failed unexpectedly")
+        marker = "PL_CHECKS_COMPLETED_" + secrets.token_hex(32)
+        runner_name = "_PL_RUN_" + secrets.token_hex(12)
+        runner = stage / (runner_name + ".java")
+        runner.write_text(f'public final class {runner_name} {{ public static void main(String[] args) throws Exception {{ {main}.main(new String[0]); System.out.println("{marker}"); }} }}')
         code, output, reason = _run(
-            [*compiler, "-cp", str(classes), "-d", str(classes), "-sourcepath", "", *tests],
+            [*compiler, "-cp", str(student_classes), "-d", str(harness_classes), "-sourcepath", "", *tests, str(runner)],
             job, COMPILE_TIMEOUT,
         )
         if code != 0 or reason:
             raise GraderError("Instructor checks could not be compiled")
-        if not (classes / (main.replace(".", "/") + ".class")).is_file():
+        if not (harness_classes / (main.replace(".", "/") + ".class")).is_file():
             raise GraderError("Instructor test main class was not compiled")
         code, output, reason = _run(
-            ["java", "-Xmx128m", "-XX:ActiveProcessorCount=2", "-XX:-UsePerfData",
-             "-cp", str(classes), main], job, timeout,
+            [*java, "-cp", os.pathsep.join([str(harness_classes), str(student_classes)]), runner_name], job, timeout,
         )
+        completed = marker in output.splitlines()
+        output = "\n".join(line for line in output.splitlines() if line != marker)
         if reason:
             return {"gradable": True, "score": 0, "output": output,
                     "timed_out": reason == "timeout", "output_limited": reason == "output_limit"}
         if code not in (0, 1):
             raise GraderError("Instructor checks terminated unexpectedly")
+        if code == 0 and not completed:
+            return {"gradable": True, "score": 0, "output": "The checks did not finish."}
         return {"gradable": True, "score": 1 if code == 0 else 0, "output": output}
 
 

@@ -13,7 +13,7 @@ GRADER = Path(os.environ.get(
 CHECKS = """public class Checks {
   public static void main(String[] args) {
     if (Runtime.version().feature() != 25) System.exit(2);
-    System.exit(Student.answer() == 42 ? 0 : 1);
+    if (Student.answer() != 42) System.exit(1);
   }
 }
 """
@@ -33,6 +33,7 @@ class GraderContract(unittest.TestCase):
             "testFiles": ["Checks.java"],
             "mainClass": "Checks",
             "runTimeoutSeconds": 1,
+            "requiredMethods": [{"className":"Student","methodName":"answer", "descriptor":"()I","static":True}],
         }
         self.write_config()
 
@@ -57,6 +58,36 @@ class GraderContract(unittest.TestCase):
     def test_failed_checks_get_zero_score(self):
         self.source("return 41;")
         self.assertEqual(self.grader().grade(self.job)["score"], 0)
+
+    def test_premature_student_exit_cannot_receive_full_credit(self):
+        self.source("System.exit(0); return 0;")
+        self.assertEqual(self.grader().grade(self.job)["score"], 0)
+
+    def test_missing_student_method_is_invalid_not_harness_failure(self):
+        (self.job / "student/Student.java").write_text("public class Student { public static int different() { return 42; } }")
+        self.assertFalse(self.grader().grade(self.job)["gradable"])
+
+    def test_wrong_student_return_type_is_invalid(self):
+        (self.job / "student/Student.java").write_text('public class Student { public static String answer() { return "42"; } }')
+        self.assertFalse(self.grader().grade(self.job)["gradable"])
+
+    def test_nonstatic_student_method_is_invalid(self):
+        (self.job / "student/Student.java").write_text("public class Student { public int answer() { return 42; } }")
+        self.assertFalse(self.grader().grade(self.job)["gradable"])
+
+    def test_broken_harness_remains_an_instructor_failure(self):
+        (self.job / "tests/Checks.java").write_text("public class Checks { this is not Java; }")
+        module=self.grader()
+        with self.assertRaises(module.GraderError): module.grade(self.job)
+
+    def test_malformed_api_contract_is_configuration_error(self):
+        self.config["requiredMethods"][0]["descriptor"]="not-a-jvm-descriptor"
+        self.write_config();module=self.grader()
+        with self.assertRaises(module.GraderError): module.grade(self.job)
+
+    def test_missing_api_contract_is_configuration_error(self):
+        self.config.pop("requiredMethods");self.write_config();module=self.grader()
+        with self.assertRaises(module.GraderError): module.grade(self.job)
 
     def test_compile_error_is_not_gradable(self):
         self.source("this is not java;")

@@ -42,3 +42,15 @@ The local development UI listens on `127.0.0.1:3000`. The PL service receives th
 host Docker socket to create isolated grading containers; grading containers do
 not receive the socket. Development authentication proves no Moodle identity.
 Real native-course import and browser grading acceptance are still pending.
+
+The jobs directory must exist on the Docker host and use an absolute path.
+Compose refuses a missing bind source; the entrypoint refuses relative paths.
+
+The Java grader contract lists allowed `submissionFiles`, trusted `testMain`,
+and nonempty `requiredMethods` records (`className`, `methodName`, JVM method
+`descriptor`, and boolean `static`). Missing or incompatible public methods are
+invalid submissions. Trusted tests return normally on success, exit 1 for a
+student failure and exit 2 for an internal failure. The runner requires evidence
+that tests returned, preventing premature `System.exit(0)` from earning credit.
+This is not a security boundary against adversarial code in the same JVM; stronger
+exam integrity requires a separate process protocol for trusted checks.
