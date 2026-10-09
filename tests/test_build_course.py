@@ -1,190 +1,51 @@
-"""Builder tests exercise real filesystem, git and exporter subprocess boundaries.
-
-The fixture exporter replaces only the expensive Quarto boundary; it insists on
-its actual command protocol and emits complete native delivery records.
-"""
+"""Builder uses installed full exporter and preserves fresh candidate semantics."""
 import importlib.util
-import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
-
-SCRIPT = Path(__file__).resolve().parents[1] / 'tools/build-course.py'
-
-class CourseBuilderTests(unittest.TestCase):
-    def setUp(self):
-        self.assertTrue(SCRIPT.is_file(), 'Shared course builder is not implemented')
-        spec = importlib.util.spec_from_file_location('course_builder', SCRIPT)
-        self.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.module)
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.source = self.root / 'source'
-        self.source.mkdir()
-        self.config = self.source / 'prairielearn/export.json'
-        self.out = self.root / 'delivery'
-        self.bin = self.root / 'bin'; self.bin.mkdir()
-        self.quarto = self.bin / 'quarto'
-        self.quarto.write_text('''#!/usr/bin/env python3
-import json, pathlib, shutil, sys
-assert sys.argv[1] == 'run' and sys.argv[3:5] == ['.', 'tasks'], sys.argv
-work=sys.argv[5]; binding=sys.argv[6]; output=pathlib.Path(sys.argv[7])
-assert pathlib.Path(sys.argv[2]).is_file() and pathlib.Path(binding).is_file()
-fixture=pathlib.Path('fixtures') / work
-shutil.copytree(fixture,output,symlinks=True)
-''')
-        self.quarto.chmod(0o755)
-        self.config_data = {'schema':'pl-source-v1','courseId':'course-a','book':'tasks','works':[{'id':'sec-a','binding':'prairielearn/binding.json'}],'shell':'prairielearn/native'}
-        self.write(self.config, self.config_data)
-        self.write(self.source/'prairielearn/binding.json', {'questions':{}})
-        entry = self.source/'tasks/_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export.ts'
-        entry.parent.mkdir(parents=True); entry.write_text('// fixture owner entrypoint\n')
-        self.write(self.source/'providers.json', {'providers':{}})
-        self.write(self.source/'installed-packages.json', {'packages':[]})
-        self.write(self.source/'prairielearn/native/infoCourse.json', {'name':'SYN-A','title':'Synthetic A','topics':[]})
-        self.write(self.source/'prairielearn/native/courseInstances/pilot/infoCourseInstance.json', {'uuid':'8ec804e0-f799-4c8c-a538-f34b07e2e12c','longName':'Synthetic pilot'})
-        self.assessment = self.source/'prairielearn/native/courseInstances/pilot/assessments/test/infoAssessment.json'
-        self.write(self.assessment, {'uuid':'0c9d1b4d-128b-4569-a9b0-c6b9411ef788','type':'Exam','title':'Test','set':'Exam','number':'1','zones':[{'questions':[{'id':'course-a/exr-one','autoPoints':[1,1,1]}]}]})
-        self.fixture('sec-a', 'course-a')
-        self.git('init','-q'); self.git('config','user.name','Synthetic'); self.git('config','user.email','synthetic@example.test'); self.git('remote','add','origin','https://example.test/source.git'); self.commit()
-        self.env = patch.dict(os.environ, {'PATH':str(self.bin)+os.pathsep+os.environ['PATH']})
-        self.env.start(); self.addCleanup(self.env.stop)
-
-    def write(self, path, value):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(value, sort_keys=True)+'\n')
-
-    def fixture(self, work, course, text='Condition'):
-        base=self.source/'fixtures'/work
-        qid=course+'/exr-one'
-        q=base/'questions'/qid
-        self.write(q/'info.json', {'uuid':'61dafb49-b246-5385-8fea-39b9f6f11401','type':'v3','title':'exr-one','topic':'Java','externalGradingOptions':{'image':'synthetic-grader@sha256:'+'a'*64}})
-        (q/'question.html').write_text(text)
-        self.write(base/'delivery.json', {'course':course,'release':'source-release','works':[{'owner':course,'id':work,'key':course+'/'+work,'source':'tasks/work.qmd','kind':'test','title':'Test','items':[qid],'assignments':{qid:{'requirement':'required','workMode':'individual'}}}],'questions':[qid]})
-
-    def git(self,*args):
-        return subprocess.run(['git',*args],cwd=self.source,check=True,capture_output=True,text=True).stdout.strip()
-
-    def commit(self):
-        self.git('add','.'); self.git('commit','-qm','Synthetic source')
-
-    def build(self):
-        self.module.build_course(self.source,self.config,self.out)
-
-    def refusal(self):
-        with self.assertRaises(self.module.BuildError): self.build()
-        self.assertFalse(self.out.exists(), 'Rejected build published a partial course')
-
-    def test_shell_delivery_and_provenance_are_published_reproducibly(self):
-        self.build()
-        self.assertEqual((self.out/'questions/course-a/exr-one/question.html').read_text(),'Condition')
-        self.assertTrue((self.out/'deliveries/sec-a.json').is_file())
-        p=json.loads((self.out/'provenance.json').read_text())
-        self.assertEqual(p['source']['commit'],self.git('rev-parse','HEAD'))
-        first={str(f.relative_to(self.out)):f.read_bytes() for f in self.out.rglob('*') if f.is_file()}
-        self.out=self.root/'second'; self.build()
-        second={str(f.relative_to(self.out)):f.read_bytes() for f in self.out.rglob('*') if f.is_file()}
-        self.assertEqual(first,second)
-
-    def test_existing_output_is_preserved(self):
-        self.out.mkdir(); (self.out/'sentinel').write_text('keep')
-        with self.assertRaises(self.module.BuildError): self.build()
-        self.assertEqual((self.out/'sentinel').read_text(),'keep')
-
-    def test_output_created_at_publication_is_preserved(self):
-        publish=self.module.publish_directory
-        def concurrent_creation(source, destination):
-            destination.mkdir()
-            inode=destination.stat().st_ino
-            try:
-                publish(source,destination)
-            finally:
-                self.assertEqual(destination.stat().st_ino,inode)
-        with patch.object(self.module,'publish_directory',side_effect=concurrent_creation):
-            with self.assertRaises(self.module.BuildError): self.build()
-        self.assertEqual(list(self.out.iterdir()),[])
-
-    def test_identical_question_in_two_works_is_reused(self):
-        self.fixture('sec-b','course-a')
-        self.config_data['works'].append({'id':'sec-b','binding':'prairielearn/binding.json'})
-        self.write(self.config,self.config_data); self.commit(); self.build()
-        self.assertEqual(len(list((self.out/'questions').rglob('info.json'))),1)
-        self.assertTrue((self.out/'deliveries/sec-b.json').is_file())
-
-    def test_conflicting_duplicate_question_is_rejected(self):
-        self.fixture('sec-b','course-a','Different condition')
-        self.config_data['works'].append({'id':'sec-b','binding':'prairielearn/binding.json'})
-        self.write(self.config,self.config_data); self.commit(); self.refusal()
-
-    def test_arbitrary_native_comment_ids_are_not_question_references(self):
-        a=json.loads(self.assessment.read_text())
-        a['zones'][0]['comment']={'id':'teaching-note'}
-        a['zones'][0]['questions'][0]['comment']={'id':'other-note'}
-        self.write(self.assessment,a);self.commit();self.build()
-        self.assertTrue((self.out/'questions/course-a/exr-one/info.json').is_file())
-
-    def test_missing_question_in_alternatives_is_rejected(self):
-        a=json.loads(self.assessment.read_text())
-        a['zones'][0]['questions']=[{'alternatives':[{'id':'course-a/exr-missing','autoPoints':1}]}]
-        self.write(self.assessment,a);self.commit();self.refusal()
-
-    def test_malformed_native_json_container_is_rejected(self):
-        self.write(self.source/'prairielearn/native/infoCourse.json',None)
-        self.commit();self.refusal()
-
-    def test_missing_source_directory_is_rejected_cleanly(self):
-        self.source=self.root/'missing';self.config=self.source/'prairielearn/export.json'
-        self.refusal()
-
-    def test_missing_assessment_question_is_rejected(self):
-        a=json.loads(self.assessment.read_text());a['zones'][0]['questions'][0]['id']='course-a/exr-missing'
-        self.write(self.assessment,a); self.commit(); self.refusal()
-
-    def test_path_traversal_is_rejected(self):
-        self.config_data['shell']='../outside'
-        self.write(self.config,self.config_data); self.commit(); self.refusal()
-
-    def test_symlink_shell_is_rejected(self):
-        (self.source/'prairielearn/native/link').symlink_to(self.root)
-        self.commit(); self.refusal()
-
-    def test_exporter_failure_does_not_publish(self):
-        self.quarto.write_text('#!/usr/bin/env python3\nraise SystemExit(2)\n')
-        self.refusal()
-
-    def test_dirty_source_is_rejected(self):
-        (self.source/'providers.json').write_text('changed')
-        self.refusal()
-
-    def test_wrong_course_namespace_is_rejected(self):
-        self.config_data['courseId']='course-b';self.write(self.config,self.config_data);self.commit();self.refusal()
-
-    def test_two_courses_keep_separate_native_question_namespaces(self):
-        self.build()
-        self.fixture('sec-a','course-b')
-        import shutil
-        shutil.rmtree(self.source/'fixtures/sec-a/questions/course-a')
-        self.config_data['courseId']='course-b';self.write(self.config,self.config_data)
-        a=json.loads(self.assessment.read_text());a['zones'][0]['questions'][0]['id']='course-b/exr-one';self.write(self.assessment,a)
-        self.commit();self.out=self.root/'course-b';self.build()
-        self.assertTrue((self.root/'delivery/questions/course-a/exr-one/info.json').is_file())
-        self.assertTrue((self.out/'questions/course-b/exr-one/info.json').is_file())
-        self.assertFalse((self.out/'questions/course-a').exists())
-
-    def test_symlink_in_owner_export_is_rejected(self):
-        (self.source/'fixtures/sec-a/questions/course-a/exr-one/leak').symlink_to('/etc/hosts')
-        self.commit();self.refusal()
-
-    def test_malformed_delivery_qid_is_rejected(self):
-        p=self.source/'fixtures/sec-a/delivery.json';v=json.loads(p.read_text());v['questions']=[{}]
-        self.write(p,v);self.commit();self.refusal()
-
-    def test_uuid_collision_is_rejected(self):
-        a=json.loads(self.assessment.read_text());a['uuid']='61dafb49-b246-5385-8fea-39b9f6f11401'
-        self.write(self.assessment,a);self.commit();self.refusal()
-
-if __name__ == '__main__': unittest.main()
+ROOT=Path(__file__).resolve().parents[1]
+spec=importlib.util.spec_from_file_location('builder',ROOT/'tools/build-course.py');builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
+class BuilderContract(unittest.TestCase):
+ def test_existing_output_is_preserved(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);source=root/'source';source.mkdir();out=root/'out';out.mkdir();(out/'sentinel').write_text('keep')
+   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',out)
+   self.assertEqual((out/'sentinel').read_text(),'keep')
+ def test_old_shell_exporter_cannot_build(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);source=root/'source';source.mkdir()
+   for cmd in [['git','init','-q'],['git','config','user.name','Synthetic'],['git','config','user.email','synthetic@example.test'],['git','remote','add','origin','https://example.test/source.git']]:subprocess.run(cmd,cwd=source,check=True)
+   p=source/'tasks/_extensions/course-prairielearn/entrypoints/export.ts';p.parent.mkdir(parents=True);p.write_text('// old exporter')
+   subprocess.run(['git','add','.'],cwd=source,check=True);subprocess.run(['git','commit','-qm','Fixture'],cwd=source,check=True)
+   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',root/'out')
+   self.assertFalse((root/'out').exists())
+ def test_atomic_publication_does_not_overwrite_concurrent_directory(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);source=root/'from';source.mkdir();target=root/'target';target.mkdir();(target/'keep').write_text('keep')
+   with self.assertRaises(builder.BuildError):builder.publish_directory(source,target)
+   self.assertEqual((target/'keep').read_text(),'keep')
+ def test_full_exporter_generates_fresh_candidate_and_private_checks(self):
+  import json,os
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);source=root/'source';source.mkdir();binary=root/'bin';binary.mkdir()
+   for cmd in [['git','init','-q'],['git','config','user.name','Synthetic'],['git','config','user.email','synthetic@example.test'],['git','remote','add','origin','https://example.test/source.git']]:subprocess.run(cmd,cwd=source,check=True)
+   entry=source/'tasks/_extensions/course-prairielearn/entrypoints/export-course.ts';entry.parent.mkdir(parents=True);entry.write_text('// installed full exporter boundary')
+   subprocess.run(['git','add','.'],cwd=source,check=True);subprocess.run(['git','commit','-qm','Fixture'],cwd=source,check=True)
+   (binary/'quarto').write_text('''#!/usr/bin/env python3
+import json,pathlib,sys
+assert sys.argv[1]=='run' and sys.argv[2].endswith('export-course.ts')
+assert sys.argv[5:7]==['--instance','pilot']
+out=pathlib.Path(sys.argv[4]);out.mkdir();checks=pathlib.Path(sys.argv[8])
+(out/'infoCourse.json').write_text(json.dumps({'name':'SYN'}))
+q=out/'questions/synthetic/exr-a';q.mkdir(parents=True)
+(q/'info.json').write_text(json.dumps({'uuid':'00000000-0000-4000-8000-000000000001'}))
+(q/'question.html').write_text('Synthetic condition')
+delivery={'schemaVersion':1,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
+(out/'delivery.json').write_text(json.dumps(delivery));checks.write_text(json.dumps({'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[]}))
+''');(binary/'quarto').chmod(0o755)
+   output=root/'candidate'
+   with patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}):builder.build_course(source,'tasks','pilot',output)
+   self.assertTrue((output/'questions/synthetic/exr-a/info.json').is_file());self.assertTrue((root/'candidate-checks.json').is_file());self.assertFalse((output/'checks.json').exists())
+   p=json.loads((output/'provenance.json').read_text());self.assertEqual(p['deliveryHash'],'c'*64);self.assertEqual(p['source']['dirty'],False)

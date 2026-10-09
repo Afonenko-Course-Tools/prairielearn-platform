@@ -37,7 +37,14 @@ class CourseStorageTests(unittest.TestCase):
         self.course={'id':'course-a','repository':f'https://127.0.0.1:{self.server.server_port}/native.git/.git','commit':self.first,'mount':'/course'}
         self.storage=self.root/'storage';self.storage.mkdir()
     def update_provenance(self):
-        data={'schema':'pl-provenance-v1','source':{'commit':'a'*40,'dirty':False},'builder':{'commit':'b'*40,'dirty':False},'files':{'infoCourse.json':hashlib.sha256((self.repo/'infoCourse.json').read_bytes()).hexdigest()}}
+        from grading_job import digest
+        h=hashlib.sha256((self.repo/'infoCourse.json').read_bytes()).hexdigest()
+        delivery={'schemaVersion':1,'deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-one']}
+        (self.repo/'delivery.json').write_text(json.dumps(delivery))
+        receipt={'schemaVersion':1,'toolVersion':'1.0.0','scope':'delivery','backend':'container','deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'status':'success','exitCode':0,'checkedIds':['synthetic/exr-one'],'runtimes':{'java25-junit-v1':'synthetic@sha256:'+'a'*64},'dependencyHashes':{'junit':'a'*64},'expectations':[]}
+        receipt['identityHash']=digest(receipt)
+        (self.repo/'verification-receipt.json').write_text(json.dumps(receipt))
+        data={'schema':'pl-provenance-v1','source':{'commit':'a'*40,'dirty':False},'builder':{'commit':'b'*40,'dirty':False},'deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'files':{name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in ['infoCourse.json','delivery.json','verification-receipt.json']}}
         (self.repo/'provenance.json').write_text(json.dumps(data))
     def stop(self):self.server.shutdown();self.server.server_close();self.thread.join()
     def stage(self):return self.module.stage_course(self.course,self.storage)
@@ -73,4 +80,11 @@ class CourseStorageTests(unittest.TestCase):
         first=self.stage();self.course['id']='course-b';self.course['mount']='/course2';second=self.stage();self.assertNotEqual(first,second);self.assertTrue(first.is_dir());self.assertTrue(second.is_dir())
     def test_symlink_storage_parent_is_refused(self):
         (self.storage/'course-a').symlink_to(self.repo)
+        with self.assertRaises(self.module.StorageError):self.stage()
+    def test_missing_successful_receipt_blocks_staging(self):
+        (self.repo/'verification-receipt.json').unlink(missing_ok=True);self.git('add','-A');self.git('commit','-qm','Missing receipt');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
+        with self.assertRaises(self.module.StorageError):self.stage()
+    def test_receipt_wrong_delivery_hash_blocks_staging(self):
+        p=self.repo/'verification-receipt.json';p.write_text('{"scope":"delivery","status":"success","deliveryHash":"wrong"}')
+        self.git('add','.');self.git('commit','-qm','Wrong receipt');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
         with self.assertRaises(self.module.StorageError):self.stage()

@@ -1,0 +1,68 @@
+name: Publish reviewed Java25 runtime
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable runtime version (for example 1.0.0)
+        required: true
+        type: string
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: publish-java25-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Resolve immutable version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
+          echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Authenticate with scoped package token
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Reject an existing immutable version
+        run: |
+          if docker manifest inspect "$RUNTIME_IMAGE" >manifest-check.log 2>&1; then
+            echo 'Version already published; choose a new version.' >&2
+            exit 1
+          elif ! grep -Eq 'manifest unknown|no such manifest|not found' manifest-check.log; then
+            echo 'Cannot verify that version is absent; refusing publication.' >&2
+            cat manifest-check.log >&2
+            exit 1
+          fi
+      - name: Build exact checkout and run owner tests
+        run: |
+          python3 -m pip install --requirement requirements.txt
+          docker build -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
+          PL_TEST_IMAGE="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -v
+      - name: Publish verified image and record actual digest
+        run: |
+          docker push "$RUNTIME_IMAGE"
+          IMAGE_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
+          export IMAGE_DIGEST
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          digest = os.environ['IMAGE_DIGEST']
+          if '@sha256:' not in digest:
+              raise SystemExit('Published repository digest missing')
+          Path('runtime-image.json').write_text(json.dumps({'schemaVersion':1,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['RUNTIME_IMAGE'].rsplit(':',1)[1],'image':digest},indent=2)+'\n')
+          PY
+          cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: java25-runtime-digest-${{ inputs.version }}
+          path: runtime-image.json
+          if-no-files-found: error

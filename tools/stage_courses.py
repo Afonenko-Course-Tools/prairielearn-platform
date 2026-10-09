@@ -15,6 +15,7 @@ import tempfile
 TOOLS=Path(__file__).resolve().parent
 sys.path.insert(0,str(TOOLS))
 from check_registry import RegistryError, validate_registry
+from grading_job import validate as validate_contract, digest as contract_digest, JobError
 spec=importlib.util.spec_from_file_location('native_builder',TOOLS/'build-course.py')
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
@@ -41,6 +42,16 @@ def validate_checkout(path,course):
             record=provenance.get(key)
             if not isinstance(record,dict) or record.get('dirty') is not False or not isinstance(record.get('commit'),str) or not re.fullmatch(r'[a-f0-9]{40}',record['commit']):
                 raise StorageError('Accepted native deliveries require clean source and builder commits')
+        delivery=builder.read_json(path/'delivery.json');receipt=builder.read_json(path/'verification-receipt.json')
+        validate_contract('verification-receipt',receipt)
+        if delivery.get('candidate') is True:raise StorageError('Local image candidates cannot be staged as published releases')
+        unsigned={k:v for k,v in receipt.items() if k!='identityHash'}
+        if receipt['identityHash']!=contract_digest(unsigned):raise StorageError('Receipt identity does not match content')
+        if receipt.get('scope')!='delivery' or receipt.get('status')!='success' or receipt.get('exitCode')!=0 or receipt.get('backend')!='container':raise StorageError('Successful authoritative container receipt is required before staging')
+        for field in ('deliveryHash','sourceSnapshotHash','inventoryHash'):
+            if receipt.get(field)!=delivery.get(field) or receipt.get(field)!=provenance.get(field):raise StorageError('Receipt does not match exact delivery/source/inventory')
+        if set(receipt['checkedIds'])!=set(delivery.get('questions',[])):raise StorageError('Receipt does not cover every delivered question')
+        if not receipt['runtimes'] or any(not isinstance(image,str) or '@sha256:' not in image for image in receipt['runtimes'].values()):raise StorageError('Staging requires published immutable runtime image digests')
         actual=set()
         for root,dirs,files in os.walk(path):
             relative=Path(root).relative_to(path)
@@ -58,7 +69,7 @@ def validate_checkout(path,course):
                 raise StorageError('Native payload does not match its provenance hashes')
         allowed=set(provenance['files'])|{'provenance.json','README.md','LICENSE','AGENTS.md','.gitignore'}
         if actual-allowed:raise StorageError('Native checkout contains unrecorded payload files')
-    except (builder.BuildError,OSError,ValueError) as error:
+    except (builder.BuildError,JobError,OSError,ValueError) as error:
         raise StorageError('Invalid native delivery or provenance') from error
 
 def stage_course(course,storage):

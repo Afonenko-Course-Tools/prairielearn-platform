@@ -6,10 +6,10 @@
     "status": "real native Java sync and Docker grading verified; auth integration pending"
   },
   "javaGrader": {
-    "baseImage": "docker.io/library/eclipse-temurin:25-jdk-noble@sha256:589ff4cc3f71aab462e7048a47a0d10edf57fbccde3fceea2281e610bf5880b4",
-    "localImage": "ghcr.io/afonenko-course-tools/java25-grader:pilot-local-20261008-r2",
-    "status": "built; 23/23 tests passed in network-disabled container",
-    "localImageId": "sha256:5d186d493ff3357237e3c5f7d4ed0f89420b9e3e3a23f519875275a9d8cdfd14"
+    "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
+    "localImage": "java25-junit-release-local:1.0.0-candidate",
+    "localImageId": "sha256:4444a45cac081a4ddbd7ba60c805a84c7ebbe1b24727341063e5cd077d4ed6fa",
+    "status": "local candidate with official JUnit1.14.1 and sbuser/Landlock; published digest and real PL/Moodle acceptance pending"
   },
   "proxy": {
     "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",

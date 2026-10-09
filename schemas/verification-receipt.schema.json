@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/verification-receipt.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "toolVersion": {
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "declared",
+        "delivery"
+      ]
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "success",
+        "defect",
+        "infrastructure-failure"
+      ]
+    },
+    "exitCode": {
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "checkedIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "runtimes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "dependencyHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "expectations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "qualifiedId": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "matched": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "scenario",
+          "matched"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "identityHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "backend": {
+      "enum": [
+        "host",
+        "container"
+      ]
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "toolVersion",
+    "scope",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "status",
+    "exitCode",
+    "checkedIds",
+    "runtimes",
+    "dependencyHashes",
+    "expectations",
+    "identityHash"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deliveryHash"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "deliveryHash"
+          ]
+        }
+      }
+    }
+  ]
+}

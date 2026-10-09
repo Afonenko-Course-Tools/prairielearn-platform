@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/grading-job.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scope": {
+      "enum": [
+        "declared",
+        "delivery"
+      ]
+    },
+    "qualifiedId": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "string"
+    },
+    "imageDigest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "projectRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "submissionRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "projectRelativePath",
+          "submissionRelativePath",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "trustedTests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "projectRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "submissionRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "projectRelativePath",
+          "submissionRelativePath",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "verificationTests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "projectRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "submissionRelativePath": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "projectRelativePath",
+          "submissionRelativePath",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "grading": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "sourceFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "minItems": 1
+        },
+        "testFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "minItems": 1
+        },
+        "mode": {
+          "enum": [
+            "implementation",
+            "student-tests"
+          ]
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "java": {
+          "type": "object",
+          "properties": {
+            "release": {
+              "const": 25
+            },
+            "encoding": {
+              "const": "UTF-8"
+            },
+            "compiler-options": {
+              "const": [
+                "-proc:none",
+                "-Xmaxerrs",
+                "5"
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "outer-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "compile-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "run-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "networking": {
+              "const": false
+            },
+            "max-output-bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65536
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "scoring": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "weighted"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "all-pass"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "contract-groups"
+                },
+                "groups": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "weight": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "tests": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "weight",
+                      "tests"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "mode",
+                "groups"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "threshold"
+                },
+                "basis": {
+                  "enum": [
+                    "score",
+                    "passed-tests"
+                  ]
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "mode",
+                "basis",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "discovery": {
+          "type": "object",
+          "properties": {
+            "min-executed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "allow-skipped": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "variants": {
+          "type": "object",
+          "properties": {
+            "correct": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "mutants": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "correct",
+            "mutants"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "sourceFiles",
+        "testFiles",
+        "mode",
+        "runtime",
+        "java",
+        "limits",
+        "scoring",
+        "discovery"
+      ],
+      "additionalProperties": false
+    },
+    "expectations": {
+      "type": "object",
+      "properties": {
+        "student-compilation": {
+          "enum": [
+            "success",
+            "failure"
+          ]
+        },
+        "job": {
+          "enum": [
+            "complete",
+            "failure"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "success",
+            "behavior-failure",
+            "student-compilation-failure",
+            "student-test-quality-failure",
+            "student-timeout",
+            "student-output-overflow",
+            "unsafe-submission",
+            "infrastructure-failure"
+          ]
+        },
+        "required-tests": {
+          "const": "all-pass"
+        },
+        "failed-tests": {
+          "type": "object",
+          "properties": {
+            "at-least": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "executed-tests": {
+          "type": "object",
+          "properties": {
+            "at-least": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "test-ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "score": {
+          "type": "object",
+          "properties": {
+            "less-than": {
+              "type": "number",
+              "minimum": 0
+            },
+            "at-least": {
+              "type": "number",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "sourceHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "testsHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scope",
+    "qualifiedId",
+    "scenario",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "runtime",
+    "imageDigest",
+    "sources",
+    "trustedTests",
+    "grading"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deliveryHash"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "deliveryHash"
+          ]
+        }
+      }
+    }
+  ]
+}

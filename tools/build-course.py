@@ -118,140 +118,45 @@ def publish_directory(source, destination):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def _build_course(source: Path, config: Path, output: Path) -> None:
-    source = Path(source).absolute()
-    if source.is_symlink() or source.resolve() != source:
-        raise BuildError('Source path must not contain symlinks')
-    config = Path(config).absolute()
-    output = Path(output).absolute()
-    if output.exists() or output.is_symlink():
-        raise BuildError('Output must be a fresh path')
-    if output.parent.resolve() != output.parent or not output.parent.is_dir():
-        raise BuildError('Output parent must be an existing real directory')
-    if output.is_relative_to(source):
-        raise BuildError('Output must be outside the source checkout')
-    try:
-        config_name = config.relative_to(source).as_posix()
-    except ValueError as error:
-        raise BuildError('Config must be inside source checkout') from error
-    relative_path(source, config_name)
-    if git(source, 'status', '--porcelain', '--untracked-files=all'):
-        raise BuildError('Source checkout must be clean before export')
-    source_commit = git(source, 'rev-parse', 'HEAD')
-    repository = git(source, 'remote', 'get-url', 'origin')
-    if not re.fullmatch(r'https://[^/@\s]+/[^\s]+', repository):
-        raise BuildError('Source origin must be an HTTPS URL without credentials')
-    cfg = read_json(config)
-    if not isinstance(cfg, dict) or set(cfg) != {'schema','courseId','book','works','shell'} or cfg['schema'] != 'pl-source-v1':
-        raise BuildError('Expected pl-source-v1 config with explicit fields')
-    course_id = cfg['courseId']
-    if not isinstance(course_id, str) or not ID.fullmatch(course_id):
-        raise BuildError('Invalid course ID')
-    book = relative_path(source, cfg['book'])
-    shell = relative_path(source, cfg['shell'])
-    entry = relative_path(book, '_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export.ts')
-    if not entry.is_file():
-        raise BuildError('Installed owner exporter is missing')
-    works = cfg['works']
-    if not isinstance(works, list) or not works:
-        raise BuildError('At least one work is required')
-    ids = set()
-    for work in works:
-        if not isinstance(work, dict) or set(work) != {'id','binding'} or not isinstance(work['id'], str) or not ID.fullmatch(work['id']) or work['id'] in ids:
-            raise BuildError('Invalid or duplicate work')
-        ids.add(work['id'])
-        if not relative_path(source, work['binding']).is_file():
-            raise BuildError('Work binding is missing')
-    manifests = {}
-    for name in ('providers.json','installed-packages.json'):
-        p = relative_path(source, name)
-        manifests[name] = hashlib.sha256(p.read_bytes()).hexdigest()
-    shell_files = tree(shell)
-    if 'infoCourse.json' not in shell_files:
-        raise BuildError('Native shell requires infoCourse.json')
-    if any(n != 'infoCourse.json' and not n.startswith('courseInstances/') for n in shell_files):
-        raise BuildError('Native shell may contain only course and instance files')
-    with tempfile.TemporaryDirectory(prefix='.pl-build-', dir=output.parent) as temporary:
-        stage = Path(temporary); native = stage/'native'; native.mkdir()
-        for name, content in shell_files.items():
-            p = native/name; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(content)
-        questions = {}; grading_images = set()
-        for work in works:
-            exported = stage/('export-'+work['id'])
-            try:
-                subprocess.run(['quarto','run',str(entry.relative_to(source)),'.',cfg['book'],work['id'],work['binding'],str(exported)], cwd=source, check=True)
-            except (OSError, subprocess.CalledProcessError) as error:
-                raise BuildError(f'Owner export failed: {work["id"]}') from error
-            files = tree(exported)
-            if any(n != 'delivery.json' and not n.startswith('questions/') for n in files):
-                raise BuildError('Unexpected file in owner export')
-            delivery = read_json(exported/'delivery.json')
-            qids = delivery.get('questions')
-            exported_works = delivery.get('works')
-            if delivery.get('course') != course_id or not isinstance(qids, list) or not qids or not all(isinstance(q, str) and QID.fullmatch(q) and q.startswith(course_id+'/') for q in qids) or len(set(qids)) != len(qids):
-                raise BuildError('Delivery course namespace or questions disagree')
-            if not isinstance(exported_works, list) or len(exported_works) != 1:
-                raise BuildError('Owner export must contain one work')
-            w = exported_works[0]
-            if not isinstance(w, dict) or not isinstance(w.get('assignments'), dict):
-                raise BuildError('Delivery work requires an assignments object')
-            if w.get('owner') != course_id or w.get('id') != work['id'] or w.get('key') != course_id+'/'+work['id'] or w.get('items') != qids or set(w.get('assignments', {})) != set(qids):
-                raise BuildError('Delivery membership or assignments disagree')
-            for assignment in w['assignments'].values():
-                if not isinstance(assignment, dict) or assignment.get('requirement') not in ('required','optional') or assignment.get('workMode') not in ('individual','pair','group'):
-                    raise BuildError('Invalid work assignment')
-            claimed = {'delivery.json'}
-            for qid in qids:
-                prefix = 'questions/'+qid+'/'
-                content = {n[len(prefix):]:b for n,b in files.items() if n.startswith(prefix)}
-                if 'info.json' not in content or 'question.html' not in content:
-                    raise BuildError(f'Incomplete question: {qid}')
-                claimed.update(prefix+n for n in content)
-                if qid in questions:
-                    if questions[qid] != content:
-                        raise BuildError(f'Conflicting duplicate question: {qid}')
-                    continue
-                questions[qid] = content
-                for name, data in content.items():
-                    p = native/'questions'/qid/name;p.parent.mkdir(parents=True, exist_ok=True);p.write_bytes(data)
-                info = read_json(native/'questions'/qid/'info.json')
-                options = info.get('externalGradingOptions', {})
-                if not isinstance(options, dict):
-                    raise BuildError('External grading options must be an object')
-                image = options.get('image')
-                if image is not None and not isinstance(image, str):
-                    raise BuildError('Grading image must be a string')
-                if image:
-                    grading_images.add(image)
-            if claimed != set(files):
-                raise BuildError('Unclaimed questions in owner export')
-            write_json(native/'deliveries'/(work['id']+'.json'), delivery)
-        validate_uuids_and_assessments(native, questions)
-        lock = read_json(PLATFORM/'images.lock.json')
-        provenance = {'schema':'pl-provenance-v1','source':{'repository':repository,'commit':source_commit,'dirty':False,'config':config_name,'manifests':manifests},'builder':{'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'gradingImages':sorted(grading_images),'platformImages':lock,'files':{n:hashlib.sha256(b).hexdigest() for n,b in tree(native).items()}}
-        write_json(native/'provenance.json', provenance)
-        if git(source, 'diff', '--name-only', 'HEAD'):
-            raise BuildError('Export changed tracked source files')
-        if output.exists() or output.is_symlink():
-            raise BuildError('Output appeared during build')
-        publish_directory(native, output)
-
-def build_course(source: Path, config: Path, output: Path) -> None:
-    try:
-        _build_course(source, config, output)
-    except OSError as error:
-        raise BuildError(f'Course filesystem operation failed: {error.strerror}') from error
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None) -> None:
+    source=Path(source).absolute();output=Path(output).absolute()
+    if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
+    if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
+    if not output.parent.is_dir() or output.parent.resolve()!=output.parent:raise BuildError('Output parent must be real existing directory')
+    if git(source,'status','--porcelain','--untracked-files=all'):raise BuildError('Source checkout must be clean before export')
+    repository=git(source,'remote','get-url','origin')
+    if not re.fullmatch(r'https://[^/@\s]+/[^\s]+',repository):raise BuildError('Origin must be credential-free HTTPS')
+    commit=git(source,'rev-parse','HEAD');root=relative_path(source,book)
+    entries=[root/'_extensions/course-prairielearn/entrypoints/export-course.ts',root/'_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export-course.ts']
+    entries=[p for p in entries if p.is_file() and not p.is_symlink()]
+    if len(entries)!=1:raise BuildError('Exactly one installed full owner exporter is required')
+    registry=Path(runtime_registry or PLATFORM/'runtime-profiles.json').absolute()
+    with tempfile.TemporaryDirectory(prefix='.pl-full-export-',dir=output.parent) as tmp:
+        stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
+        command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
+        try:subprocess.run(command,cwd=source,check=True)
+        except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
+        files=tree(native)
+        if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
+        delivery=read_json(native/'delivery.json');manifest=read_json(checks)
+        if delivery.get('schemaVersion')!=1 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
+        validate_uuids_and_assessments(native,delivery['questions'])
+        provenance={'schema':'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':{'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
+        write_json(native/'provenance.json',provenance)
+        if git(source,'status','--porcelain','--untracked-files=all'):raise BuildError('Exporter changed clean source')
+        # Checks inventory stays private outside native payload.
+        checks_output=output.parent/(output.name+'-checks.json')
+        if checks_output.exists():raise BuildError('Private checks output must be fresh')
+        try:
+            with checks_output.open('x') as f:f.write(checks.read_text())
+            try:publish_directory(native,output)
+            except BuildError:
+                checks_output.unlink()
+                raise
+        except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--source', required=True, type=Path)
-    parser.add_argument('--config', required=True, type=Path)
-    parser.add_argument('--output', required=True, type=Path)
-    args = parser.parse_args()
-    try:
-        build_course(args.source,args.config,args.output)
-    except BuildError as error:
-        parser.exit(1, f'Course build rejected: {error}\n')
-
-if __name__ == '__main__':
-    main()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry)
+    except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
+if __name__=='__main__':main()

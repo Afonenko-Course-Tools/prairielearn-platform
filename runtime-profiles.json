@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "java25-junit-v1": {
+      "javaRelease": 25,
+      "mode": "implementation",
+      "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
+      "image": null,
+      "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
+      "bundle": "runtime/java25-junit-v1",
+      "files": {
+        "PlatformJUnitAdapter.java": "46aedb58f27289db0424607104d27018daefb03b32759f2513487d33d8bf6bdd",
+        "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
+        "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
+        "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
+        "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
+      },
+      "runnerSha256": "3df1e5f1e77c6402656ec17003d8e50b80d6e0496567500cbc9fba2f7bfb9986"
+    },
+    "java25-mutation-v1": {
+      "javaRelease": 25,
+      "mode": "student-tests",
+      "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
+      "image": null,
+      "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
+      "bundle": "runtime/java25-junit-v1",
+      "files": {
+        "PlatformJUnitAdapter.java": "46aedb58f27289db0424607104d27018daefb03b32759f2513487d33d8bf6bdd",
+        "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
+        "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
+        "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
+        "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
+      },
+      "runnerSha256": "3df1e5f1e77c6402656ec17003d8e50b80d6e0496567500cbc9fba2f7bfb9986"
+    }
+  }
+}

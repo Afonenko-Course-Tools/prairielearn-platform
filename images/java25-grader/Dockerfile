@@ -1,6 +1,9 @@
-FROM docker.io/library/eclipse-temurin:25-jdk-noble@sha256:589ff4cc3f71aab462e7048a47a0d10edf57fbccde3fceea2281e610bf5880b4
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 \
-    && rm -rf /var/lib/apt/lists/*
-COPY grade.py /grader/grade.py
-ENTRYPOINT ["python3", "/grader/grade.py"]
+FROM docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+ENV PL_CONTAINMENT=official
+WORKDIR /platform
+COPY runtime-profiles.json /platform/runtime-profiles.json
+COPY runtime /platform/runtime
+COPY images/java25-grader/grade.py /platform/images/java25-grader/grade.py
+RUN chmod 700 /platform /javagrader
+ENTRYPOINT ["python3", "/platform/images/java25-grader/grade.py"]

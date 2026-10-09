@@ -13,21 +13,43 @@ Local verification:
 JAVA_HOME=/usr/lib/jvm/java-25-openjdk PATH=/usr/lib/jvm/java-25-openjdk/bin:$PATH python3 -m unittest discover -s tests -v
 ```
 
-Build a native course from a clean source checkout:
+Build an immutable native candidate with the installed full exporter:
 
 ```sh
-python3 tools/build-course.py --source /path/to/source \
-  --config /path/to/source/prairielearn/export.json \
-  --output /path/to/fresh-delivery
+python3 tools/build-course.py --source /path/to/clean/source --book tasks \
+  --instance pilot --output /path/to/fresh-delivery
+python3 tools/check-course.py inventory --manifest /private/checks.json \
+  --scope declared --output /private/inventory.json
+JAVA_HOME=/usr/lib/jvm/java-25-openjdk PATH=/usr/lib/jvm/java-25-openjdk/bin:$PATH \
+  python3 tools/check-course.py verify --manifest /private/checks.json \
+  --snapshot /path/to/source --scope declared --ready-only --backend host \
+  --output /private/host-report.json
 ```
 
-The `pl-source-v1` config selects one native book, explicit work bindings and a
-native shell. The builder calls its installed owner exporter, rejects unsafe
-paths, symlinks, conflicting questions, missing assessment QIDs and UUID
-collisions, then publishes the complete tree and content hashes. It preserves
-native scoring policy exactly as authored. Existing outputs are rejected.
-Provenance records source/builder commits, source manifests, image locks and
-whether the builder checkout was dirty; accepted deliveries use clean commits.
+Declared checks include only opted-in profiles. Incomplete projects stay visible in
+inventory; explicit verification refuses them. `--ready-only` is a diagnostic
+selection available only in declared scope. Delivery verification additionally
+requires `--delivery /path/to/native/delivery.json`; it compares the exported
+starter, trusted sources, and normalized grading descriptor to the source snapshot.
+Container verification is authoritative and uses offline 0.9 CPU/512 MiB jobs.
+For an explicit local image candidate, set `PL_LOCAL_IMAGE_ID` to an actual Docker
+image ID. Local IDs cannot satisfy the staging gate for a published image digest.
+
+`runtime-profiles.json` pins the official Java25 base, official JUnit1.14.1/JSON
+libraries and unchanged upstream grader sources. Host preflight checks every bundle
+hash and actual JDK25. Both backends execute the same explicit JUnit runner and
+retain raw outcomes independently of weighted/all-pass/contract-group/threshold
+policy. Trusted and student compilation failures have separate classifications;
+zero/disabled trusted execution and missing reports are infrastructure failures.
+Student-tests profiles isolate each mutation fixture in its own classpath.
+
+Exit0 means declared expectations matched; exit1 is a project/result defect; exit2
+means prerequisites or infrastructure prevented complete verification. Ordinary
+starter behavior failures alone do not imply a failed verification receipt.
+Staging requires a successful complete delivery receipt from the container,
+matching delivery/source/inventory hashes and immutable published runtime digests.
+Private checks, references, runtime identities and secrets stay outside native/site
+payloads. Native import and actual Moodle results need independent live evidence.
 
 Local stack:
 
@@ -48,11 +70,15 @@ Exact course storage and the local HTTPS proxy are described in [development.md]
 The jobs directory must exist on the Docker host and use an absolute path.
 Compose refuses a missing bind source; the entrypoint refuses relative paths.
 
-The Java grader contract lists allowed `sourceFiles`, trusted `mainClass`,
-and nonempty `requiredMethods` records (`className`, `methodName`, JVM method
-`descriptor`, and boolean `static`). Missing or incompatible public methods are
-invalid submissions. Trusted tests return normally on success, exit 1 for a
-student failure and exit 2 for an internal failure. The runner requires evidence
-that tests returned, preventing premature `System.exit(0)` from earning credit.
-This is not a security boundary against adversarial code in the same JVM; stronger
-exam integrity requires a separate process protocol for trusted checks.
+The Java grading descriptor is `tests/grading-job.json`, schemaVersion1, with
+explicit sourceFiles/testFiles, mode, runtime, java, limits, scoring and discovery.
+The platform owns the JUnit entrypoint; courses supply trusted suites or declared
+mutation fixtures, and never a grading main. Standard PL `/grade/results/results.json`
+is retained. Host verification is diagnostic: its JDK25 patch build can differ from
+the pinned production container and the receipt records exact toolchain evidence.
+
+Container execution preserves the official root supervisor, unprivileged sbuser,
+Landlock and root-owned read-only compiled classpath. Actual tests verify denied
+proc reads/trusted writes and unprivileged child processes. Host execution is
+explicitly diagnostic. These tested boundaries do not prove containment against
+all adversarial reflection within the same JVM.
