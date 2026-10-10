@@ -8,6 +8,12 @@ IMAGE='registry.example/runtime@sha256:'+'a'*64
 def result(scenario='starter',image=IMAGE):
  return {'schemaVersion':1,'scope':'delivery','backend':'container','qualifiedId':'demo/exr-a','scenario':scenario,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'deliveryHash':'c'*64,'runtime':'java25-junit-v1','imageDigest':image,'executionEvidence':g.runtime_evidence('java25-junit-v1'),'sourceHashes':{'S.java':'a'*64},'testsHashes':{'T.java':'b'*64},'gradable':True,'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','classification':'success','counts':{'discovered':1,'executed':1,'passed':1,'failed':0,'skipped':0,'aborted':0,'containerFailures':0,'outcomes':{'T#t':'successful'}},'score':1,'maxPoints':1,'rawResult':{'score':1,'points':1,'max_points':1,'output':'','message':'','gradable':True,'tests':[{'name':'t','description':'','points':1,'max_points':1,'output':'','message':''}]},'durations':{'execution':1},'diagnostics':{},'toolchain':'JDK25','containment':'official-landlock-sbuser','scoring':{'mode':'weighted'},'output':''}
 class ReviewReceipts(unittest.TestCase):
+ def test_rehashed_wrong_scenario_inventory_hash_is_rejected(self):
+  receipt=g.verify_results([result()],{})
+  receipt['scenarioInventoryHash']='f'*64
+  receipt['identityHash']=g.digest({k:v for k,v in receipt.items() if k!='identityHash'})
+  with self.assertRaises(g.JobError):g.validate_receipt_integrity(receipt)
+
  def test_starter_only_cannot_claim_complete_scenario_coverage(self):
   receipt=g.verify_results([result()],{})
   self.assertEqual(receipt.get('coverage'),'partial')

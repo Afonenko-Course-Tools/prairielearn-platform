@@ -278,6 +278,7 @@ def verify_results(results,expectations,required_scenarios=None,unavailable=None
 def validate_receipt_integrity(receipt):
     validate('verification-receipt',receipt)
     if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Receipt identity mismatch')
+    if receipt['scenarioInventoryHash']!=digest(receipt['scenarioInventory']):raise JobError('Receipt scenario inventory hash mismatch')
     required={(r['qualifiedId'],r['scenario']):r for r in receipt['scenarioInventory']}
     observed={(r['qualifiedId'],r['scenario']) for r in receipt['expectations']}
     absent={(r['qualifiedId'],r['scenario']) for r in receipt['unavailableReferences']}
