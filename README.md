@@ -93,13 +93,17 @@ all adversarial reflection within the same JVM.
 
 The private Community assignment/results bridge is documented in
 [community-gateway-bridge.md](docs/community-gateway-bridge.md). It uses native
-enrollment/label models and actual Student sessions; its local image and bounded
-spike evidence are separate from production Gateway/AGS release acceptance.
+enrollment/label models and actual Student sessions. Its published image pin and
+bounded spike evidence are recorded separately from final Gateway/AGS release acceptance.
 
 ## Local TLS and future LAN deployment
 
 Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
 
 Versioned contracts and the reviewed image publication procedure are in
-[releasing.md](docs/releasing.md). Local image IDs in `images.lock.json` are
-observed candidates; `runtime-profiles.json` keeps `image: null` until publication.
+[releasing.md](docs/releasing.md). Runtime images **1.0.0** were published from
+`fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`; [runtime-image.json](runtime-image.json)
+records both immutable registry digests. `runtime-profiles.json` pins the published
+Java image with the exact reviewed runner/library hashes; `images.lock.json` records
+the Java and Community bridge pins. Its Java local image fields identify the current
+diagnostic build. Final release acceptance uses the recorded registry digests.

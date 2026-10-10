@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec",
+  "version": "1.0.0",
+  "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:c464389a45e5e073b3d11844e23a5c295b4c1c345ca7bc9937618d9abde36bf3",
+  "communityImage": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:124e1e90f755184f868ed45bfa0d2c48552f154e33cdae8bc757df48abcd92a7"
+}
