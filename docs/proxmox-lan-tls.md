@@ -95,7 +95,7 @@ vm_ip=192.0.2.20                 # заменить реальным выдел�
 tls_dir=/srv/course/tls         # отдельный закрытый каталог вне Git
 umask 077
 mkdir -p "$tls_dir"
-mkdir -m 700 "$tls_dir/request" # fails if a previous request directory exists
+mkdir -m 700 "$tls_dir/request" && \
 openssl req -new -newkey rsa:3072 -noenc \
   -keyout "$tls_dir/request/server.key" \
   -out "$tls_dir/request/server.csr" \
