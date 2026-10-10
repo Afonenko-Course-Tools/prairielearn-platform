@@ -1,8 +1,12 @@
 # Platform versions and image publication
 
-The first release candidate uses tool version **1.0.0**. It has no published
-Platform tag or derived image digest yet. The following contracts are versioned
-independently of the tool release:
+The tool contract is **1.0.0**. Runtime images **1.0.0** were published from
+reviewed integrated source `fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`.
+The checked-in [runtime-image.json](../runtime-image.json) preserves the actual
+publication receipt; [runtime-profiles.json](../runtime-profiles.json) carries its
+Java image digest with unchanged runner/library hashes. The final source tag and
+affected integration acceptance are separate release gates. The following
+contracts are versioned independently of the tool release:
 
 | Interface | Current contract |
 | --- | --- |
@@ -12,18 +16,20 @@ independently of the tool release:
 | Gateway question/work results | `schemaVersion: 1`; closed owner schemas in `schemas/` |
 | Gateway enrollment, assignment and work launch | Closed named schemas, versioned with tool 1.0.0; assignment `version` is the monotonic grant revision |
 | Native course registry | `pl-courses-v1` |
-| Image lock | `pl-images-v1`; local image IDs are diagnostic pins |
+| Image lock | `pl-images-v1`; `image` fields carry published deployment pins, local image IDs are diagnostic |
 | Runtime profiles | `java25-junit-v1` implementation, `java25-mutation-v1` student tests |
 | Java/JUnit | Actual Java release 25; pinned official JUnit console 1.14.1 and JSON simple 1.1.1 |
 
 The runtime registry pins every library/source hash and the runner hash. Both
-profiles share one Java image and one runner. `image: null` refuses production
-verification/staging. `PL_LOCAL_IMAGE_ID` permits explicit candidate verification;
+profiles share one published Java image and runner SHA256
+`d0c94460f1bd23200cf05aa93bc9c9090126fe624ec38e000be8da96e02d6ce1`.
+A registry with `image: null` refuses production verification/staging.
+`PL_LOCAL_IMAGE_ID` permits explicit candidate verification;
 a local image ID cannot substitute for a published repository digest.
 
 The Community bridge retains the reviewed assignment/enrollment/work/result
 protocol. Complex cross-delivery migration remains deferred in a separate branch.
-That branch is not part of this candidate's image or release.
+That branch is not part of this runtime image or release.
 
 ## Reviewed publication sequence
 
@@ -35,14 +41,16 @@ That branch is not part of this candidate's image or release.
    confirming its current commit is the reviewed merge. Choose an unused version:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=1.0.0 \
+   gh workflow run publish-runtime.yml --ref main -f version=NEXT_UNUSED_VERSION \
      -f reviewed_commit=ACTUAL_MERGED_SHA
    ```
 
-   Replace `ACTUAL_MERGED_SHA` with the actual 40-character merged commit. The
+   Replace `ACTUAL_MERGED_SHA` with the actual 40-character merged commit and
+   `NEXT_UNUSED_VERSION` with an unused `N.N.N` version. The
    workflow refuses any other branch or a checkout that differs from that commit.
-   This is a future publication command, not a receipt that version 1.0.0 exists.
-   The workflow must first exist on the default branch for manual dispatch.
+   Version 1.0.0 already has published images; choose a new unused version for
+   subsequent runtime changes. The workflow must exist on the default branch
+   for manual dispatch.
    It uses its ephemeral `GITHUB_TOKEN` with `contents: read` and `packages: write`;
    the operator's GitHub CLI token does not need `write:packages`. SSH can push
    workflow changes without adding an OAuth workflow scope. The source/revision
