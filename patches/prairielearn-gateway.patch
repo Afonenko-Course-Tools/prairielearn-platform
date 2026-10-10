@@ -1,0 +1,17 @@
+--- a/apps/prairielearn/src/lib/config.ts
++++ b/apps/prairielearn/src/lib/config.ts
+@@ -769,11 +769,12 @@
+   // since we parse the schema to get defaults. Instead, we do the checks here
+   // after the config has been completely loaded.
+   if (!DEV_MODE) {
+-    if (!config.cookieDomain) {
++    const localhostHostOnly = config.cookieDomain === null && config.hostname === 'localhost';
++    if (!localhostHostOnly && !config.cookieDomain) {
+       throw new Error('cookieDomain must be set in production environments');
+     }
+ 
+-    if (!config.cookieDomain.startsWith('.')) {
++    if (!localhostHostOnly && !config.cookieDomain?.startsWith('.')) {
+       throw new Error('cookieDomain must start with a dot, e.g. ".example.com"');
+     }
+ 

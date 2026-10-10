@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gateway-enrollment.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "userUid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "instance": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "userUid",
+    "instance",
+    "deliveryHash"
+  ]
+}

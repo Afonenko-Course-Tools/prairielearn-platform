@@ -1,0 +1,156 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "source": {
+      "const": "per-question-results-v1"
+    },
+    "userUid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instance": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "workId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currentAttempt": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "number": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "id",
+            "number"
+          ]
+        }
+      ]
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "qualifiedId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "points": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxPoints": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "grading",
+              "unanswered"
+            ]
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "score",
+          "points",
+          "maxPoints",
+          "status"
+        ]
+      }
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "completedRequired": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "atLeast": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "completedRequired",
+        "requiredCount",
+        "atLeast",
+        "passed"
+      ]
+    },
+    "scoreGiven": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "scoreMaximum": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "exclusiveMinimum": 0
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "source",
+    "userUid",
+    "instance",
+    "deliveryHash",
+    "workId",
+    "currentAttempt",
+    "questions",
+    "completion",
+    "scoreGiven",
+    "scoreMaximum"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gateway-work-results.schema.json"
+}

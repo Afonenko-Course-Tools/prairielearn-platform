@@ -1,0 +1,20 @@
+services:
+  proxy:
+    image: docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    ports:
+      - "127.0.0.1:8443:443"
+    volumes:
+      - ../proxy/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ../proxy/pl-headers.conf:/etc/nginx/pl-headers.conf:ro
+      - type: bind
+        source: ${DEV_TLS_DIR:?Set DEV_TLS_DIR to the private local TLS directory}
+        target: /tls
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      pl:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 1
+    restart: unless-stopped

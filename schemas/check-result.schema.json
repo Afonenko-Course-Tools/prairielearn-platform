@@ -1,0 +1,1468 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/check-result.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "scope": {
+      "enum": [
+        "declared",
+        "delivery"
+      ]
+    },
+    "qualifiedId": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "string"
+    },
+    "imageDigest": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+        }
+      ]
+    },
+    "sourceHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "testsHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "gradable": {
+      "type": "boolean"
+    },
+    "grading_error": {
+      "type": "boolean"
+    },
+    "studentCompilation": {
+      "enum": [
+        "success",
+        "failure",
+        "not-run"
+      ]
+    },
+    "trustedCompilation": {
+      "enum": [
+        "success",
+        "failure",
+        "not-run"
+      ]
+    },
+    "infrastructure": {
+      "enum": [
+        "complete",
+        "failure"
+      ]
+    },
+    "classification": {
+      "enum": [
+        "success",
+        "behavior-failure",
+        "student-compilation-failure",
+        "student-test-quality-failure",
+        "student-timeout",
+        "student-output-overflow",
+        "unsafe-submission",
+        "infrastructure-failure"
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "discovered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aborted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "containerFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "successful",
+              "failed",
+              "aborted",
+              "skipped"
+            ]
+          }
+        }
+      },
+      "required": [
+        "discovered",
+        "executed",
+        "passed",
+        "failed",
+        "skipped",
+        "aborted",
+        "containerFailures",
+        "outcomes"
+      ],
+      "additionalProperties": false
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maxPoints": {
+      "type": "number",
+      "minimum": 0
+    },
+    "rawResult": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "points": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_points": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "gradable": {
+          "type": "boolean"
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "points": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max_points": {
+                "type": "number",
+                "minimum": 0
+              },
+              "message": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "description",
+              "points",
+              "max_points",
+              "message",
+              "output"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "score",
+        "points",
+        "max_points",
+        "output",
+        "message",
+        "gradable",
+        "tests"
+      ],
+      "additionalProperties": false
+    },
+    "durations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "toolchain": {
+      "type": "string"
+    },
+    "scoring": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "weighted"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "all-pass"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "contract-groups"
+            },
+            "groups": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "weight": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "tests": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "weight",
+                  "tests"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "mode",
+            "groups"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "const": "threshold"
+            },
+            "basis": {
+              "enum": [
+                "score",
+                "passed-tests"
+              ]
+            },
+            "value": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "mode",
+            "basis",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "output": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "format_errors": {
+      "type": "string"
+    },
+    "timed_out": {
+      "type": "boolean"
+    },
+    "output_limited": {
+      "type": "boolean"
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/outcome"
+      }
+    },
+    "backend": {
+      "enum": [
+        "host",
+        "container"
+      ]
+    },
+    "publicResult": {
+      "$ref": "#/$defs/outcome"
+    },
+    "containment": {
+      "enum": [
+        "official-landlock-sbuser",
+        "host-diagnostic"
+      ]
+    },
+    "executionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependencyHash",
+        "dependencyHashes"
+      ],
+      "properties": {
+        "dependencyHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dependencyHashes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scope",
+    "backend",
+    "qualifiedId",
+    "scenario",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "runtime",
+    "imageDigest",
+    "classification",
+    "infrastructure",
+    "gradable"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "outcome": {
+      "type": "object",
+      "properties": {
+        "gradable": {
+          "type": "boolean"
+        },
+        "grading_error": {
+          "type": "boolean"
+        },
+        "studentCompilation": {
+          "enum": [
+            "success",
+            "failure",
+            "not-run"
+          ]
+        },
+        "trustedCompilation": {
+          "enum": [
+            "success",
+            "failure",
+            "not-run"
+          ]
+        },
+        "infrastructure": {
+          "enum": [
+            "complete",
+            "failure"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "success",
+            "behavior-failure",
+            "student-compilation-failure",
+            "student-test-quality-failure",
+            "student-timeout",
+            "student-output-overflow",
+            "unsafe-submission",
+            "infrastructure-failure"
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "discovered": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "executed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "passed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "skipped": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "aborted": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "containerFailures": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "outcomes": {
+              "type": "object",
+              "additionalProperties": {
+                "enum": [
+                  "successful",
+                  "failed",
+                  "aborted",
+                  "skipped"
+                ]
+              }
+            }
+          },
+          "required": [
+            "discovered",
+            "executed",
+            "passed",
+            "failed",
+            "skipped",
+            "aborted",
+            "containerFailures",
+            "outcomes"
+          ],
+          "additionalProperties": false
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxPoints": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rawResult": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "number",
+              "minimum": 0
+            },
+            "points": {
+              "type": "number",
+              "minimum": 0
+            },
+            "max_points": {
+              "type": "number",
+              "minimum": 0
+            },
+            "output": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "gradable": {
+              "type": "boolean"
+            },
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "points": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "max_points": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "output": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "points",
+                  "max_points",
+                  "message",
+                  "output"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0
+            }
+          },
+          "required": [
+            "score",
+            "points",
+            "max_points",
+            "output",
+            "message",
+            "gradable",
+            "tests"
+          ],
+          "additionalProperties": false
+        },
+        "durations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "toolchain": {
+          "type": "string"
+        },
+        "scoring": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "weighted"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "all-pass"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "contract-groups"
+                },
+                "groups": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "weight": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "tests": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "weight",
+                      "tests"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "mode",
+                "groups"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "threshold"
+                },
+                "basis": {
+                  "enum": [
+                    "score",
+                    "passed-tests"
+                  ]
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "mode",
+                "basis",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "output": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "format_errors": {
+          "type": "string"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "output_limited": {
+          "type": "boolean"
+        },
+        "containment": {
+          "enum": [
+            "official-landlock-sbuser",
+            "host-diagnostic"
+          ]
+        },
+        "executionEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dependencyHash",
+            "dependencyHashes"
+          ],
+          "properties": {
+            "dependencyHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "dependencyHashes": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/outcomePolicy"
+        }
+      ]
+    },
+    "outcomePolicy": {
+      "required": [
+        "classification",
+        "infrastructure",
+        "gradable"
+      ],
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "success"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": {
+                "required": [
+                  "counts"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "counts": {
+                    "properties": {
+                      "executed": {
+                        "minimum": 1
+                      },
+                      "failed": {
+                        "const": 0
+                      },
+                      "aborted": {
+                        "const": 0
+                      },
+                      "containerFailures": {
+                        "const": 0
+                      }
+                    }
+                  },
+                  "rawResult": {
+                    "properties": {
+                      "gradable": {
+                        "const": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "behavior-failure"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": {
+                "required": [
+                  "counts"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "counts": {
+                    "properties": {
+                      "failed": {
+                        "minimum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "student-test-quality-failure"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "properties": {
+                "score": {
+                  "const": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "required": [
+            "studentCompilation",
+            "trustedCompilation",
+            "format_errors",
+            "output"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "student-compilation-failure",
+                "unsafe-submission"
+              ]
+            },
+            "infrastructure": {
+              "const": "complete"
+            },
+            "gradable": {
+              "const": false
+            },
+            "studentCompilation": {
+              "const": "failure"
+            },
+            "trustedCompilation": {
+              "const": "not-run"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              },
+              {
+                "required": [
+                  "grading_error"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                },
+                "classification": {
+                  "const": "student-timeout"
+                },
+                "score": {
+                  "const": 0
+                },
+                "timed_out": {
+                  "const": true
+                },
+                "output_limited": {
+                  "const": false
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "output",
+                "scoring",
+                "durations",
+                "diagnostics",
+                "toolchain",
+                "containment",
+                "timed_out",
+                "output_limited"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "rawResult"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "counts"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "variants"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                },
+                "classification": {
+                  "const": "student-output-overflow"
+                },
+                "score": {
+                  "const": 0
+                },
+                "output_limited": {
+                  "const": true
+                },
+                "timed_out": {
+                  "const": false
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "output",
+                "scoring",
+                "durations",
+                "diagnostics",
+                "toolchain",
+                "containment",
+                "output_limited",
+                "timed_out"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "rawResult"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "counts"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "variants"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "properties": {
+            "classification": {
+              "const": "infrastructure-failure"
+            },
+            "infrastructure": {
+              "const": "failure"
+            },
+            "gradable": {
+              "const": false
+            },
+            "grading_error": {
+              "const": true
+            }
+          },
+          "required": [
+            "grading_error",
+            "message"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/outcomePolicy"
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deliveryHash"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "deliveryHash"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "container"
+          },
+          "infrastructure": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "imageDigest": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "counts"
+        ],
+        "properties": {
+          "backend": {
+            "const": "container"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "containment": {
+            "const": "official-landlock-sbuser"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "counts"
+        ],
+        "properties": {
+          "backend": {
+            "const": "host"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "containment": {
+            "const": "host-diagnostic"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "infrastructure": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "executionEvidence"
+        ]
+      }
+    }
+  ]
+}

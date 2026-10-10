@@ -1,0 +1,16 @@
+# Separate project: no PL DB, credentials or Docker socket.
+services:
+  pl:
+    image: ghcr.io/afonenko-course-tools/java25-grader:pilot-local-20261008-r2
+    entrypoint: ["python3", "/tests/proxy_probe.py"]
+    volumes:
+      - ../tests:/tests:ro
+  proxy:
+    image: docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    ports:
+      - "127.0.0.1:18443:443"
+    volumes:
+      - ../proxy/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ../proxy/pl-headers.conf:/etc/nginx/pl-headers.conf:ro
+      - ${DEV_TLS_DIR:?Set private DEV_TLS_DIR}:/tls:ro
+    depends_on: [pl]

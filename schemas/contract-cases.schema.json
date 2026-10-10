@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/contract-cases.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fixture": {
+                  "type": "string",
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                },
+                "submission": {
+                  "type": "string",
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                }
+              },
+              "required": [
+                "fixture",
+                "submission"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "student-compilation": {
+                "enum": [
+                  "success",
+                  "failure"
+                ]
+              },
+              "job": {
+                "enum": [
+                  "complete",
+                  "failure"
+                ]
+              },
+              "classification": {
+                "enum": [
+                  "success",
+                  "behavior-failure",
+                  "student-compilation-failure",
+                  "student-test-quality-failure",
+                  "student-timeout",
+                  "student-output-overflow",
+                  "unsafe-submission",
+                  "infrastructure-failure"
+                ]
+              },
+              "required-tests": {
+                "const": "all-pass"
+              },
+              "failed-tests": {
+                "type": "object",
+                "properties": {
+                  "at-least": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "exactly": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "executed-tests": {
+                "type": "object",
+                "properties": {
+                  "at-least": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "exactly": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "test-ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 0
+              },
+              "score": {
+                "type": "object",
+                "properties": {
+                  "less-than": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "at-least": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "exactly": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "sources",
+          "expected"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "cases"
+  ],
+  "additionalProperties": false
+}

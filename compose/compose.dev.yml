@@ -1,0 +1,9 @@
+# Course mounts are supplied by stage_courses.py's generated Compose override.
+services:
+  pl:
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ../config/pl.local.example.json:/PrairieLearn/config.json:ro
+    environment:
+      NODE_ENV: development
