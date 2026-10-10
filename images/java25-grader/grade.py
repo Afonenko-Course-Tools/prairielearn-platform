@@ -22,6 +22,23 @@ class GraderError(Exception):
     """An operator/configuration failure, never a wrong student answer."""
 
 
+def _protect_input_identity(job):
+    # Bind mounts retain host owners. chmod(0700) alone is ineffective when a
+    # host owner has the same numeric UID as the official container's sbuser.
+    # Remap only the container account; never chown the caller's mounted tree.
+    import pwd
+    owners={path.stat().st_uid for path in (job,job/'student',job/'tests')}
+    if pwd.getpwnam('sbuser').pw_uid not in owners:return
+    if not Path('/.dockerenv').is_file():
+        raise GraderError('Sandbox UID remapping requires the supported Docker container')
+    allocated={entry.pw_uid for entry in pwd.getpwall()}
+    candidate=next((uid for uid in range(60000,60100) if uid not in owners|allocated),None)
+    if candidate is None:raise GraderError('No isolated sandbox UID is available')
+    code,text,reason=_run(['usermod','--uid',str(candidate),'sbuser'],job,5)
+    if code or reason or pwd.getpwnam('sbuser').pw_uid in owners:
+        raise GraderError('Cannot isolate sandbox UID from mounted input owners')
+
+
 def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT):
     try:
         process = subprocess.Popen(
@@ -284,6 +301,7 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         prefix=[]
         if os.environ.get('PL_CONTAINMENT')=='official':
             if os.geteuid()!=0 or not Path('/usr/local/bin/landlock_sandbox').is_file() or not shutil.which('runuser'):raise GraderError('Official root supervisor/sbuser/Landlock prerequisites missing')
+            _protect_input_identity(job)
             # Preserve official UNIX boundaries: tests, source and runtime remain
             # private; compiled classpath is root-owned and only readable.
             stage.chmod(0o711);reports.chmod(0o777);params.chmod(0o777)
