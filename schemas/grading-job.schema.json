@@ -34,9 +34,14 @@
       "type": "string"
     },
     "imageDigest": {
-      "type": [
-        "string",
-        "null"
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+        }
       ]
     },
     "sources": {
@@ -121,6 +126,8 @@
       "minItems": 0
     },
     "grading": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/grading-descriptor.schema.json",
       "type": "object",
       "properties": {
         "schemaVersion": {
@@ -168,7 +175,11 @@
               ]
             }
           },
-          "required": [],
+          "required": [
+            "release",
+            "encoding",
+            "compiler-options"
+          ],
           "additionalProperties": false
         },
         "limits": {
@@ -195,7 +206,13 @@
               "maximum": 65536
             }
           },
-          "required": [],
+          "required": [
+            "outer-seconds",
+            "compile-seconds",
+            "run-seconds",
+            "networking",
+            "max-output-bytes"
+          ],
           "additionalProperties": false
         },
         "scoring": {
@@ -303,7 +320,10 @@
               "type": "boolean"
             }
           },
-          "required": [],
+          "required": [
+            "min-executed",
+            "allow-skipped"
+          ],
           "additionalProperties": false
         },
         "variants": {
@@ -342,7 +362,44 @@
         "scoring",
         "discovery"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "student-tests"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "variants"
+            ],
+            "properties": {
+              "runtime": {
+                "const": "java25-mutation-v1"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "runtime": {
+                "const": "java25-junit-v1"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "variants"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "expectations": {
       "type": "object",
@@ -482,6 +539,46 @@
           "required": [
             "deliveryHash"
           ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "java25-junit-v1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-mutation-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "java25-mutation-v1"
+              }
+            }
+          }
         }
       }
     }

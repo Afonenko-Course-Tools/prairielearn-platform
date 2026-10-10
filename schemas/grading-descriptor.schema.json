@@ -48,7 +48,11 @@
           ]
         }
       },
-      "required": [],
+      "required": [
+        "release",
+        "encoding",
+        "compiler-options"
+      ],
       "additionalProperties": false
     },
     "limits": {
@@ -75,7 +79,13 @@
           "maximum": 65536
         }
       },
-      "required": [],
+      "required": [
+        "outer-seconds",
+        "compile-seconds",
+        "run-seconds",
+        "networking",
+        "max-output-bytes"
+      ],
       "additionalProperties": false
     },
     "scoring": {
@@ -183,7 +193,10 @@
           "type": "boolean"
         }
       },
-      "required": [],
+      "required": [
+        "min-executed",
+        "allow-skipped"
+      ],
       "additionalProperties": false
     },
     "variants": {
@@ -222,5 +235,42 @@
     "scoring",
     "discovery"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "student-tests"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "variants"
+        ],
+        "properties": {
+          "runtime": {
+            "const": "java25-mutation-v1"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "variants"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
 }

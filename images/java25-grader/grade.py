@@ -282,13 +282,18 @@ def grade(job_dir):
     try:config=json.loads(_files_any(job,'tests/grading-job.json').read_text())
     except (OSError,ValueError) as error:raise GraderError('Missing or invalid grading configuration') from error
     validate_config(config);profile,bundle,toolchain=preflight(config['runtime'])
+    closure={**profile['files'],'runner/grade.py':profile['runnerSha256']}
+    evidence={'dependencyHashes':closure,'dependencyHash':hashlib.sha256(json.dumps(closure,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()}
+    def finish(value):
+        value['executionEvidence']=evidence
+        return value
     if profile['mode']!=config['mode']:raise GraderError('Runtime mode mismatch')
     source_names=_names(config,'sourceFiles');test_names=_names(config,'testFiles')
     try:tests=_files(job/'tests',test_names)
     except ValueError as error:raise GraderError('Missing or unsafe trusted sources') from error
     try:sources=_files(job/'student',source_names)
-    except ValueError:return _invalid('Upload all declared Java files')
-    if config['mode']=='implementation':return _execute(job,config,sources,tests,bundle,toolchain)
+    except ValueError:return finish(_invalid('Upload all declared Java files'))
+    if config['mode']=='implementation':return finish(_execute(job,config,sources,tests,bundle,toolchain))
     variants=config.get('variants')
     if not isinstance(variants,dict) or set(variants)!={'correct','mutants'} or not variants['correct'] or not variants['mutants']:raise GraderError('Mutation profile requires correct and mutant variants')
     observations={}
@@ -298,11 +303,11 @@ def grade(job_dir):
             selected=[p for p,n in zip(tests,test_names) if n.startswith('variants/'+variant+'/')]
             if not selected:raise GraderError('Missing declared variant '+variant)
             observations[variant]=_execute(job,config,sources,selected,bundle,toolchain,True)
-            if not observations[variant].get('gradable'):return observations[variant]
+            if not observations[variant].get('gradable'):return finish(observations[variant])
     quality=any(r['classification']=='student-test-quality-failure' for r in observations.values())
     correct=all(observations[v].get('score')==1 for v in variants['correct'])
     killed=all(observations[v].get('counts',{}).get('failed',0)>0 for v in variants['mutants'])
-    return {'gradable':True,'score':float(correct and killed and not quality),'maxPoints':len(observations),'classification':'student-test-quality-failure' if quality else ('success' if correct and killed else 'behavior-failure'),'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','variants':observations,'scoring':config['scoring'],'output':''}
+    return finish({'gradable':True,'score':float(correct and killed and not quality),'maxPoints':len(observations),'classification':'student-test-quality-failure' if quality else ('success' if correct and killed else 'behavior-failure'),'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','variants':observations,'scoring':config['scoring'],'output':''})
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--job-dir',type=Path,default=Path('/grade'));args=parser.parse_args();status=0

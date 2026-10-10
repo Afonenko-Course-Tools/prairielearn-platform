@@ -16,7 +16,7 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "3df1e5f1e77c6402656ec17003d8e50b80d6e0496567500cbc9fba2f7bfb9986"
+      "runnerSha256": "4777a53bafcb40d445c43404d9f2209fd95678a8c0a783de9e4bf9f40d557998"
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
@@ -33,7 +33,7 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "3df1e5f1e77c6402656ec17003d8e50b80d6e0496567500cbc9fba2f7bfb9986"
+      "runnerSha256": "4777a53bafcb40d445c43404d9f2209fd95678a8c0a783de9e4bf9f40d557998"
     }
   }
 }

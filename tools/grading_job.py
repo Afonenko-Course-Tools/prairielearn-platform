@@ -43,6 +43,44 @@ def inventory(manifest):
         selected[q]=p
     return [selected[q] for q in sorted(selected)]
 
+def load_runtime_registry():
+    return json.loads((ROOT/'runtime-profiles.json').read_text())
+
+def runtime_evidence(runtime,registry=None):
+    registry=registry or load_runtime_registry()
+    if runtime not in registry['profiles']:raise JobError('Unknown runtime '+runtime)
+    profile=registry['profiles'][runtime]
+    bundle=safe(ROOT,profile['bundle'])
+    actual={p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}
+    if actual!=set(profile['files']):raise JobError('Runtime dependency closure changed')
+    for name,sha in profile['files'].items():
+        if hashlib.sha256(safe(bundle,name).read_bytes()).hexdigest()!=sha:raise JobError('Runtime dependency checksum changed')
+    runner=hashlib.sha256((ROOT/'images/java25-grader/grade.py').read_bytes()).hexdigest()
+    if runner!=profile['runnerSha256']:raise JobError('Runtime runner checksum changed')
+    files={**profile['files'],'runner/grade.py':runner}
+    return {'dependencyHashes':files,'dependencyHash':digest(files)}
+
+def scenario_inventory(manifest,snapshot,ids=None):
+    snapshot=Path(os.path.abspath(snapshot))
+    if snapshot.resolve()!=snapshot or not snapshot.is_dir():raise JobError('Scenario snapshot root must be a real directory')
+    records=[]
+    for p in inventory(manifest):
+        if ids is not None and p['qualifiedId'] not in ids:continue
+        q=p['qualifiedId'];check=p['check']
+        records.append({'qualifiedId':q,'scenario':'starter','optional':False})
+        for ref in check.get('references',[]):records.append({'qualifiedId':q,'scenario':'reference:'+ref['name'],'optional':ref.get('optional',False)})
+        if check.get('contract-cases'):
+            project=safe(safe(Path(snapshot),manifest['bookRoot']),p['projectRoot'])
+            file=safe(project,check['contract-cases'])
+            expected=p.get('contractCasesHash')
+            if not expected or expected['projectRelativePath']!=check['contract-cases'] or hashlib.sha256(file.read_bytes()).hexdigest()!=expected['sha256']:raise JobError('Contract cases inventory checksum missing or changed')
+            cases=json.loads(file.read_text());validate('contract-cases',cases)
+            for case in cases['cases']:records.append({'qualifiedId':q,'scenario':'contract:'+case['id'],'optional':False})
+    records.sort(key=lambda r:(r['qualifiedId'],r['scenario']))
+    keys=[(r['qualifiedId'],r['scenario']) for r in records]
+    if len(keys)!=len(set(keys)):raise JobError('Duplicate scenario inventory entry')
+    return records
+
 def _selection(project,items):
     out=[];names=set()
     for x in items:
@@ -101,7 +139,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
     elif scenario!='starter':raise JobError('Unknown scenario')
     java={'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']};java.update(check.get('java',{}))
     limits={'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536};limits.update(check.get('limits',{}))
-    grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':check.get('discovery',{'min-executed':1,'allow-skipped':False})}
+    grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
     if 'variants' in check:grading['variants']=check['variants']
     runtime=json.loads((ROOT/'runtime-profiles.json').read_text())['profiles'][check['runtime']]
     expectations=case[0]['expected'] if scenario.startswith('contract:') else check.get('verification-expectations',{}).get('reference' if scenario.startswith('reference:') else 'starter',{})
@@ -109,6 +147,8 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
     if scope=='delivery':
         if not delivery or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
         job['deliveryHash']=delivery['deliveryHash']
+        expected_scenarios=scenario_inventory(manifest,snapshot,set(delivery['questions']))
+        if delivery.get('verificationInventoryHash')!=digest(expected_scenarios):raise JobError('Delivery scenario inventory does not match declared checks')
         canonical={k:v for k,v in delivery.items() if k not in ('deliveryHash','_root')}
         if digest(canonical)!=delivery['deliveryHash']:raise JobError('Delivery manifest content hash mismatch')
         if delivery.get('sourceSnapshotHash')!=manifest['sourceSnapshotHash'] or delivery.get('inventoryHash')!=manifest['inventoryHash']:raise JobError('Delivery does not match source/check inventory')
@@ -170,7 +210,8 @@ def run_job(job,backend='host'):
         publicjob=GradingJob(job);publicjob.root=job.root/'public-verification'
         publicresult=run_job(publicjob,backend)
         result['publicResult']={k:v for k,v in publicresult.items() if k not in {'schemaVersion','scope','qualifiedId','scenario','sourceSnapshotHash','inventoryHash','deliveryHash','runtime','imageDigest','sourceHashes','testsHashes','backend'}}
-        if publicresult.get('infrastructure')!='complete':result.update(infrastructure='failure',classification='infrastructure-failure')
+        if publicresult.get('infrastructure')!='complete':result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':'Public verification infrastructure failed','publicResult':result['publicResult']}
+    if result.get('infrastructure')=='complete' and result.get('executionEvidence')!=runtime_evidence(job['runtime']):raise JobError('Executed image dependency closure differs from prepared runtime')
     value={'schemaVersion':1,'backend':backend,**common,**result}
     validate('check-result',value)
     return value
@@ -194,20 +235,97 @@ def _matches(result,expected):
     if 'test-ids' in expected and not set(expected['test-ids']).issubset(c.get('outcomes',{})):return False,'test-ids'
     return True,''
 
-def verify_results(results,expectations):
+def verify_results(results,expectations,required_scenarios=None,unavailable=None):
     if not results:raise JobError('No results; empty receipt forbidden')
-    first=results[0];status=0;checks=[]
+    first=results[0];status=0;checks=[];bindings={};runtimes={};closures={};observed=set()
     for r in results:
+        validate('check-result',r)
         for k in ('scope','sourceSnapshotHash','inventoryHash','deliveryHash','backend'):
             if r.get(k)!=first.get(k):raise JobError('Mixed snapshot/scope receipts forbidden')
+        rid=r['runtime'];image=r['imageDigest'];q=r['qualifiedId'];key=(q,r['scenario'])
+        if key in observed:raise JobError('Duplicate scenario result')
+        observed.add(key)
+        if rid in runtimes and runtimes[rid]!=image:raise JobError('Mixed images for one runtime')
+        runtimes[rid]=image
+        expected_evidence=runtime_evidence(rid)
+        evidence=r.get('executionEvidence',expected_evidence)
+        if evidence!=expected_evidence:raise JobError('Executed runtime dependency closure differs from registry')
+        binding={'qualifiedId':q,'runtime':rid,'imageDigest':image,'dependencyHash':evidence['dependencyHash']}
+        if q in bindings and bindings[q]!=binding:raise JobError('Mixed runtime/image for one question')
+        bindings[q]=binding;closures[rid]=evidence
         e={'student-compilation':'success','job':'complete','required-tests':'all-pass'} if r['scenario'].startswith('reference:') else {}
-        e.update(expectations.get(r['qualifiedId']+':'+r['scenario'],expectations.get(r['scenario'],{})));matched,reason=_matches(r,e)
-        infrastructure=r.get('infrastructure')!='complete'
-        if infrastructure:status=2;matched=False;reason='infrastructure'
-        elif not matched or r.get('studentCompilation')!='success':status=max(status,1)
-        checks.append({'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],'matched':matched,'reason':reason})
-    registry=json.loads((ROOT/'runtime-profiles.json').read_text())
-    receipt={'schemaVersion':1,'toolVersion':TOOL_VERSION,'backend':first.get('backend','host'),'scope':first['scope'],'sourceSnapshotHash':first['sourceSnapshotHash'],'inventoryHash':first['inventoryHash'],'status':['success','defect','infrastructure-failure'][status],'exitCode':status,'checkedIds':sorted(set(r['qualifiedId'] for r in results)),'runtimes':{r['runtime']:r.get('imageDigest') for r in results},'dependencyHashes':{r['runtime']+'/'+name:h for r in results for name,h in registry['profiles'][r['runtime']]['files'].items()},'expectations':checks}
+        e.update(expectations.get(q+':'+r['scenario'],expectations.get(r['scenario'],{})))
+        if not r['scenario'].startswith('contract:'):e['student-compilation']='success'
+        matched,reason=_matches(r,e)
+        if r['infrastructure']!='complete':status=2;matched=False;reason='infrastructure'
+        elif not matched or (r['studentCompilation']!='success' and not (r['scenario'].startswith('contract:') and e.get('student-compilation')=='failure')):status=max(status,1);matched=False;reason=reason or 'student-compilation'
+        checks.append({'qualifiedId':q,'scenario':r['scenario'],'matched':matched,'reason':reason})
+    required=sorted(required_scenarios or [],key=lambda r:(r['qualifiedId'],r['scenario']))
+    expected={(r['qualifiedId'],r['scenario']):r for r in required}
+    if len(expected)!=len(required):raise JobError('Duplicate required scenario')
+    unavailable=sorted(unavailable or [],key=lambda r:(r['qualifiedId'],r['scenario']))
+    absent=set()
+    for entry in unavailable:
+        key=(entry['qualifiedId'],entry['scenario'])
+        if key in absent or key in observed or key not in expected or not expected[key]['optional'] or not entry['scenario'].startswith('reference:'):raise JobError('Invalid unavailable optional-reference observation')
+        absent.add(key)
+    if required and observed-set(expected):raise JobError('Undeclared scenario result')
+    complete=bool(required) and observed|absent==set(expected)
+    receipt={'schemaVersion':1,'toolVersion':TOOL_VERSION,'backend':first['backend'],'scope':first['scope'],'sourceSnapshotHash':first['sourceSnapshotHash'],'inventoryHash':first['inventoryHash'],'status':['success','defect','infrastructure-failure'][status],'exitCode':status,'coverage':'complete' if complete else 'partial','scenarioInventory':required,'scenarioInventoryHash':digest(required),'unavailableReferences':unavailable,'checkedIds':sorted(bindings),'questionBindings':[bindings[q] for q in sorted(bindings)],'runtimes':runtimes,'runtimeEvidence':closures,'dependencyHashes':{rid+'/'+name:sha for rid,closure in closures.items() for name,sha in closure['dependencyHashes'].items()},'expectations':checks}
     if 'deliveryHash' in first:receipt['deliveryHash']=first['deliveryHash']
-    receipt['dependencyHashes'].update({'runner/grade.py':registry['profiles'][first['runtime']]['runnerSha256'],**{'schema/'+p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT/'schemas').glob('*.json'))}})
-    receipt['identityHash']=digest(receipt);validate('verification-receipt',receipt);return receipt
+    receipt['identityHash']=digest(receipt);validate_receipt_integrity(receipt);return receipt
+
+def validate_receipt_integrity(receipt):
+    validate('verification-receipt',receipt)
+    if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Receipt identity mismatch')
+    required={(r['qualifiedId'],r['scenario']):r for r in receipt['scenarioInventory']}
+    observed={(r['qualifiedId'],r['scenario']) for r in receipt['expectations']}
+    absent={(r['qualifiedId'],r['scenario']) for r in receipt['unavailableReferences']}
+    if len(required)!=len(receipt['scenarioInventory']) or len(observed)!=len(receipt['expectations']) or len(absent)!=len(receipt['unavailableReferences']):raise JobError('Duplicate receipt scenario observation')
+    if absent&observed or any(key not in required or not required[key]['optional'] or not key[1].startswith('reference:') for key in absent):raise JobError('Invalid optional-reference absence')
+    if required and not observed<=set(required):raise JobError('Receipt contains undeclared scenarios')
+    if receipt['coverage']=='complete' and (not required or observed|absent!=set(required)):raise JobError('Receipt falsely claims complete coverage')
+    bindings={r['qualifiedId']:r for r in receipt['questionBindings']}
+    if len(bindings)!=len(receipt['questionBindings']) or set(bindings)!=set(receipt['checkedIds']) or {q for q,s in observed}!=set(bindings):raise JobError('Receipt question bindings differ from observations')
+    used={}
+    for binding in bindings.values():
+        rid=binding['runtime'];closure=receipt['runtimeEvidence'].get(rid)
+        if not closure or digest(closure['dependencyHashes'])!=closure['dependencyHash'] or closure['dependencyHash']!=binding['dependencyHash'] or receipt['runtimes'].get(rid)!=binding['imageDigest']:raise JobError('Receipt runtime binding is inconsistent')
+        used[rid]=closure
+    if set(used)!=set(receipt['runtimes']) or set(used)!=set(receipt['runtimeEvidence']):raise JobError('Receipt has unbound runtime evidence')
+    if {rid+'/'+name:sha for rid,closure in used.items() for name,sha in closure['dependencyHashes'].items()}!=receipt['dependencyHashes']:raise JobError('Receipt flattened dependency closure is inconsistent')
+
+def validate_release_receipt(receipt,delivery,native,registry=None):
+    validate_receipt_integrity(receipt)
+    if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Receipt identity mismatch')
+    for field in ('deliveryHash','sourceSnapshotHash','inventoryHash'):
+        if receipt[field]!=delivery.get(field):raise JobError('Receipt source/delivery identity differs')
+    if receipt['scope']!='delivery' or receipt['backend']!='container' or receipt['status']!='success' or receipt['coverage']!='complete':raise JobError('A complete authoritative delivery receipt is required')
+    if delivery.get('candidate') is True:raise JobError('Local image candidate cannot be staged')
+    if digest({k:v for k,v in delivery.items() if k!='deliveryHash'})!=delivery.get('deliveryHash'):raise JobError('Delivery identity mismatch')
+    if digest(receipt['scenarioInventory'])!=delivery.get('verificationInventoryHash') or receipt['scenarioInventoryHash']!=delivery['verificationInventoryHash']:raise JobError('Declared scenario inventory is not bound to delivery')
+    expected={(r['qualifiedId'],r['scenario']) for r in receipt['scenarioInventory']}
+    observed={(r['qualifiedId'],r['scenario']) for r in receipt['expectations']}
+    unavailable={(r['qualifiedId'],r['scenario']) for r in receipt['unavailableReferences']}
+    optional={(r['qualifiedId'],r['scenario']) for r in receipt['scenarioInventory'] if r['optional'] and r['scenario'].startswith('reference:')}
+    if len(expected)!=len(receipt['scenarioInventory']) or len(observed)!=len(receipt['expectations']) or len(unavailable)!=len(receipt['unavailableReferences']):raise JobError('Duplicate scenario coverage observation')
+    if not unavailable<=optional or observed&unavailable or observed|unavailable!=expected or any(not r['matched'] for r in receipt['expectations']):raise JobError('Required scenario coverage is incomplete')
+    ids=set(delivery['questions'])
+    if set(receipt['checkedIds'])!=ids or {q for q,s in expected}!=ids:raise JobError('Question coverage differs from delivery')
+    bindings={r['qualifiedId']:r for r in receipt['questionBindings']}
+    if len(bindings)!=len(receipt['questionBindings']) or set(bindings)!=ids:raise JobError('Runtime binding coverage differs from delivery')
+    registry=registry or load_runtime_registry();used={}
+    for q,binding in bindings.items():
+        question=safe(Path(native),'questions/'+q)
+        info=json.loads(safe(question,'info.json').read_text());descriptor=json.loads(safe(question,'tests/grading-job.json').read_text());validate('grading-descriptor',descriptor)
+        rid=descriptor['runtime'];image=info.get('externalGradingOptions',{}).get('image')
+        if rid!=binding['runtime'] or image!=binding['imageDigest'] or receipt['runtimes'].get(rid)!=image:raise JobError('Question runtime/image differs from receipt')
+        if not isinstance(image,str) or not __import__('re').fullmatch(r'[^\s]+@sha256:[a-f0-9]{64}',image) or registry['profiles'][rid]['image']!=image:raise JobError('Published runtime registry does not match question image')
+        evidence=runtime_evidence(rid,registry)
+        if evidence!=receipt['runtimeEvidence'].get(rid) or evidence['dependencyHash']!=binding['dependencyHash']:raise JobError('Question runtime dependency closure differs from receipt')
+        used[rid]=evidence
+    if set(used)!=set(receipt['runtimes']) or set(used)!=set(receipt['runtimeEvidence']):raise JobError('Receipt runtime set differs from actual question runtimes')
+    flattened={rid+'/'+name:sha for rid,closure in used.items() for name,sha in closure['dependencyHashes'].items()}
+    if flattened!=receipt['dependencyHashes']:raise JobError('Receipt dependency hashes differ from runtime closure')
+    for name,sha in delivery.get('files',{}).items():
+        if hashlib.sha256(safe(Path(native),name).read_bytes()).hexdigest()!=sha:raise JobError('Native payload differs from canonical delivery')

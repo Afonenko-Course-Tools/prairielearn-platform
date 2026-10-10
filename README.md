@@ -32,6 +32,13 @@ selection available only in declared scope. Delivery verification additionally
 requires `--delivery /path/to/native/delivery.json`; it compares the exported
 starter, trusted sources, and normalized grading descriptor to the source snapshot.
 Container verification is authoritative and uses offline 0.9 CPU/512 MiB jobs.
+The canonical scenario inventory includes starter, every named reference and every
+declared contract case; optional reference absence is recorded in the receipt.
+`--scenario` subsets produce partial diagnostic receipts and cannot satisfy staging.
+The exporter binds this inventory with delivery.verificationInventoryHash.
+Receipts bind every question to its runtime, exact image and the dependency closure
+reported by the executing runner; staging rechecks all bindings against the native
+question descriptors and current published runtime registry.
 For an explicit local image candidate, set `PL_LOCAL_IMAGE_ID` to an actual Docker
 image ID. Local IDs cannot satisfy the staging gate for a published image digest.
 

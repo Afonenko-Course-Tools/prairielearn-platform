@@ -24,6 +24,10 @@ class CourseStorageTests(unittest.TestCase):
         def git(*args):return subprocess.run(['git',*args],cwd=self.repo,check=True,capture_output=True,text=True).stdout.strip()
         self.git=git;git('init','-q');git('config','user.name','Synthetic');git('config','user.email','synthetic@example.test')
         (self.repo/'infoCourse.json').write_text('{"name":"SYN"}\n')
+        from grading_job import load_runtime_registry
+        self.registry=load_runtime_registry()
+        for profile in self.registry['profiles'].values():profile['image']='synthetic@sha256:'+'a'*64
+        registry_patch=patch.object(self.module,'load_runtime_registry',return_value=self.registry);registry_patch.start();self.addCleanup(registry_patch.stop)
         self.update_provenance()
         git('add','.');git('commit','-qm','Native v1');self.first=git('rev-parse','HEAD');git('update-server-info')
         cert=self.root/'cert.pem';key=self.root/'key.pem'
@@ -37,14 +41,25 @@ class CourseStorageTests(unittest.TestCase):
         self.course={'id':'course-a','repository':f'https://127.0.0.1:{self.server.server_port}/native.git/.git','commit':self.first,'mount':'/course'}
         self.storage=self.root/'storage';self.storage.mkdir()
     def update_provenance(self):
-        from grading_job import digest
-        h=hashlib.sha256((self.repo/'infoCourse.json').read_bytes()).hexdigest()
-        delivery={'schemaVersion':1,'deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-one']}
+        from grading_job import digest,verify_results
+        import test_review_receipts as review
+        qid='synthetic/exr-one';image='synthetic@sha256:'+'a'*64
+        q=self.repo/'questions'/qid;q.mkdir(parents=True,exist_ok=True)
+        (q/'info.json').write_text(json.dumps({'externalGradingOptions':{'image':image}}))
+        (q/'tests').mkdir(exist_ok=True)
+        cfg={'schemaVersion':1,'sourceFiles':['S.java'],'testFiles':['T.java'],'mode':'implementation','runtime':'java25-junit-v1','java':{'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']},'limits':{'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536},'scoring':{'mode':'weighted'},'discovery':{'min-executed':1,'allow-skipped':False}}
+        (q/'tests/grading-job.json').write_text(json.dumps(cfg))
+        scenarios=[{'qualifiedId':qid,'scenario':name,'optional':False} for name in ['contract:counterexample','reference:default','starter']]
+        files={name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in ['infoCourse.json','questions/'+qid+'/info.json','questions/'+qid+'/tests/grading-job.json']}
+        delivery={'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':[qid],'verificationInventoryHash':digest(scenarios),'files':files}
+        delivery['deliveryHash']=digest(delivery)
         (self.repo/'delivery.json').write_text(json.dumps(delivery))
-        receipt={'schemaVersion':1,'toolVersion':'1.0.0','scope':'delivery','backend':'container','deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'status':'success','exitCode':0,'checkedIds':['synthetic/exr-one'],'runtimes':{'java25-junit-v1':'synthetic@sha256:'+'a'*64},'dependencyHashes':{'junit':'a'*64},'expectations':[]}
-        receipt['identityHash']=digest(receipt)
+        results=[]
+        for entry in scenarios:
+            r=review.result(entry['scenario'],image);r.update(qualifiedId=qid,deliveryHash=delivery['deliveryHash']);results.append(r)
+        receipt=verify_results(results,{},scenarios)
         (self.repo/'verification-receipt.json').write_text(json.dumps(receipt))
-        data={'schema':'pl-provenance-v1','source':{'commit':'a'*40,'dirty':False},'builder':{'commit':'b'*40,'dirty':False},'deliveryHash':h,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'files':{name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in ['infoCourse.json','delivery.json','verification-receipt.json']}}
+        data={'schema':'pl-provenance-v1','source':{'commit':'a'*40,'dirty':False},'builder':{'commit':'b'*40,'dirty':False},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'files':{name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in [*files,'delivery.json','verification-receipt.json']}}
         (self.repo/'provenance.json').write_text(json.dumps(data))
     def stop(self):self.server.shutdown();self.server.server_close();self.thread.join()
     def stage(self):return self.module.stage_course(self.course,self.storage)
@@ -87,4 +102,21 @@ class CourseStorageTests(unittest.TestCase):
     def test_receipt_wrong_delivery_hash_blocks_staging(self):
         p=self.repo/'verification-receipt.json';p.write_text('{"scope":"delivery","status":"success","deliveryHash":"wrong"}')
         self.git('add','.');self.git('commit','-qm','Wrong receipt');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
+        with self.assertRaises(self.module.StorageError):self.stage()
+
+    def rewrite_receipt(self,receipt):
+        from grading_job import digest
+        receipt['identityHash']=digest({k:v for k,v in receipt.items() if k!='identityHash'})
+        path=self.repo/'verification-receipt.json';path.write_text(json.dumps(receipt))
+        p=self.repo/'provenance.json';value=json.loads(p.read_text());value['files']['verification-receipt.json']=hashlib.sha256(path.read_bytes()).hexdigest();p.write_text(json.dumps(value))
+        self.git('add','.');self.git('commit','-qm','Review receipt fixture');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
+    def test_partial_starter_only_receipt_cannot_stage_reference_and_contract_inventory(self):
+        receipt=json.loads((self.repo/'verification-receipt.json').read_text());receipt['coverage']='partial';receipt['expectations']=[x for x in receipt['expectations'] if x['scenario']=='starter'];self.rewrite_receipt(receipt)
+        with self.assertRaises(self.module.StorageError):self.stage()
+    def test_staged_question_image_must_match_receipt_binding(self):
+        receipt=json.loads((self.repo/'verification-receipt.json').read_text());image='synthetic@sha256:'+'d'*64
+        receipt['runtimes']['java25-junit-v1']=image;receipt['questionBindings'][0]['imageDigest']=image;self.rewrite_receipt(receipt)
+        with self.assertRaises(self.module.StorageError):self.stage()
+    def test_staged_runtime_dependency_closure_must_match_registry(self):
+        receipt=json.loads((self.repo/'verification-receipt.json').read_text());receipt['runtimeEvidence']['java25-junit-v1']['dependencyHashes']['runner/grade.py']='d'*64;self.rewrite_receipt(receipt)
         with self.assertRaises(self.module.StorageError):self.stage()

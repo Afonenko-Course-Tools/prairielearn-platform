@@ -34,9 +34,14 @@
       "type": "string"
     },
     "imageDigest": {
-      "type": [
-        "string",
-        "null"
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+        }
       ]
     },
     "sourceHashes": {
@@ -134,7 +139,16 @@
           }
         }
       },
-      "required": [],
+      "required": [
+        "discovered",
+        "executed",
+        "passed",
+        "failed",
+        "skipped",
+        "aborted",
+        "containerFailures",
+        "outcomes"
+      ],
       "additionalProperties": false
     },
     "score": {
@@ -197,15 +211,26 @@
             },
             "required": [
               "name",
+              "description",
               "points",
-              "max_points"
+              "max_points",
+              "message",
+              "output"
             ],
             "additionalProperties": false
           },
           "minItems": 0
         }
       },
-      "required": [],
+      "required": [
+        "score",
+        "points",
+        "max_points",
+        "output",
+        "message",
+        "gradable",
+        "tests"
+      ],
       "additionalProperties": false
     },
     "durations": {
@@ -353,24 +378,48 @@
         "official-landlock-sbuser",
         "host-diagnostic"
       ]
+    },
+    "executionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependencyHash",
+        "dependencyHashes"
+      ],
+      "properties": {
+        "dependencyHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dependencyHashes": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
     }
   },
   "required": [
     "schemaVersion",
     "scope",
+    "backend",
     "qualifiedId",
     "scenario",
     "sourceSnapshotHash",
     "inventoryHash",
     "runtime",
+    "imageDigest",
+    "classification",
     "infrastructure",
-    "classification"
+    "gradable"
   ],
   "additionalProperties": false,
   "$defs": {
     "outcome": {
       "type": "object",
-      "additionalProperties": false,
       "properties": {
         "gradable": {
           "type": "boolean"
@@ -453,7 +502,16 @@
               }
             }
           },
-          "required": [],
+          "required": [
+            "discovered",
+            "executed",
+            "passed",
+            "failed",
+            "skipped",
+            "aborted",
+            "containerFailures",
+            "outcomes"
+          ],
           "additionalProperties": false
         },
         "score": {
@@ -516,15 +574,26 @@
                 },
                 "required": [
                   "name",
+                  "description",
                   "points",
-                  "max_points"
+                  "max_points",
+                  "message",
+                  "output"
                 ],
                 "additionalProperties": false
               },
               "minItems": 0
             }
           },
-          "required": [],
+          "required": [
+            "score",
+            "points",
+            "max_points",
+            "output",
+            "message",
+            "gradable",
+            "tests"
+          ],
           "additionalProperties": false
         },
         "durations": {
@@ -657,12 +726,743 @@
             "official-landlock-sbuser",
             "host-diagnostic"
           ]
+        },
+        "executionEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "dependencyHash",
+            "dependencyHashes"
+          ],
+          "properties": {
+            "dependencyHash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "dependencyHashes": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
         }
       },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/outcomePolicy"
+        }
+      ]
+    },
+    "outcomePolicy": {
       "required": [
+        "classification",
         "infrastructure",
-        "classification"
+        "gradable"
+      ],
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "success"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": {
+                "required": [
+                  "counts"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "counts": {
+                    "properties": {
+                      "executed": {
+                        "minimum": 1
+                      },
+                      "failed": {
+                        "const": 0
+                      },
+                      "aborted": {
+                        "const": 0
+                      },
+                      "containerFailures": {
+                        "const": 0
+                      }
+                    }
+                  },
+                  "rawResult": {
+                    "properties": {
+                      "gradable": {
+                        "const": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "behavior-failure"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "if": {
+                "required": [
+                  "counts"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "counts": {
+                    "properties": {
+                      "failed": {
+                        "minimum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "maxPoints",
+                "scoring",
+                "output"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "format_errors"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "properties": {
+                "classification": {
+                  "const": "student-test-quality-failure"
+                }
+              }
+            },
+            {
+              "oneOf": [
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "durations",
+                    "diagnostics",
+                    "toolchain",
+                    "containment"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "variants"
+                  ],
+                  "properties": {
+                    "variants": {
+                      "minProperties": 2
+                    }
+                  },
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "properties": {
+                "score": {
+                  "const": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "required": [
+            "studentCompilation",
+            "trustedCompilation",
+            "format_errors",
+            "output"
+          ],
+          "properties": {
+            "classification": {
+              "enum": [
+                "student-compilation-failure",
+                "unsafe-submission"
+              ]
+            },
+            "infrastructure": {
+              "const": "complete"
+            },
+            "gradable": {
+              "const": false
+            },
+            "studentCompilation": {
+              "const": "failure"
+            },
+            "trustedCompilation": {
+              "const": "not-run"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              },
+              {
+                "required": [
+                  "grading_error"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                },
+                "classification": {
+                  "const": "student-timeout"
+                },
+                "score": {
+                  "const": 0
+                },
+                "timed_out": {
+                  "const": true
+                },
+                "output_limited": {
+                  "const": false
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "output",
+                "scoring",
+                "durations",
+                "diagnostics",
+                "toolchain",
+                "containment",
+                "timed_out",
+                "output_limited"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "rawResult"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "counts"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "variants"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "properties": {
+                "infrastructure": {
+                  "const": "complete"
+                },
+                "gradable": {
+                  "const": true
+                },
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "const": "success"
+                },
+                "classification": {
+                  "const": "student-output-overflow"
+                },
+                "score": {
+                  "const": 0
+                },
+                "output_limited": {
+                  "const": true
+                },
+                "timed_out": {
+                  "const": false
+                }
+              },
+              "required": [
+                "studentCompilation",
+                "trustedCompilation",
+                "score",
+                "output",
+                "scoring",
+                "durations",
+                "diagnostics",
+                "toolchain",
+                "containment",
+                "output_limited",
+                "timed_out"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "grading_error"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "rawResult"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "counts"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "variants"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "properties": {
+            "classification": {
+              "const": "infrastructure-failure"
+            },
+            "infrastructure": {
+              "const": "failure"
+            },
+            "gradable": {
+              "const": false
+            },
+            "grading_error": {
+              "const": true
+            }
+          },
+          "required": [
+            "grading_error",
+            "message"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              }
+            ]
+          }
+        }
       ]
     }
-  }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/outcomePolicy"
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deliveryHash"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "deliveryHash"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "backend": {
+            "const": "container"
+          },
+          "infrastructure": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "imageDigest": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "counts"
+        ],
+        "properties": {
+          "backend": {
+            "const": "container"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "containment": {
+            "const": "official-landlock-sbuser"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "counts"
+        ],
+        "properties": {
+          "backend": {
+            "const": "host"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "containment": {
+            "const": "host-diagnostic"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "infrastructure": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "executionEvidence"
+        ]
+      }
+    }
+  ]
 }

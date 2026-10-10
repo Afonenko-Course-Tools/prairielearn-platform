@@ -8,7 +8,7 @@
   "javaGrader": {
     "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
     "localImage": "java25-junit-release-local:1.0.0-candidate",
-    "localImageId": "sha256:4444a45cac081a4ddbd7ba60c805a84c7ebbe1b24727341063e5cd077d4ed6fa",
+    "localImageId": "sha256:02206d075e04e78833611c22791212bba9c1fba7cff172453d6be2b07059d636",
     "status": "local candidate with official JUnit1.14.1 and sbuser/Landlock; published digest and real PL/Moodle acceptance pending"
   },
   "proxy": {

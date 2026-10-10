@@ -46,23 +46,31 @@
       "items": {
         "type": "string"
       },
-      "minItems": 0
+      "minItems": 1,
+      "uniqueItems": true
     },
     "runtimes": {
       "type": "object",
       "additionalProperties": {
-        "type": [
-          "string",
-          "null"
+        "oneOf": [
+          {
+            "type": "null"
+          },
+          {
+            "type": "string",
+            "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+          }
         ]
-      }
+      },
+      "minProperties": 1
     },
     "dependencyHashes": {
       "type": "object",
       "additionalProperties": {
         "type": "string",
         "pattern": "^[a-f0-9]{64}$"
-      }
+      },
+      "minProperties": 1
     },
     "expectations": {
       "type": "array",
@@ -89,7 +97,7 @@
         ],
         "additionalProperties": false
       },
-      "minItems": 0
+      "minItems": 1
     },
     "identityHash": {
       "type": "string",
@@ -100,6 +108,136 @@
         "host",
         "container"
       ]
+    },
+    "coverage": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
+    "scenarioInventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "qualifiedId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenario": {
+            "type": "string",
+            "minLength": 1
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "scenario",
+          "optional"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "scenarioInventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "unavailableReferences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "qualifiedId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenario": {
+            "type": "string",
+            "pattern": "^reference:.+"
+          },
+          "status": {
+            "const": "reference-unavailable"
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "scenario",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "questionBindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "qualifiedId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtime": {
+            "type": "string",
+            "minLength": 1
+          },
+          "imageDigest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+              }
+            ]
+          },
+          "dependencyHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "runtime",
+          "imageDigest",
+          "dependencyHash"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "runtimeEvidence": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "dependencyHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "dependencyHashes": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "required": [
+          "dependencyHash",
+          "dependencyHashes"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -114,7 +252,14 @@
     "runtimes",
     "dependencyHashes",
     "expectations",
-    "identityHash"
+    "identityHash",
+    "backend",
+    "coverage",
+    "scenarioInventory",
+    "scenarioInventoryHash",
+    "unavailableReferences",
+    "questionBindings",
+    "runtimeEvidence"
   ],
   "additionalProperties": false,
   "allOf": [
@@ -136,6 +281,91 @@
           "required": [
             "deliveryHash"
           ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "coverage": {
+            "const": "complete"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "scenarioInventory": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "status": {
+          "const": "success"
+        },
+        "exitCode": {
+          "const": 0
+        },
+        "expectations": {
+          "items": {
+            "properties": {
+              "matched": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "defect"
+        },
+        "exitCode": {
+          "const": 1
+        },
+        "expectations": {
+          "contains": {
+            "required": [
+              "matched"
+            ],
+            "properties": {
+              "matched": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "status": {
+          "const": "infrastructure-failure"
+        },
+        "exitCode": {
+          "const": 2
+        },
+        "expectations": {
+          "contains": {
+            "required": [
+              "matched",
+              "reason"
+            ],
+            "properties": {
+              "matched": {
+                "const": false
+              },
+              "reason": {
+                "const": "infrastructure"
+              }
+            }
+          }
         }
       }
     }

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import test_review_receipts as review
 ROOT=Path(__file__).resolve().parents[1]
 class InventoryTests(unittest.TestCase):
  def module(self):
@@ -23,11 +24,13 @@ class InventoryTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    with self.assertRaises(m.JobError):m.prepare_job(manifest,Path(d),'demo/exr-a','starter')
  def test_starter_failure_is_characterization_without_expectation(self):
-  m=self.module();r={'qualifiedId':'demo/exr-a','scenario':'starter','classification':'behavior-failure','studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','score':0.5,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'scope':'declared','runtime':'java25-junit-v1'}
+  m=self.module();r=review.result();r.update(classification='behavior-failure',score=0.5);r['counts'].update(passed=0,failed=1);r['counts']['outcomes']={'T#t':'failed'}
   receipt=m.verify_results([r],{});self.assertEqual(receipt['status'],'success');self.assertEqual(receipt['exitCode'],0)
   receipt=m.verify_results([r],{'starter':{'required-tests':'all-pass'}});self.assertEqual(receipt['exitCode'],1)
  def test_infrastructure_never_becomes_success_receipt(self):
-  m=self.module();r={'qualifiedId':'demo/exr-a','scenario':'starter','classification':'infrastructure-failure','infrastructure':'failure','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'scope':'declared','runtime':'java25-junit-v1'}
+  m=self.module();r=review.result()
+  for k in ['counts','score','maxPoints','rawResult','durations','diagnostics','toolchain','containment','scoring']:r.pop(k)
+  r.update(gradable=False,grading_error=True,classification='infrastructure-failure',infrastructure='failure',message='Docker failure')
   self.assertEqual(m.verify_results([r],{})['exitCode'],2)
  def test_closed_scoring_union_rejects_unknown_fields(self):
   m=self.module();m.validate_profile({'runtime':'java25-junit-v1','scoring':{'mode':'weighted'}})
@@ -47,7 +50,7 @@ class PreparedJobTests(unittest.TestCase):
    manifest={'schemaVersion':1,'courseId':'synthetic','bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[p]}
    job=m.prepare_job(manifest,root,'synthetic/exr-a','starter')
    try:
-    r=m.run_job(job,'host');self.assertEqual(r['score'],1);m.validate('check-result',r)
+    r=m.run_job(job,'host');self.assertEqual(r['score'],1);self.assertIn('executionEvidence',r);m.validate('check-result',r)
    finally:__import__('shutil').rmtree(job.root)
    (project/'student/Student.java').write_text('changed')
    with self.assertRaises(m.JobError):m.prepare_job(manifest,root,'synthetic/exr-a','starter')
@@ -69,5 +72,19 @@ class PublicSuiteTests(PreparedJobTests):
 
 class ReferenceReceiptTests(unittest.TestCase):
  def test_reference_failures_cannot_pass_without_explicit_expectations(self):
-  m=InventoryTests().module();result={'qualifiedId':'synthetic/exr-a','scenario':'reference:default','scope':'declared','runtime':'java25-junit-v1','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'studentCompilation':'success','infrastructure':'complete','classification':'behavior-failure','counts':{'executed':1,'failed':1,'skipped':0,'aborted':0}}
+  m=InventoryTests().module();result=review.result('reference:default');result['classification']='behavior-failure';result['score']=0;result['counts'].update(passed=0,failed=1);result['counts']['outcomes']={'T#t':'failed'}
   self.assertEqual(m.verify_results([result],{})['exitCode'],1)
+
+class DiscoveryDefaultsTests(unittest.TestCase):
+ def test_partial_discovery_declarations_get_recursive_defaults(self):
+  m=InventoryTests().module()
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);project=root/'tasks/p';project.mkdir(parents=True)
+   for name,text in [('S.java','class S{}'),('T.java','class T{}')]: (project/name).write_text(text)
+   def selection(name):return {'projectRelativePath':name,'submissionRelativePath':name,'sha256':hashlib.sha256((project/name).read_bytes()).hexdigest()}
+   fact={'qualifiedId':'demo/exr-a','projectRoot':'p','check':{'runtime':'java25-junit-v1'},'sources':[selection('S.java')],'trustedTests':[selection('T.java')]}
+   manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
+   for declared,want in [({'min-executed':2},{'min-executed':2,'allow-skipped':False}),({'allow-skipped':True},{'min-executed':1,'allow-skipped':True}),({},{'min-executed':1,'allow-skipped':False})]:
+    fact['check']['discovery']=declared;job=m.prepare_job(manifest,root,'demo/exr-a','starter')
+    try:self.assertEqual(job['grading']['discovery'],want)
+    finally:__import__('shutil').rmtree(job.root)
