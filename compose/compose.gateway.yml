@@ -1,0 +1,12 @@
+# Apply to a deployment with private `pl` service; no public bridge port.
+services:
+  pl:
+    build:
+      context: ..
+      dockerfile: images/prairielearn/Dockerfile
+    environment:
+      PL_GATEWAY_CONFIG: /run/pl-gateway/config.json
+    volumes:
+      - ${PL_GATEWAY_CONFIG_PATH:?private config required}:/run/pl-gateway/config.json:ro
+      - ${PL_GATEWAY_TOKEN_PATH:?private token required}:/run/secrets/pl-gateway-token:ro
+      - ${PL_GATEWAY_DELIVERY_PATH:?verified delivery required}:/course-deliveries/approved:ro
