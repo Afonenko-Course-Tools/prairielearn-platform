@@ -1,9 +1,16 @@
-# Working rules
+# Инструкции для автора и агента
 
-- Keep this platform independent of any particular course.
-- Use synthetic identities and files in tests; keep credentials and runtime data outside Git.
-- Java grading must compile and run on an actual JDK 25, with `--release 25`.
-- Student errors and grader failures are different outcomes; never report a harness failure as score 0.
-- Test locally first. Actual Moodle tests belong to the final integration stage.
-- Backup/restore workflows are outside the current scope.
-- Preserve exact source commits and image digests; never claim integration based only on generated files.
+- Сохраняйте независимость платформы от конкретного курса.
+- Используйте в тестах вымышленные учётные записи и файлы; храните учётные данные и данные исполнения вне Git.
+- Проверка Java должна компилировать и запускать код на настоящем JDK 25 с `--release 25`.
+- Ошибка студента и сбой проверяющего инструмента — разные результаты; не сообщайте о сбое инструмента как об оценке 0.
+- Сначала проверяйте локально. Проверки в настоящем Moodle относятся к финальному этапу интеграции.
+- Сценарии резервного копирования и восстановления не входят в текущую область работы.
+- Сохраняйте точные source commits и image digests; созданные файлы сами по себе не подтверждают интеграцию.
+
+## Язык новых текстов
+
+Новые README, документацию и описания PR пишите только по-русски.
+Перед работой прочитайте [общее языковое правило](https://github.com/Afonenko-Course-Tools/quarto-course/blob/main/docs/russian-language-policy.md)
+и применяйте его к авторскому и генерируемому тексту. Команды, идентификаторы
+API, пути, имена пакетов и URL сохраняйте буквально.
