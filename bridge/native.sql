@@ -24,18 +24,19 @@ FOR UPDATE;
 
 -- BLOCK store_assignment
 INSERT INTO
-  pl_gateway_assignments (id, course_instance_id, user_uid, request)
+  pl_gateway_assignments (id, course_instance_id, user_uid, request, updated_at)
 VALUES
   (
     $id,
     $course_instance_id,
     $user_uid,
-    $request::jsonb
+    $request::jsonb,
+    clock_timestamp()
   )
 ON CONFLICT (id) DO UPDATE
 SET
   request = EXCLUDED.request,
-  updated_at = now();
+  updated_at = clock_timestamp();
 
 -- BLOCK select_results
 WITH
@@ -102,6 +103,34 @@ GROUP BY
 -- BLOCK select_slot
 SELECT
   id
+FROM
+  pl_gateway_assignments
+WHERE
+  course_instance_id = $course_instance_id
+  AND user_uid = $user_uid;
+
+-- BLOCK select_work_attempt
+SELECT
+  to_jsonb(ai.*) AS attempt
+FROM
+  assessment_instances ai
+  JOIN assessments a ON a.id = ai.assessment_id
+WHERE
+  a.course_instance_id = $course_instance_id
+  AND a.tid = $work_id
+  AND a.deleted_at IS NULL
+  AND ai.user_id = $user_id
+  AND ai.team_id IS NULL
+ORDER BY
+  ai.number DESC,
+  ai.id DESC
+LIMIT
+  1;
+
+-- BLOCK select_user_assignment
+SELECT
+  request,
+  updated_at::text AS activated_at
 FROM
   pl_gateway_assignments
 WHERE

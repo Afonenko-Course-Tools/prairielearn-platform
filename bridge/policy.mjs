@@ -89,3 +89,37 @@ export function completion(work, rows) {
     passed: count >= c.atLeast,
   };
 }
+
+export function canonicalJSONString(value) {
+  const compare = (left, right) => {
+    const a = Array.from(left, (c) => c.codePointAt(0)),
+      b = Array.from(right, (c) => c.codePointAt(0));
+    for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return a.length - b.length;
+  };
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalJSONString).join(',') + ']';
+  // Building the text directly also preserves scalar order for integer-looking keys.
+  return (
+    '{' +
+    Object.keys(value)
+      .sort(compare)
+      .map((k) => JSON.stringify(k) + ':' + canonicalJSONString(value[k]))
+      .join(',') +
+    '}'
+  );
+}
+export function validateBindings(bindings) {
+  const seen = new Set();
+  for (const binding of bindings)
+    for (const instance of Object.keys(binding.delivery.instances)) {
+      const key = binding.delivery.deliveryHash + '/' + instance;
+      if (seen.has(key)) fail('Ambiguous delivery/instance binding');
+      seen.add(key);
+    }
+}
+
+export function assertProductionRuntime(environment, config) {
+  if (environment !== 'production' || config.devMode !== false || config.hasShib !== true)
+    fail('Gateway bridge requires production, devMode=false and hasShib=true');
+}

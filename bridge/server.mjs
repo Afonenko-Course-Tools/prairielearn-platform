@@ -5,6 +5,11 @@ import { pathToFileURL } from 'node:url';
 import * as db from '@prairielearn/postgres';
 import { z } from 'zod';
 import { BridgeError, resolveAssignment, assignmentTransition, completion } from './policy.mjs';
+import {
+  canonicalJSONString as canonical,
+  validateBindings,
+  assertProductionRuntime,
+} from './policy.mjs';
 const root = process.env.PL_ROOT ?? '/PrairieLearn';
 const native = (path) => import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
 const [
@@ -22,6 +27,10 @@ const [
   native('models/course-instances'),
   native('lib/authz-data-lib'),
 ]);
+const studentAccess = await native('lib/authz-data');
+const nativeAssessment = await native('models/assessment');
+const assessmentAccess = await native('lib/assessment-access-control/authz');
+const { AssessmentInstanceSchema } = await native('lib/db-types');
 const settingsSchema = z.strictObject({
   listenHost: z.string(),
   listenPort: z.number().int().min(1).max(65535),
@@ -40,21 +49,70 @@ const settings = settingsSchema.parse(
 );
 const token = (await readFile(settings.tokenFile, 'utf8')).trim();
 if (token.length < 32) throw new Error('Service token needs at least 32 characters');
-const canonical = (value) =>
-  JSON.stringify(
-    value && typeof value === 'object'
-      ? Array.isArray(value)
-        ? value.map((v) => JSON.parse(canonical(v)))
-        : Object.fromEntries(
-            Object.keys(value)
-              .sort()
-              .map((k) => [k, JSON.parse(canonical(value[k]))]),
-          )
-      : value,
+const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const idsSchema = z
+  .array(z.string().min(1))
+  .refine((v) => new Set(v).size === v.length, 'Duplicate IDs');
+const completionSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    mode: z.literal('required-question-completion'),
+    source: z.literal('per-question-results-v1'),
+    questionIds: idsSchema.min(1),
+    requiredQuestionIds: idsSchema.min(1),
+    atLeast: z.number().int().positive(),
+    fullyCompletedScore: z.literal(1),
+  })
+  .refine(
+    (c) =>
+      c.atLeast <= c.requiredQuestionIds.length &&
+      c.requiredQuestionIds.every((id) => c.questionIds.includes(id)),
+    'Invalid required pool',
+  );
+const bridgeDeliverySchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    courseId: z.string().min(1),
+    bookRoot: z.string(),
+    sourceSnapshotHash: hashSchema,
+    inventoryHash: hashSchema,
+    verificationInventoryHash: hashSchema,
+    deliveryHash: hashSchema,
+    questions: idsSchema.min(1),
+    gradingPayloads: z.record(z.string(), z.json()),
+    works: z
+      .array(
+        z.strictObject({
+          id: z.string().min(1),
+          items: idsSchema.optional(),
+          assignments: z.record(z.string(), z.json()).optional(),
+          policy: z.record(z.string(), z.json()),
+          completion: completionSchema,
+          relatedExercise: z.string().optional(),
+        }),
+      )
+      .min(1),
+    instances: z.record(
+      z.string(),
+      z.strictObject({ works: idsSchema.min(1), selfEnrollment: z.boolean() }),
+    ),
+    files: z.record(z.string(), hashSchema),
+    candidate: z.boolean().optional(),
+  })
+  .refine(
+    (d) =>
+      new Set(d.works.map((w) => w.id)).size === d.works.length &&
+      Object.values(d.instances).every((i) =>
+        i.works.every((id) => d.works.some((w) => w.id === id)),
+      ) &&
+      d.works.every((w) => w.completion.questionIds.every((id) => d.questions.includes(id))),
+    'Invalid work/question inventory',
   );
 const bindings = [];
 for (const binding of settings.bindings) {
-  const delivery = JSON.parse(await readFile(`${binding.deliveryPath}/delivery.json`, 'utf8'));
+  const delivery = bridgeDeliverySchema.parse(
+    JSON.parse(await readFile(`${binding.deliveryPath}/delivery.json`, 'utf8')),
+  );
   const { deliveryHash, ...payload } = delivery;
   if (createHash('sha256').update(canonical(payload)).digest('hex') !== deliveryHash)
     throw new Error('Delivery hash mismatch');
@@ -70,7 +128,9 @@ for (const binding of settings.bindings) {
   }
   bindings.push({ ...binding, delivery });
 }
+validateBindings(bindings);
 await loadConfig([`${root}/config.json`]);
+assertProductionRuntime(process.env.NODE_ENV, config);
 await db.initAsync(
   {
     user: config.postgresqlUser,
@@ -107,13 +167,13 @@ const resultRow = z.strictObject({
   score: z.number().nullable(),
   native_status: z.string(),
 });
-async function context(request) {
+async function context(request, assignment = true) {
   const binding = bindings.find(
     (b) =>
       b.delivery.deliveryHash === request.deliveryHash && b.delivery.instances[request.instance],
   );
   if (!binding) throw new BridgeError(403, 'Unknown delivery/instance');
-  resolveAssignment(request, binding.delivery);
+  if (assignment) resolveAssignment(request, binding.delivery);
   const ci = await instances.selectCourseInstanceById(binding.courseInstanceId);
   if (ci.deleted_at !== null) throw new BridgeError(403, 'Deleted instance');
   const instanceInfo = JSON.parse(
@@ -272,6 +332,177 @@ async function results(id, version) {
     };
   });
 }
+const workQuerySchema = z.strictObject({
+  userUid: z.string().min(1).max(512),
+  instance: z.string().min(1),
+  deliveryHash: z.string().regex(/^[a-f0-9]{64}$/),
+  workId: z.string().min(1),
+});
+async function nativeStudentWorkContext(request, allowAssignment = false) {
+  const { binding, ci, user } = await context(request, false);
+  if (!binding.delivery.instances[request.instance].works.includes(request.workId))
+    throw new BridgeError(403, 'Work outside configured instance');
+  const work = binding.delivery.works.find((w) => w.id === request.workId);
+  if (!work?.completion || (!allowAssignment && work.policy?.assignment?.['student-label']))
+    throw new BridgeError(403, 'Assignment-managed work requires assignment results');
+  const enrollment = await enrollments.selectOptionalEnrollmentByUserId({
+    userId: user.id,
+    courseInstance: ci,
+    authzData: system,
+    requiredRole: ['System'],
+  });
+  if (!enrollment || enrollment.status !== 'joined')
+    throw new BridgeError(403, 'Student enrollment required');
+  const label = work.policy?.assignment?.['student-label'];
+  if (label) {
+    const slot = await db.queryOptionalRow(
+      sql.select_user_assignment,
+      { course_instance_id: ci.id, user_uid: user.uid },
+      assignmentRow,
+    );
+    if (
+      !slot ||
+      slot.request.deliveryHash !== request.deliveryHash ||
+      slot.request.newWork !== work.id ||
+      slot.request.userUid !== user.uid
+    )
+      throw new BridgeError(403, 'Current assignment required');
+    if (!(await labels.selectStudentLabelsForEnrollment(enrollment)).some((l) => l.name === label))
+      throw new BridgeError(403, 'Current assignment label required');
+  }
+  const date = new Date();
+  if (
+    !ci.modern_publishing ||
+    !(await studentAccess.calculateModernCourseInstanceStudentAccess(ci, user.id, date))
+      .has_student_access_with_enrollment
+  )
+    throw new BridgeError(403, 'Native Student instance access denied');
+  await validateWork(binding, ci, work.id);
+  const assessment = await nativeAssessment.selectAssessmentByTid({
+    course_instance_id: ci.id,
+    tid: work.id,
+  });
+  if (!assessment.modern_access_control || assessment.team_work)
+    throw new BridgeError(409, 'Modern individual assessment required');
+  const attemptRow = await db.queryOptionalRow(
+    sql.select_work_attempt,
+    { course_instance_id: ci.id, work_id: work.id, user_id: user.id },
+    z.object({ attempt: AssessmentInstanceSchema }),
+  );
+  const authzData = {
+    user: { id: user.id },
+    mode: 'Public',
+    course_role: 'None',
+    course_instance_role: 'None',
+    has_course_instance_permission_view: false,
+  };
+  const input = { assessment, userId: user.id, courseInstance: ci, authzData, reqDate: date };
+  const access = attemptRow
+    ? await assessmentAccess.resolveModernAssessmentInstanceAccess({
+        ...input,
+        assessmentInstance: attemptRow.attempt,
+      })
+    : await assessmentAccess.resolveModernAssessmentAccess(input);
+  if (!access.authorized) throw new BridgeError(403, 'Native Student assessment access denied');
+  return { binding, ci, user, work, assessment, attemptRow };
+}
+async function workResults(request) {
+  const { ci, user, work, attemptRow } = await nativeStudentWorkContext(request);
+  const rows = await db.queryRows(
+    sql.select_results,
+    {
+      course_instance_id: ci.id,
+      work_id: work.id,
+      user_id: user.id,
+      question_ids: work.completion.questionIds,
+      activated_at: '1970-01-01T00:00:00Z',
+    },
+    resultRow,
+  );
+  const questions = work.completion.questionIds.map((qualifiedId) => {
+    const r = rows.find((r) => r.qualified_id === qualifiedId);
+    return {
+      qualifiedId,
+      score: r?.score ?? null,
+      points: r?.points ?? null,
+      maxPoints: r?.max_points ?? null,
+      status:
+        r && ['complete', 'correct', 'incorrect'].includes(r.native_status)
+          ? 'complete'
+          : r?.native_status === 'grading'
+            ? 'grading'
+            : 'unanswered',
+    };
+  });
+  const attempt = attemptRow?.attempt;
+  return {
+    schemaVersion: 1,
+    source: 'per-question-results-v1',
+    userUid: user.uid,
+    instance: request.instance,
+    deliveryHash: request.deliveryHash,
+    workId: work.id,
+    currentAttempt: attempt ? { id: attempt.id, number: attempt.number } : null,
+    scoreGiven: attempt?.points ?? null,
+    scoreMaximum: attempt?.max_points ?? null,
+    questions,
+    completion: completion(work, questions),
+  };
+}
+async function workLaunch(request) {
+  const { ci, user, work, assessment } = await nativeStudentWorkContext(request, true);
+  return {
+    workId: work.id,
+    userUid: user.uid,
+    instance: request.instance,
+    deliveryHash: request.deliveryHash,
+    path: `/pl/course_instance/${ci.id}/assessment/${assessment.id}/`,
+  };
+}
+const enrollmentQuerySchema = workQuerySchema.omit({ workId: true });
+async function enrollBasic(request) {
+  const { ci, user } = await context(request, false);
+  return db.runInTransactionAsync(async () => {
+    await db.execute(sql.lock, { lock_key: `gateway:${ci.id}:${user.uid}` });
+    const prior = await enrollments.selectOptionalEnrollmentByUserId({
+      userId: user.id,
+      courseInstance: ci,
+      authzData: system,
+      requiredRole: ['System'],
+    });
+    if (prior?.status === 'blocked') throw new BridgeError(403, 'Blocked enrollment');
+    const enrollment = await enrollments.ensureUncheckedEnrollment({
+      userId: user.id,
+      courseInstance: ci,
+      authzData: system,
+      requiredRole: ['System'],
+      actionDetail: 'implicit_joined',
+    });
+    if (!enrollment || enrollment.status !== 'joined')
+      throw new BridgeError(403, 'Enrollment unavailable');
+    if (
+      !ci.modern_publishing ||
+      !(await studentAccess.calculateModernCourseInstanceStudentAccess(ci, user.id, new Date()))
+        .has_student_access_with_enrollment
+    )
+      throw new BridgeError(403, 'Native Student instance access denied');
+    return {
+      schemaVersion: 1,
+      userUid: user.uid,
+      instance: request.instance,
+      deliveryHash: request.deliveryHash,
+      enrolled: true,
+    };
+  });
+}
+async function readBody(req, schema) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 8192) throw new BridgeError(413, 'Body too large');
+  }
+  return schema.parse(JSON.parse(body));
+}
 const server = createServer(async (req, res) => {
   try {
     const supplied = Buffer.from(req.headers.authorization ?? '');
@@ -295,6 +526,18 @@ const server = createServer(async (req, res) => {
       const id = idSchema.parse(url.searchParams.get('assignmentId'));
       const version = z.coerce.number().int().positive().parse(url.searchParams.get('version'));
       answer = await results(id, version);
+    } else if (req.method === 'GET' && url.pathname === '/internal/gateway/work-results') {
+      if ([...url.searchParams.keys()].sort().join(',') !== 'deliveryHash,instance,userUid,workId')
+        throw new BridgeError(400, 'Invalid work result query');
+      answer = await workResults(workQuerySchema.parse(Object.fromEntries(url.searchParams)));
+    } else if (req.method === 'GET' && url.pathname === '/internal/gateway/work-launch') {
+      if ([...url.searchParams.keys()].sort().join(',') !== 'deliveryHash,instance,userUid,workId')
+        throw new BridgeError(400, 'Invalid work launch query');
+      answer = await workLaunch(workQuerySchema.parse(Object.fromEntries(url.searchParams)));
+    } else if (req.method === 'PUT' && url.pathname === '/internal/gateway/enrollment') {
+      if ([...url.searchParams.keys()].length)
+        throw new BridgeError(400, 'Unexpected enrollment query');
+      answer = await enrollBasic(await readBody(req, enrollmentQuerySchema));
     } else throw new BridgeError(404, 'Unknown route');
     res
       .writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
