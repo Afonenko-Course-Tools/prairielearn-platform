@@ -103,7 +103,10 @@ Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each d
 Versioned contracts and the reviewed image publication procedure are in
 [releasing.md](docs/releasing.md). Runtime images **1.0.0** were published from
 `fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`; [runtime-image.json](runtime-image.json)
-records both immutable registry digests. `runtime-profiles.json` pins the published
-Java image with the exact reviewed runner/library hashes; `images.lock.json` records
-the Java and Community bridge pins. Its Java local image fields identify the current
-diagnostic build. Final release acceptance uses the recorded registry digests.
+records that historical publication. Tool 1.0.1 exposes official JUnit test feedback
+and execution-limit messages to the native submission panel, and summarizes expected
+mutation outcomes. Raw results and grading policies remain unchanged. The current
+`runtime-profiles.json` identifies the exact runner/library hashes; an `image: null`
+requires a matching newly published digest before production verification or staging.
+`images.lock.json` retains the last published deployment pins. Final release acceptance
+uses source and registry receipts for the same runtime; local image IDs are diagnostic.

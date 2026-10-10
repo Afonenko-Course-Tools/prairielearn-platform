@@ -400,6 +400,9 @@
           }
         }
       }
+    },
+    "tests": {
+      "$ref": "#/properties/rawResult/properties/tests"
     }
   },
   "required": [
@@ -748,6 +751,9 @@
               }
             }
           }
+        },
+        "tests": {
+          "$ref": "#/properties/rawResult/properties/tests"
         }
       },
       "additionalProperties": false,

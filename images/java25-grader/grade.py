@@ -319,13 +319,16 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         base={'gradable':True,'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'containment':containment,'scoring':config['scoring'],'output':text}
         if reason:
             base.update(score=0,classification='student-timeout' if reason=='timeout' else 'student-output-overflow',timed_out=reason=='timeout',output_limited=reason=='output_limit')
+            base['message']=(f"Your code exceeded the execution time limit of {limits.get('run-seconds',10):g} seconds." if reason=='timeout' else f"Your code exceeded the output limit of {int(limits['max-output-bytes'])} bytes.")
             return base
         if code!=0 or not rawfile.is_file() or not countfile.is_file():raise GraderError('JUnit execution did not produce complete reports')
         try:
             raw=json.loads(rawfile.read_text());counts=json.loads(countfile.read_text())
             if raw.pop('signature')!=signature or counts.pop('signature')!=signature:raise ValueError('signature')
         except (KeyError,ValueError,OSError) as error:raise GraderError('Invalid JUnit report') from error
-        base.update(rawResult=raw,counts=counts,maxPoints=raw['max_points'])
+        # The native pl-external-grader-results element reads these fields at
+        # the result root; retain the official raw result separately for audits.
+        base.update(rawResult=raw,counts=counts,maxPoints=raw['max_points'],tests=raw['tests'],message=raw.get('message',''))
         incomplete=counts['executed']<config['discovery']['min-executed'] or counts['discovered']==0 or counts['aborted']>0 or counts['containerFailures']>0 or (counts['skipped']>0 and not config['discovery']['allow-skipped'])
         if incomplete or not raw.get('gradable'):
             if not student_tests:raise GraderError('Trusted JUnit discovery/execution is incomplete')
@@ -365,7 +368,12 @@ def grade(job_dir):
         quality=any(r['classification']=='student-test-quality-failure' for r in observations.values())
         correct=all(observations[v].get('score')==1 for v in variants['correct'])
         killed=all(observations[v].get('counts',{}).get('failed',0)>0 for v in variants['mutants'])
-        return finish({'gradable':True,'score':float(correct and killed and not quality),'maxPoints':len(observations),'classification':'student-test-quality-failure' if quality else ('success' if correct and killed else 'behavior-failure'),'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','variants':observations,'scoring':config['scoring'],'output':''})
+        accepted=sum(observations[v].get('score')==1 for v in variants['correct'])
+        rejected=sum(observations[v].get('counts',{}).get('failed',0)>0 for v in variants['mutants'])
+        message=(('Submission test quality failure: incomplete or disabled tests. ' if quality else '')+
+            f"Correct implementations accepted: {accepted}/{len(variants['correct'])}; mutants rejected: {rejected}/{len(variants['mutants'])}. "+
+            'Expected outcomes: tests must pass correct implementations and reject every mutant.')
+        return finish({'message':message,'gradable':True,'score':float(correct and killed and not quality),'maxPoints':len(observations),'classification':'student-test-quality-failure' if quality else ('success' if correct and killed else 'behavior-failure'),'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','variants':observations,'scoring':config['scoring'],'output':''})
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--job-dir',type=Path,default=Path('/grade'));args=parser.parse_args();status=0
