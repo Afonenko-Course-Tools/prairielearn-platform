@@ -167,6 +167,10 @@ const resultRow = z.strictObject({
   score: z.number().nullable(),
   native_status: z.string(),
 });
+const workResultRow = resultRow.extend({
+  attempt_points: z.number().nullable(),
+  attempt_max_points: z.number().nullable(),
+});
 async function context(request, assignment = true) {
   const binding = bindings.find(
     (b) =>
@@ -408,17 +412,18 @@ async function nativeStudentWorkContext(request, allowAssignment = false) {
 }
 async function workResults(request) {
   const { ci, user, work, attemptRow } = await nativeStudentWorkContext(request);
-  const rows = await db.queryRows(
-    sql.select_results,
+  const attempt = attemptRow?.attempt;
+  const rows = attempt ? await db.queryRows(
+    sql.select_work_results,
     {
       course_instance_id: ci.id,
       work_id: work.id,
       user_id: user.id,
+      assessment_instance_id: attempt.id,
       question_ids: work.completion.questionIds,
-      activated_at: '1970-01-01T00:00:00Z',
     },
-    resultRow,
-  );
+    workResultRow,
+  ) : [];
   const questions = work.completion.questionIds.map((qualifiedId) => {
     const r = rows.find((r) => r.qualified_id === qualifiedId);
     return {
@@ -434,7 +439,6 @@ async function workResults(request) {
             : 'unanswered',
     };
   });
-  const attempt = attemptRow?.attempt;
   return {
     schemaVersion: 1,
     source: 'per-question-results-v1',
@@ -443,8 +447,8 @@ async function workResults(request) {
     deliveryHash: request.deliveryHash,
     workId: work.id,
     currentAttempt: attempt ? { id: attempt.id, number: attempt.number } : null,
-    scoreGiven: attempt?.points ?? null,
-    scoreMaximum: attempt?.max_points ?? null,
+    scoreGiven: rows[0]?.attempt_points ?? null,
+    scoreMaximum: rows[0]?.attempt_max_points ?? null,
     questions,
     completion: completion(work, questions),
   };
