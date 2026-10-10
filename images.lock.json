@@ -3,16 +3,22 @@
   "prairielearn": {
     "image": "docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63",
     "sourceCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
-    "status": "real native Java sync and Docker grading verified; auth integration pending"
+    "status": "Pinned upstream Community base; use the separately reviewed derived bridge image for Gateway deployments"
   },
   "javaGrader": {
     "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-    "localImage": "java25-junit-release-local:1.0.0-candidate",
-    "localImageId": "sha256:02206d075e04e78833611c22791212bba9c1fba7cff172453d6be2b07059d636",
-    "status": "local candidate with official JUnit1.14.1 and sbuser/Landlock; published digest and real PL/Moodle acceptance pending"
+    "localImage": "codex-release-java25:mutation-reuse-v4",
+    "localImageId": "sha256:58f777a8c1ba296e22fe3314fe9c68a4c31ec5e4832c849ee8c671029dddf803",
+    "status": "Reviewed local Java25/JUnit candidate; no published repository digest"
   },
   "proxy": {
     "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
     "status": "nginx config, verified local CA, 5/5 synthetic TLS route/header/WebSocket tests passed"
+  },
+  "communityGateway": {
+    "baseImage": "docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63",
+    "localImage": "codex-release-community-bridge:1.0.0-review-fix",
+    "localImageId": "sha256:5026d5abce43ff627f0dfd8d1d1bab586ca5ff7e6dc1af6a244f66ffcd9c2b61",
+    "status": "Reviewed local production-mode Community bridge candidate; no published repository digest"
   }
 }

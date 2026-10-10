@@ -1,7 +1,8 @@
 # PrairieLearn platform
 
 Shared platform for native PrairieLearn courses, with a Java 25 grader.
-Implementation is in progress; no deployment or authentication acceptance is claimed.
+The candidate provides local verification, a private Community Gateway bridge and
+portable development TLS. Published release pins remain a separate acceptance gate.
 
 Java courses require JDK 25 or newer. The reference grader uses a pinned JDK 25.
 Runtime credentials, identities, jobs and OpenTofu state belong outside this checkout.
@@ -98,3 +99,7 @@ spike evidence are separate from production Gateway/AGS release acceptance.
 ## Local TLS and future LAN deployment
 
 Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
+
+Versioned contracts and the reviewed image publication procedure are in
+[releasing.md](docs/releasing.md). Local image IDs in `images.lock.json` are
+observed candidates; `runtime-profiles.json` keeps `image: null` until publication.

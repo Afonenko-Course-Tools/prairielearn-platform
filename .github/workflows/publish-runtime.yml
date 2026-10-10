@@ -6,6 +6,10 @@ on:
         description: Immutable runtime version (for example 1.0.0)
         required: true
         type: string
+      reviewed_commit:
+        description: Exact independently reviewed merged main commit
+        required: true
+        type: string
 permissions:
   contents: read
   packages: write
@@ -15,8 +19,11 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
@@ -24,8 +31,12 @@ jobs:
       - name: Resolve immutable version
         env:
           VERSION: ${{ inputs.version }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
           IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
           echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
           echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
@@ -59,17 +70,25 @@ jobs:
           COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
           export IMAGE_DIGEST COMMUNITY_DIGEST
           python3 - <<'PY'
-          import json, os
+          import json, os, re
           from pathlib import Path
           digest = os.environ['IMAGE_DIGEST']
           community = os.environ['COMMUNITY_DIGEST']
-          if any('@sha256:' not in value for value in (digest, community)):
-              raise SystemExit('Published repository digest missing')
+          for tag, value in ((os.environ['RUNTIME_IMAGE'], digest), (os.environ['COMMUNITY_IMAGE'], community)):
+              repository = tag.rsplit(':', 1)[0]
+              if not re.fullmatch(re.escape(repository) + r'@sha256:[a-f0-9]{64}', value):
+                  raise SystemExit('Published repository digest missing or belongs to another image')
+          registry = json.loads(Path('runtime-profiles.json').read_text())
+          for profile in registry['profiles'].values():
+              profile['image'] = digest
+          Path('published-runtime-profiles.json').write_text(json.dumps(registry, indent=2)+'\n')
           Path('runtime-image.json').write_text(json.dumps({'schemaVersion':1,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['RUNTIME_IMAGE'].rsplit(':',1)[1],'image':digest,'communityImage':community},indent=2)+'\n')
           PY
           cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: platform-runtime-digests-${{ inputs.version }}
-          path: runtime-image.json
+          path: |
+            runtime-image.json
+            published-runtime-profiles.json
           if-no-files-found: error
