@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "sourceCommit": "fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec",
-  "version": "1.0.0",
-  "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:c464389a45e5e073b3d11844e23a5c295b4c1c345ca7bc9937618d9abde36bf3",
-  "communityImage": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:124e1e90f755184f868ed45bfa0d2c48552f154e33cdae8bc757df48abcd92a7"
+  "sourceCommit": "756d9dfb96fcb43cb02d499594a7408d174be16c",
+  "version": "1.0.1",
+  "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:1084c3e254105383d476303a4983d70abef58cb046a4899f05339f1d13c9a9a6",
+  "communityImage": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:a1fd72637587782766d8f2f1fd37fad23b8a56ade7f5754b7f2f3bcfda50bc34"
 }

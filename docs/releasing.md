@@ -3,13 +3,18 @@
 The tool contract is **1.0.1**. It adds native-readable JUnit tests/messages,
 execution-limit messages and a bounded expected-outcome summary for submitted tests.
 It preserves raw results, classification, score policies and containment limits.
-Runtime images **1.0.0** were published from reviewed integrated source
-`fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`.
-The checked-in [runtime-image.json](../runtime-image.json) preserves that historical
-receipt. [runtime-profiles.json](../runtime-profiles.json) identifies the current
-runner/library hashes; `image: null` requires a newly published matching digest.
-Publication records the actual reviewed source and both immutable OCI digests before
-production acceptance. The following contracts are versioned independently:
+Runtime images **1.0.1** were published from reviewed integrated source
+`756d9dfb96fcb43cb02d499594a7408d174be16c` by successful
+[publication run 38061254263](https://github.com/Afonenko-Course-Tools/prairielearn-platform/actions/runs/38061254263).
+The checked-in [runtime-image.json](../runtime-image.json) is the emitted actual
+source/version/OCI receipt; [runtime-profiles.json](../runtime-profiles.json) is the
+emitted registry with the published Java digest in both profiles. The runner hash is
+`3e6d45c783e3972aa02c294312244f6f81c284897418954a7653cf64bfe4a051`;
+reviewed library/source hashes are preserved. [images.lock.json](../images.lock.json)
+records current Java and Community deployment pins, with the separately inspected
+local feedback image retained only as a diagnostic identity. Historical 1.0.0 assets
+remain in that release. Public pull and final native integration require their own
+observed receipts. The following contracts are versioned independently:
 
 | Interface | Current contract |
 | --- | --- |
@@ -51,7 +56,7 @@ That branch is not part of this runtime image or release.
    Replace `ACTUAL_MERGED_SHA` with the actual 40-character merged commit and
    `NEXT_UNUSED_VERSION` with an unused `N.N.N` version. The
    workflow refuses any other branch or a checkout that differs from that commit.
-   Version 1.0.0 already has published images; choose a new unused version for
+   Versions 1.0.0 and 1.0.1 already have published images; choose a new unused version for
    subsequent runtime changes. The workflow must exist on the default branch
    for manual dispatch.
    It uses its ephemeral `GITHUB_TOKEN` with `contents: read` and `packages: write`;

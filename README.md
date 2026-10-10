@@ -101,12 +101,12 @@ bounded spike evidence are recorded separately from final Gateway/AGS release ac
 Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
 
 Versioned contracts and the reviewed image publication procedure are in
-[releasing.md](docs/releasing.md). Runtime images **1.0.0** were published from
-`fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`; [runtime-image.json](runtime-image.json)
-records that historical publication. Tool 1.0.1 exposes official JUnit test feedback
-and execution-limit messages to the native submission panel, and summarizes expected
-mutation outcomes. Raw results and grading policies remain unchanged. The current
-`runtime-profiles.json` identifies the exact runner/library hashes; an `image: null`
-requires a matching newly published digest before production verification or staging.
-`images.lock.json` retains the last published deployment pins. Final release acceptance
-uses source and registry receipts for the same runtime; local image IDs are diagnostic.
+[releasing.md](docs/releasing.md). Runtime images **1.0.1** were published from
+`756d9dfb96fcb43cb02d499594a7408d174be16c`; [runtime-image.json](runtime-image.json)
+records the actual source and immutable Java/Community digests. Tool 1.0.1 exposes
+official JUnit test feedback and execution-limit messages to the native submission
+panel, and summarizes expected mutation outcomes. Raw results and grading policies
+remain unchanged. `runtime-profiles.json` pins both profiles to the emitted Java
+digest and reviewed runner/library hashes; `images.lock.json` records these current
+deployment pins. Final release acceptance uses matching source and registry receipts;
+local image IDs identify diagnostic builds, separately from the published digests.
