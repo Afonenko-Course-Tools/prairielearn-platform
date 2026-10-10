@@ -1,4 +1,4 @@
-name: Publish reviewed Java25 runtime
+name: Publish reviewed Platform images
 on:
   workflow_dispatch:
     inputs:
@@ -10,7 +10,7 @@ permissions:
   contents: read
   packages: write
 concurrency:
-  group: publish-java25-${{ inputs.version }}
+  group: publish-platform-${{ inputs.version }}
   cancel-in-progress: false
 jobs:
   publish:
@@ -28,41 +28,48 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
           echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
       - name: Authenticate with scoped package token
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Reject an existing immutable version
         run: |
-          if docker manifest inspect "$RUNTIME_IMAGE" >manifest-check.log 2>&1; then
-            echo 'Version already published; choose a new version.' >&2
-            exit 1
-          elif ! grep -Eq 'manifest unknown|no such manifest|not found' manifest-check.log; then
-            echo 'Cannot verify that version is absent; refusing publication.' >&2
-            cat manifest-check.log >&2
-            exit 1
-          fi
+          for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE"; do
+            if docker manifest inspect "$IMAGE" >manifest-check.log 2>&1; then
+              echo 'Version already published; choose a new version.' >&2
+              exit 1
+            elif ! grep -Eq 'manifest unknown|no such manifest|not found' manifest-check.log; then
+              echo 'Cannot verify that version is absent; refusing publication.' >&2
+              cat manifest-check.log >&2
+              exit 1
+            fi
+          done
       - name: Build exact checkout and run owner tests
         run: |
           python3 -m pip install --requirement requirements.txt
           docker build -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
+          docker build -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
           PL_TEST_IMAGE="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -v
       - name: Publish verified image and record actual digest
         run: |
           docker push "$RUNTIME_IMAGE"
+          docker push "$COMMUNITY_IMAGE"
           IMAGE_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
-          export IMAGE_DIGEST
+          COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
+          export IMAGE_DIGEST COMMUNITY_DIGEST
           python3 - <<'PY'
           import json, os
           from pathlib import Path
           digest = os.environ['IMAGE_DIGEST']
-          if '@sha256:' not in digest:
+          community = os.environ['COMMUNITY_DIGEST']
+          if any('@sha256:' not in value for value in (digest, community)):
               raise SystemExit('Published repository digest missing')
-          Path('runtime-image.json').write_text(json.dumps({'schemaVersion':1,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['RUNTIME_IMAGE'].rsplit(':',1)[1],'image':digest},indent=2)+'\n')
+          Path('runtime-image.json').write_text(json.dumps({'schemaVersion':1,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['RUNTIME_IMAGE'].rsplit(':',1)[1],'image':digest,'communityImage':community},indent=2)+'\n')
           PY
           cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: java25-runtime-digest-${{ inputs.version }}
+          name: platform-runtime-digests-${{ inputs.version }}
           path: runtime-image.json
           if-no-files-found: error
