@@ -48,8 +48,8 @@ jobs:
       - name: Build exact checkout and run owner tests
         run: |
           python3 -m pip install --requirement requirements.txt
-          docker build -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
-          docker build -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
           PL_TEST_IMAGE="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -v
       - name: Publish verified image and record actual digest
         run: |
