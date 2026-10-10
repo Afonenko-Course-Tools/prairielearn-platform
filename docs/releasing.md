@@ -1,28 +1,31 @@
 # Platform versions and image publication
 
-The tool contract is **1.0.0**. Runtime images **1.0.0** were published from
-reviewed integrated source `fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`.
-The checked-in [runtime-image.json](../runtime-image.json) preserves the actual
-publication receipt; [runtime-profiles.json](../runtime-profiles.json) carries its
-Java image digest with unchanged runner/library hashes. The final source tag and
-affected integration acceptance are separate release gates. The following
-contracts are versioned independently of the tool release:
+The tool contract is **1.0.1**. It adds native-readable JUnit tests/messages,
+execution-limit messages and a bounded expected-outcome summary for submitted tests.
+It preserves raw results, classification, score policies and containment limits.
+Runtime images **1.0.0** were published from reviewed integrated source
+`fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec`.
+The checked-in [runtime-image.json](../runtime-image.json) preserves that historical
+receipt. [runtime-profiles.json](../runtime-profiles.json) identifies the current
+runner/library hashes; `image: null` requires a newly published matching digest.
+Publication records the actual reviewed source and both immutable OCI digests before
+production acceptance. The following contracts are versioned independently:
 
 | Interface | Current contract |
 | --- | --- |
-| `check-course.py inventory/verify` and `grading_job.py` | Tool 1.0.0 |
+| `check-course.py inventory/verify` and `grading_job.py` | Tool 1.0.1 |
 | Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | `schemaVersion: 1`; closed owner schemas in `schemas/` |
-| Resolved project check | Closed `project-check.schema.json`, versioned with tool 1.0.0; no redundant schemaVersion field |
+| Resolved project check | Closed `project-check.schema.json`, versioned with tool 1.0.1; no redundant schemaVersion field |
 | Gateway question/work results | `schemaVersion: 1`; closed owner schemas in `schemas/` |
-| Gateway enrollment, assignment and work launch | Closed named schemas, versioned with tool 1.0.0; assignment `version` is the monotonic grant revision |
+| Gateway enrollment, assignment and work launch | Closed named schemas, versioned with tool 1.0.1; assignment `version` is the monotonic grant revision |
 | Native course registry | `pl-courses-v1` |
 | Image lock | `pl-images-v1`; `image` fields carry published deployment pins, local image IDs are diagnostic |
 | Runtime profiles | `java25-junit-v1` implementation, `java25-mutation-v1` student tests |
 | Java/JUnit | Actual Java release 25; pinned official JUnit console 1.14.1 and JSON simple 1.1.1 |
 
 The runtime registry pins every library/source hash and the runner hash. Both
-profiles share one published Java image and runner SHA256
-`d0c94460f1bd23200cf05aa93bc9c9090126fe624ec38e000be8da96e02d6ce1`.
+profiles share the same runner and libraries; the registry carries their exact hashes.
+The production image must match those hashes, rather than reuse a preceding release pin.
 A registry with `image: null` refuses production verification/staging.
 `PL_LOCAL_IMAGE_ID` permits explicit candidate verification;
 a local image ID cannot substitute for a published repository digest.

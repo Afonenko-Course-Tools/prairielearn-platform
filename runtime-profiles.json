@@ -5,7 +5,7 @@
       "javaRelease": 25,
       "mode": "implementation",
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:c464389a45e5e073b3d11844e23a5c295b4c1c345ca7bc9937618d9abde36bf3",
+      "image": null,
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
@@ -16,13 +16,13 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "d0c94460f1bd23200cf05aa93bc9c9090126fe624ec38e000be8da96e02d6ce1"
+      "runnerSha256": "3e6d45c783e3972aa02c294312244f6f81c284897418954a7653cf64bfe4a051"
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
       "mode": "student-tests",
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:c464389a45e5e073b3d11844e23a5c295b4c1c345ca7bc9937618d9abde36bf3",
+      "image": null,
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
@@ -33,7 +33,7 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "d0c94460f1bd23200cf05aa93bc9c9090126fe624ec38e000be8da96e02d6ce1"
+      "runnerSha256": "3e6d45c783e3972aa02c294312244f6f81c284897418954a7653cf64bfe4a051"
     }
   }
 }
