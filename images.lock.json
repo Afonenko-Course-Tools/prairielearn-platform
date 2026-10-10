@@ -7,12 +7,12 @@
   },
   "javaGrader": {
     "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-    "localImage": "codex-release-java25:publication-containment-final",
-    "localImageId": "sha256:daef89d849a7ac8065910211a6c3d16e39f9793f053bdf434f520129e5f7e6a4",
+    "localImage": "codex-release-java25:native-feedback",
+    "localImageId": "sha256:fcbbf1b7ebf6d9b88d0bfe761bd99ccd27ed1fe589a5343d40ebf05fc292a5e7",
     "status": "Published Java25/JUnit runtime; localImage/localImageId identify the current diagnostic build, while deployment and staging use image",
-    "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:c464389a45e5e073b3d11844e23a5c295b4c1c345ca7bc9937618d9abde36bf3",
-    "sourceCommit": "fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec",
-    "version": "1.0.0"
+    "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:1084c3e254105383d476303a4983d70abef58cb046a4899f05339f1d13c9a9a6",
+    "sourceCommit": "756d9dfb96fcb43cb02d499594a7408d174be16c",
+    "version": "1.0.1"
   },
   "proxy": {
     "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
@@ -21,8 +21,8 @@
   "communityGateway": {
     "baseImage": "docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63",
     "status": "Published production-mode Community bridge; deployment uses this immutable image digest",
-    "image": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:124e1e90f755184f868ed45bfa0d2c48552f154e33cdae8bc757df48abcd92a7",
-    "sourceCommit": "fc5a4d4e9d0795940b8cdf68e30e753ebfd27cec",
-    "version": "1.0.0"
+    "image": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:a1fd72637587782766d8f2f1fd37fad23b8a56ade7f5754b7f2f3bcfda50bc34",
+    "sourceCommit": "756d9dfb96fcb43cb02d499594a7408d174be16c",
+    "version": "1.0.1"
   }
 }
