@@ -48,3 +48,27 @@ class ContainerParity(unittest.TestCase):
   inspection=subprocess.run(['docker','inspect',job.containerName],capture_output=True)
   subprocess.run(['docker','rm','--force',job.containerName],capture_output=True)
   self.assertNotEqual(inspection.returncode,0)
+
+@unittest.skipUnless(os.environ.get('PL_TEST_IMAGE'),'Set PL_TEST_IMAGE to an actual built image ID')
+class MutationRuntimeContainment(unittest.TestCase):
+ setUp=fixtures.MutationJob.setUp
+ setup_mutation=fixtures.MutationJob.setup_mutation
+ def test_shared_adapter_and_libraries_cannot_be_modified_between_variants(self):
+  self.setup_mutation()
+  (self.job/'student/AnswerTest.java').write_text('''import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;
+  public class AnswerTest {@Test void checked() throws Exception {
+   for(String entry:System.getProperty("java.class.path").split(java.io.File.pathSeparator)) {
+    java.nio.file.Path p=java.nio.file.Path.of(entry);
+    if(p.getFileName().toString().equals("adapter")) {
+      try{java.nio.file.Files.writeString(p.getParent().resolve("compiler.jsa"),"tampered");fail("compiler archive writable");}catch(java.nio.file.AccessDeniedException expected){}
+    }
+    if(java.nio.file.Files.isDirectory(p))p=p.resolve("PlatformJUnitAdapter.class");
+    try{java.nio.file.Files.writeString(p,"tampered");fail("classpath writable: "+entry);}catch(java.nio.file.AccessDeniedException expected){}
+   }
+   assertEquals(42,Student.answer());
+  }}''')
+  (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
+  p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=30)
+  self.assertEqual(p.returncode,0,p.stderr);r=json.loads((self.job/'results/results.json').read_text());self.assertEqual(r['score'],1,r)
+  self.assertEqual(r['variants']['correct']['containment'],'official-landlock-sbuser')
+  self.assertEqual(r['variants']['wrong']['durations']['runnerCompilation'],0)
