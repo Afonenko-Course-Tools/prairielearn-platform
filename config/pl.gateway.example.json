@@ -1,0 +1,6 @@
+{
+  "listenHost": "0.0.0.0",
+  "listenPort": 3001,
+  "tokenFile": "/run/secrets/pl-gateway-token",
+  "bindings": [{"deliveryPath": "/course-deliveries/approved", "courseInstanceId": "1"}]
+}

@@ -89,3 +89,8 @@ Landlock and root-owned read-only compiled classpath. Actual tests verify denied
 proc reads/trusted writes and unprivileged child processes. Host execution is
 explicitly diagnostic. These tested boundaries do not prove containment against
 all adversarial reflection within the same JVM.
+
+The private Community assignment/results bridge is documented in
+[community-gateway-bridge.md](docs/community-gateway-bridge.md). It uses native
+enrollment/label models and actual Student sessions; its local image and bounded
+spike evidence are separate from production Gateway/AGS release acceptance.
