@@ -71,7 +71,11 @@ Close the browser before installing into its existing database. Use your actual
 absolute user/profile paths. For example, a shared Linux NSS database:
 
 ```sh
-TASK_NSS_DB="$HOME/.pki/nssdb"
+if [ -d "$HOME/.pki/nssdb" ]; then
+  TASK_NSS_DB="$HOME/.pki/nssdb"
+else
+  TASK_NSS_DB="$HOME/.local/share/pki/nssdb"
+fi
 python3 tools/dev-tls.py trust --directory "$DEV_TLS_DIR" \
   --store nss --nss-db "$TASK_NSS_DB" --action plan
 python3 tools/dev-tls.py trust --directory "$DEV_TLS_DIR" \
@@ -82,7 +86,7 @@ python3 tools/dev-tls.py trust --directory "$DEV_TLS_DIR" \
 
 Firefox may use a different database. Set `--store firefox --firefox-root
 "$HOME/.mozilla/firefox"` to read its `profiles.ini`, or select only initialized
-profiles with repeated `--store nss --nss-db /absolute/profile` options. Missing
+profiles by running a separate `--store nss --nss-db /absolute/profile` command for each. Missing
 `cert9.db` is reported and never created; initialize your intended browser profile
 normally or choose its actual initialized database. Trust is SSL-only (`C,,`).
 Matching certificates are reused by fingerprint regardless of their existing NSS
@@ -118,3 +122,5 @@ Tests, using synthetic private material and temporary real NSS/system roots:
 python3 -m unittest discover -s tests -p test_dev_tls.py -v
 sh -n tools/make-dev-tls.sh
 ```
+
+See the [LAN/Proxmox deployment guide](proxmox-lan-tls.md), [Moodle PHP TLS client setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1), and [student Windows/macOS/Linux guide](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8).

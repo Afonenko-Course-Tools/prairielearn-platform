@@ -94,3 +94,7 @@ The private Community assignment/results bridge is documented in
 [community-gateway-bridge.md](docs/community-gateway-bridge.md). It uses native
 enrollment/label models and actual Student sessions; its local image and bounded
 spike evidence are separate from production Gateway/AGS release acceptance.
+
+## Local TLS and future LAN deployment
+
+Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.

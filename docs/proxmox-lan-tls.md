@@ -94,7 +94,8 @@ deployment ID, URL авторизации, token endpoint и JWKS** в конф�
 vm_ip=192.0.2.20                 # заменить реальным выделенным IP VM
 tls_dir=/srv/course/tls         # отдельный закрытый каталог вне Git
 umask 077
-mkdir -p "$tls_dir/request"
+mkdir -p "$tls_dir"
+mkdir -m 700 "$tls_dir/request" # fails if a previous request directory exists
 openssl req -new -newkey rsa:3072 -noenc \
   -keyout "$tls_dir/request/server.key" \
   -out "$tls_dir/request/server.csr" \
@@ -230,3 +231,5 @@ Proxmox использует custom-файлы `/etc/pve/local/pveproxy-ssl.pem`
 
 Официальные источники проверены 10 октября 2026 года. Перед рабочим развёртыванием
 сверьте параметры с установленными версиями Proxmox, Moodle, Nginx и OpenSSL.
+
+Related local-development tools: [repeatable CachyOS TLS setup](local-tls.md). Student client instructions: [Windows/macOS/Linux PR](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8).
