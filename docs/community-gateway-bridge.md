@@ -109,7 +109,7 @@ bearer. `administratorUid` в private bridge config по умолчанию null
 `administrators` запись с native audit, используя тот же pinned table contract,
 что native administrator UI. Повторный вызов не создаёт дубликат и не добавляет
 новую audit запись. Ответ содержит schemaVersion1, тот же userUid,
-administrator=true и единственный путь `/pl/administrator/`.
+administrator=true и единственный путь `/pl/administrator/courses`.
 
 Публичный proxy не публикует этот endpoint. Права полные, на всю платформу,
 по явному решению пользователя; Moodle Instructor сам по себе их не даёт.

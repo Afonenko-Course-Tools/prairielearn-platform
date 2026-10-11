@@ -8,7 +8,7 @@ resource "proxmox_download_file" "ubuntu" {
   checksum_algorithm = "sha256"
   # The signed image is immutable and cached on Proxmox. Future plans must not
   # require the temporary bootstrap URL to remain reachable.
-  overwrite          = false
+  overwrite = false
   lifecycle { prevent_destroy = true }
 }
 
