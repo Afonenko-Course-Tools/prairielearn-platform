@@ -99,3 +99,19 @@ Earlier attempts are excluded even if a transaction began before the prior grant
 Duplicate retries retain the committed activation time and reconcile label drift.
 The process rejects NODE_ENV other than production, devMode true, or hasShib false
 before database initialization or listener startup.
+
+## Явный bootstrap единственного администратора
+
+`PUT /internal/gateway/administrator` принимает только `{userUid}` и сервисный
+bearer. `administratorUid` в private bridge config по умолчанию null.
+Разрешён только exact Gateway UID владельца; пользователя сначала создаёт
+проверенный handoff в native PL. Сервер ищет actual user ID и создаёт
+`administrators` запись с native audit, используя тот же pinned table contract,
+что native administrator UI. Повторный вызов не создаёт дубликат и не добавляет
+новую audit запись. Ответ содержит schemaVersion1, тот же userUid,
+administrator=true и единственный путь `/pl/administrator/`.
+
+Публичный proxy не публикует этот endpoint. Права полные, на всю платформу,
+по явному решению пользователя; Moodle Instructor сам по себе их не даёт.
+Это исключение из прежнего ограничения teacher-only Gateway; обычные teachers
+по-прежнему не получают native staff/admin автоматически.

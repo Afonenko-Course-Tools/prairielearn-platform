@@ -34,6 +34,20 @@
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
       "runnerSha256": "3e6d45c783e3972aa02c294312244f6f81c284897418954a7653cf64bfe4a051"
+    },
+    "fish-git-v1": {
+      "mode": "implementation",
+      "sourceExtensions": [
+        ".fish"
+      ],
+      "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
+      "image": null,
+      "bundle": "runtime/fish-git-v1",
+      "runner": "images/fish-git-grader/grade.py",
+      "runnerSha256": "afbc91c643306cef74c2fdbe8fadcc4de91b4177ff10a21a6e1fe427fc9396d3",
+      "files": {
+        "supervisor.py": "d7aa7ab5e721b4b55cb604d77a633c41fb294b540420dfc8230a47d52ccb2ee3"
+      }
     }
   }
 }

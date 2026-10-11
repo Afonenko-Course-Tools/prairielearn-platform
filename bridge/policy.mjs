@@ -4,6 +4,12 @@ export class BridgeError extends Error {
     this.status = status;
   }
 }
+export function authorizeAdministrator(requested, configured) {
+  const identities = Array.isArray(configured) ? configured : [configured];
+  if (!identities.length || identities.some(uid => typeof uid !== 'string' || !/^gw-[a-f0-9]{64}@example\.invalid$/.test(uid)) || !identities.includes(requested))
+    throw new BridgeError(403, 'Explicit administrator identity required');
+  return requested;
+}
 const fail = (message) => {
   throw new BridgeError(409, message);
 };

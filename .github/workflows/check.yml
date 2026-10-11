@@ -17,6 +17,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: Установить fish для проверки текстового runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fish
+      - name: Проверить native bridge и fail-closed patches
+        run: |
+          node --test tests/bridge/*.test.mjs
+          python3 tests/bridge/cookie-domain.test.py
+          python3 tests/bridge/grader-patch.test.py
       - name: Actual Java runtime and synthetic contracts
         run: |
           java -version

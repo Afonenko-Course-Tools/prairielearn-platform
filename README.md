@@ -110,3 +110,9 @@ remain unchanged. `runtime-profiles.json` pins both profiles to the emitted Java
 digest and reviewed runner/library hashes; `images.lock.json` records these current
 deployment pins. Final release acceptance uses matching source and registry receipts;
 local image IDs identify diagnostic builds, separately from the published digests.
+
+## Серверный пилот и дополнительные runtime
+
+[Proxmox, Ansible и обновление одного курса](docs/proxmox-pilot.md) описывают
+production стенд с двумя native-курсами. [Текстовый fish runtime](docs/fish-text-runtime.md)
+использует проверки из репозитория курса; его опубликованный image пока не назначен.

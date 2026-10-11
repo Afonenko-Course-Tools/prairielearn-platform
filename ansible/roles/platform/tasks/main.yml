@@ -1,0 +1,137 @@
+- name: Создать постоянные каталоги
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  loop:
+    - /etc/prairielearn/private
+    - /var/lib/prairielearn/jobs
+    - /var/lib/prairielearn/images
+    - '{{ pl_release_dir }}'
+
+- name: Создать readonly каталог поставок
+  ansible.builtin.file:
+    path: '{{ pl_course_dir }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Создать постоянный SQLite каталог
+  ansible.builtin.file:
+    path: /var/lib/prairielearn/gateway
+    state: directory
+    owner: '1000'
+    group: '1000'
+    mode: '0700'
+
+- name: Доставить исходники deployment
+  ansible.builtin.copy:
+    src: '{{ pl_source_dir }}/{{ item }}/'
+    dest: '{{ pl_release_dir }}/{{ item }}/'
+    mode: preserve
+  loop: [compose, proxy]
+  register: pl_code
+
+- name: Создать каталог startup helper
+  ansible.builtin.file:
+    path: '{{ pl_release_dir }}/tools'
+    state: directory
+    mode: '0755'
+
+- name: Доставить startup helper без локальных cache файлов
+  ansible.builtin.copy:
+    src: '{{ pl_source_dir }}/tools/{{ item }}'
+    dest: '{{ pl_release_dir }}/tools/{{ item }}'
+    mode: '0755'
+  loop: [start-pl.sh, sync-native-course.mjs, course-sync-policy.mjs]
+  register: pl_startup
+
+- name: Доставить immutable course
+  ansible.builtin.copy:
+    src: '{{ pl_course_source }}/'
+    dest: '{{ pl_course_dir }}/'
+    mode: '0644'
+    directory_mode: '0755'
+  register: pl_course
+
+- name: Разрешить readonly потребителям читать поставки курса
+  ansible.builtin.file:
+    path: '{{ pl_course_dir }}'
+    recurse: true
+    mode: 'u=rwX,go=rX'
+
+- name: Доставить private runtime
+  ansible.builtin.copy:
+    src: '{{ pl_private_source }}/'
+    dest: /etc/prairielearn/private/
+    mode: preserve
+  no_log: true
+  register: pl_config
+
+- name: Разрешить чтение Gateway своего private каталога
+  ansible.builtin.file:
+    path: /etc/prairielearn/private/gateway
+    owner: '1000'
+    group: '1000'
+    recurse: true
+  no_log: true
+
+- name: Доставить runtime environment
+  ansible.builtin.copy:
+    src: '{{ pl_runtime_env_source }}'
+    dest: '{{ pl_release_dir }}/runtime.env'
+    mode: '0600'
+  no_log: true
+  register: pl_env
+
+- name: Проверить наличие exact images
+  ansible.builtin.command:
+    argv: [docker, image, inspect, '{{ item }}']
+  loop: '{{ pl_image_ids }}'
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  register: pl_images_present
+  no_log: true
+
+- name: Доставить проверенный image archive при отсутствии image
+  ansible.builtin.copy:
+    src: '{{ pl_images_archive }}'
+    dest: /var/lib/prairielearn/images/runtime.tar
+    mode: '0600'
+  when: pl_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
+
+- name: Загрузить image archive
+  ansible.builtin.command:
+    argv: [docker, load, -i, /var/lib/prairielearn/images/runtime.tar]
+  when: pl_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
+  register: pl_images_loaded
+
+- name: Проверить runtime Compose
+  ansible.builtin.command:
+    argv: [docker, compose, --env-file, '{{ pl_release_dir }}/runtime.env', -f, '{{ pl_release_dir }}/compose/compose.prod.yml', config, --quiet]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Установить управляемую службу
+  ansible.builtin.template:
+    src: prairielearn.service.j2
+    dest: /etc/systemd/system/prairielearn.service
+    mode: '0644'
+  register: pl_service
+
+- name: Применить deployment
+  ansible.builtin.command:
+    argv: [docker, compose, --env-file, '{{ pl_release_dir }}/runtime.env', -f, '{{ pl_release_dir }}/compose/compose.prod.yml', up, -d, --force-recreate]
+  when: not ansible_check_mode and (pl_code.changed or pl_startup.changed or pl_course.changed or pl_config.changed or pl_env.changed or pl_service.changed or pl_images_loaded is changed)
+
+- name: Включить запуск после reboot
+  ansible.builtin.systemd_service:
+    name: prairielearn
+    daemon_reload: '{{ pl_service.changed }}'
+    enabled: true
+    state: started
+  when: not ansible_check_mode

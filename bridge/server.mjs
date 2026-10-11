@@ -9,6 +9,7 @@ import {
   canonicalJSONString as canonical,
   validateBindings,
   assertProductionRuntime,
+  authorizeAdministrator,
 } from './policy.mjs';
 const root = process.env.PL_ROOT ?? '/PrairieLearn';
 const native = (path) => import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
@@ -35,6 +36,7 @@ const settingsSchema = z.strictObject({
   listenHost: z.string(),
   listenPort: z.number().int().min(1).max(65535),
   tokenFile: z.string(),
+  administratorUid: z.union([z.string().regex(/^gw-[a-f0-9]{64}@example\.invalid$/), z.array(z.string().regex(/^gw-[a-f0-9]{64}@example\.invalid$/)).min(1)]).nullable().default(null),
   bindings: z
     .array(
       z.strictObject({
@@ -464,6 +466,14 @@ async function workLaunch(request) {
   };
 }
 const enrollmentQuerySchema = workQuerySchema.omit({ workId: true });
+async function grantAdministrator(request) {
+  const uid = authorizeAdministrator(request.userUid, settings.administratorUid);
+  const user = await users.selectOptionalUserByUid(uid);
+  if (!user) throw new BridgeError(404, 'Verified user must exist');
+  const answer = await db.queryRow(sql.grant_administrator, {uid, user_id: user.id}, z.object({administrator: z.boolean()}));
+  if (!answer.administrator) throw new BridgeError(409, 'Administrator bootstrap failed');
+  return {schemaVersion:1, userUid:uid, administrator:true, path:'/pl/administrator/courses'};
+}
 async function enrollBasic(request) {
   const { ci, user } = await context(request, false);
   return db.runInTransactionAsync(async () => {
@@ -542,6 +552,9 @@ const server = createServer(async (req, res) => {
       if ([...url.searchParams.keys()].length)
         throw new BridgeError(400, 'Unexpected enrollment query');
       answer = await enrollBasic(await readBody(req, enrollmentQuerySchema));
+    } else if (req.method === 'PUT' && url.pathname === '/internal/gateway/administrator') {
+      if ([...url.searchParams.keys()].length) throw new BridgeError(400, 'Unexpected administrator query');
+      answer = await grantAdministrator(await readBody(req, z.strictObject({userUid:z.string().min(1).max(512)})));
     } else throw new BridgeError(404, 'Unknown route');
     res
       .writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })

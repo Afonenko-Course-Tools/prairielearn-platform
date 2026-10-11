@@ -1,0 +1,15 @@
+- name: Проверить nginx configuration
+  ansible.builtin.command:
+    argv: [docker, compose, --env-file, '{{ pl_release_dir }}/runtime.env', -f, '{{ pl_release_dir }}/compose/compose.prod.yml', exec, -T, proxy, nginx, -t]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Проверить HTTPS с доверенным CA
+  ansible.builtin.command:
+    argv: [curl, --fail, --silent, --show-error, --cacert, /etc/prairielearn/private/tls/ca.crt, 'https://{{ ansible_host }}/healthz']
+  changed_when: false
+  register: pl_https
+  retries: 12
+  delay: 5
+  until: pl_https.rc == 0
+  when: not ansible_check_mode

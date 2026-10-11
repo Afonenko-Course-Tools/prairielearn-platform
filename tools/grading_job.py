@@ -55,7 +55,7 @@ def runtime_evidence(runtime,registry=None):
     if actual!=set(profile['files']):raise JobError('Runtime dependency closure changed')
     for name,sha in profile['files'].items():
         if hashlib.sha256(safe(bundle,name).read_bytes()).hexdigest()!=sha:raise JobError('Runtime dependency checksum changed')
-    runner=hashlib.sha256((ROOT/'images/java25-grader/grade.py').read_bytes()).hexdigest()
+    runner=hashlib.sha256(safe(ROOT,profile.get('runner','images/java25-grader/grade.py')).read_bytes()).hexdigest()
     if runner!=profile['runnerSha256']:raise JobError('Runtime runner checksum changed')
     files={**profile['files'],'runner/grade.py':runner}
     return {'dependencyHashes':files,'dependencyHash':digest(files)}
@@ -142,6 +142,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
     grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
     if 'variants' in check:grading['variants']=check['variants']
     runtime=json.loads((ROOT/'runtime-profiles.json').read_text())['profiles'][check['runtime']]
+    if check['runtime']=='fish-git-v1': grading.pop('java')
     expectations=case[0]['expected'] if scenario.startswith('contract:') else check.get('verification-expectations',{}).get('reference' if scenario.startswith('reference:') else 'starter',{})
     job=GradingJob(schemaVersion=1,scope=scope,qualifiedId=id,scenario=scenario,sourceSnapshotHash=manifest['sourceSnapshotHash'],inventoryHash=manifest['inventoryHash'],runtime=check['runtime'],imageDigest=runtime['image'] or os.environ.get('PL_LOCAL_IMAGE_ID'),sources=selected,trustedTests=tests,verificationTests=public,grading=grading,expectations=expectations,sourceHashes={x['projectRelativePath']:x['sha256'] for x in selected},testsHashes={x['projectRelativePath']:x['sha256'] for x in [*tests,*public]})
     if scope=='delivery':
@@ -190,7 +191,8 @@ def run_job(job,backend='host'):
     if 'deliveryHash' in job:common['deliveryHash']=job['deliveryHash']
     try:
         if backend=='host':
-            spec=importlib.util.spec_from_file_location('platform_grader',ROOT/'images/java25-grader/grade.py');grader=importlib.util.module_from_spec(spec);spec.loader.exec_module(grader)
+            profile=load_runtime_registry()['profiles'][job['runtime']]
+            spec=importlib.util.spec_from_file_location('platform_grader',safe(ROOT,profile.get('runner','images/java25-grader/grade.py')));grader=importlib.util.module_from_spec(spec);spec.loader.exec_module(grader)
             try:result=grader.grade(job.root)
             except grader.GraderError as error:raise JobError(str(error)) from error
         elif backend=='container':

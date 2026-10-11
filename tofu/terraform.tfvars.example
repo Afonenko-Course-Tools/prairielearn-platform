@@ -1,0 +1,9 @@
+proxmox_endpoint          = "https://192.0.2.10:8006/"
+proxmox_ssh_address       = "192.0.2.10"
+proxmox_ssh_key_path      = "/absolute/private/operator-key"
+admin_ssh_public_key_path = "/absolute/private/operator-key.pub"
+node_name                = "pve"
+vm_id                    = 200
+vm_ipv4_cidr             = "192.0.2.20/24"
+vm_ipv4_gateway          = "192.0.2.1"
+dns_servers              = ["192.0.2.1"]

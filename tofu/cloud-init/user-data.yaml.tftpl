@@ -1,0 +1,22 @@
+#cloud-config
+hostname: ${hostname}
+manage_etc_hosts: true
+ssh_pwauth: false
+disable_root: true
+users:
+  - name: ${ssh_user}
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${jsonencode(public_key)}
+package_update: true
+%{ if apt_proxy != "" ~}
+apt:
+  http_proxy: ${jsonencode(apt_proxy)}
+  https_proxy: ${jsonencode(apt_proxy)}
+%{ endif ~}
+packages: [qemu-guest-agent, ca-certificates, curl, python3]
+runcmd:
+  - [systemctl, enable, qemu-guest-agent]
