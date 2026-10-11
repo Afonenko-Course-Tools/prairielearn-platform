@@ -6,6 +6,9 @@ resource "proxmox_download_file" "ubuntu" {
   url                = var.cloud_image_url
   checksum           = "8800651811af9a85465ad1d552add729947bb16488dddb4a9b5305a3d97332b2"
   checksum_algorithm = "sha256"
+  # The signed image is immutable and cached on Proxmox. Future plans must not
+  # require the temporary bootstrap URL to remain reachable.
+  overwrite          = false
   lifecycle { prevent_destroy = true }
 }
 
