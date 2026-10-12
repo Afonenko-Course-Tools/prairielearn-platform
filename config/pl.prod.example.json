@@ -1,0 +1,10 @@
+{
+  "devMode": false,
+  "hostname": "192.0.2.20",
+  "cookieDomain": null,
+  "hasShib": true,
+  "coursesRoot": "/course",
+  "databaseEncryptionKey": "REPLACE_WITH_PRIVATE_RANDOM_KEY",
+  "externalGradingUseAws": false,
+  "externalGradingPullImagesFromDockerHub": false
+}

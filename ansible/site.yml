@@ -1,0 +1,22 @@
+- name: Отдельная PrairieLearn VM
+  hosts: prairielearn
+  become: true
+  gather_facts: true
+  pre_tasks:
+    - name: Проверить ОС и явные приватные входы
+      tags: [always]
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Ubuntu'
+          - ansible_distribution_version == '26.04'
+          - pl_release_dir is match('^/srv/prairielearn/releases/')
+          - pl_source_dir is match('^/')
+          - pl_course_source is match('^/')
+          - pl_private_source is match('^/')
+  roles:
+    - role: docker
+      tags: [bootstrap]
+    - role: platform
+      tags: [deployment]
+    - role: proxy
+      tags: [deployment]

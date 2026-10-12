@@ -46,7 +46,8 @@
     "runtime": {
       "enum": [
         "java25-junit-v1",
-        "java25-mutation-v1"
+        "java25-mutation-v1",
+        "fish-git-v1"
       ]
     },
     "java": {

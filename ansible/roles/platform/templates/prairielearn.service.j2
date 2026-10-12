@@ -1,0 +1,15 @@
+[Unit]
+Description=PrairieLearn и Moodle Gateway
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ pl_release_dir }}
+ExecStart=/usr/bin/docker compose --env-file {{ pl_release_dir }}/runtime.env -f {{ pl_release_dir }}/compose/compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file {{ pl_release_dir }}/runtime.env -f {{ pl_release_dir }}/compose/compose.prod.yml stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

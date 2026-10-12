@@ -75,10 +75,12 @@ a defense assignment slot. Joined enrollment and native Student publishing/asses
 access resolver authorize the read. The resolver always uses ordinary Student roles;
 there is no staff override. Modern individual assessments are supported; other access
 models fail closed. `schemas/gateway-work-results.schema.json` has the same scoped
-per-question result core, without assignmentId/version, plus native current attempt
+per-slot result core v2, without assignmentId/version, plus native current attempt
 `scoreGiven` (points) and `scoreMaximum` (max_points). These preserve declared weighted
 grades; Gateway must not infer aggregate weights from question counts. An unattempted
-work has null attempt/aggregate values. Reads perform no enrollment/label writes.
+work has state:not-started, null attempt/aggregate values and empty slots; completion
+requiredCount/atLeast remains bound to delivery. Started results contain exactly one
+selected instance_question per slot from the captured native assessment instance. Reads perform no enrollment/label writes.
 
 `GET /internal/gateway/work-launch` uses the same scoped query. It returns only
 workId, userUid, instance, deliveryHash and a native server-derived assessment path.
@@ -99,3 +101,35 @@ Earlier attempts are excluded even if a transaction began before the prior grant
 Duplicate retries retain the committed activation time and reconcile label drift.
 The process rejects NODE_ENV other than production, devMode true, or hasShib false
 before database initialization or listener startup.
+
+## Явный bootstrap единственного администратора
+
+`PUT /internal/gateway/administrator` принимает только `{userUid}` и сервисный
+bearer. `administratorUid` в private bridge config по умолчанию null.
+Разрешён только exact Gateway UID владельца; пользователя сначала создаёт
+проверенный handoff в native PL. Сервер ищет actual user ID и создаёт
+`administrators` запись с native audit, используя тот же pinned table contract,
+что native administrator UI. Повторный вызов не создаёт дубликат и не добавляет
+новую audit запись. Ответ содержит schemaVersion1, тот же userUid,
+administrator=true и единственный путь `/pl/administrator/courses`.
+
+Публичный proxy не публикует этот endpoint. Права полные, на всю платформу,
+по явному решению пользователя; Moodle Instructor сам по себе их не даёт.
+Это исключение из прежнего ограничения teacher-only Gateway; обычные teachers
+по-прежнему не получают native staff/admin автоматически.
+
+## Позиции и native выбор: версия2
+
+Platform2.0.0 принимает только native delivery2: work.slots с полным набором
+candidates, completion required-slot-completion/per-slot-results-v2. Bridge
+сверяет каждую native alternative group по точному набору кандидатов. Random
+требует number_choose1; singleton fixed допускает штатный NULL либо1. Выбор
+подмножества зоны не поддерживается. Проверяются также лишние/неполные группы.
+
+Результаты читаются из instance_questions захваченного assessment_instance_id,
+включая обычные singleton позиции. `started` содержит ровно один выбранный
+вопрос каждой позиции и currentAttempt.id/number. Пропавший, чужой, множественный
+или принадлежащий другой попытке выбор отклоняется. `not-started` возвращает
+null attempt и пустые slots: completedRequired0, requiredCount/atLeast из delivery.
+Совершенный результат требует complete, score1, points=maxPoints>0. Не выбранные
+альтернативы не выдаются как пропущенные и не увеличивают знаменатель.

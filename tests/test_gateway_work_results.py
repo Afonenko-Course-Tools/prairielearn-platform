@@ -60,7 +60,7 @@ class OrdinaryLabResults(unittest.TestCase):
     def test_native_weighted_grade_preserved(self):
         status,result=self.read();self.assertEqual(status,200)
         self.assertEqual((result['scoreGiven'],result['scoreMaximum']),(6,8))
-        self.assertNotEqual(result['scoreGiven']/result['scoreMaximum'],sum(q['score'] for q in result['questions'])/len(result['questions']))
+        self.assertNotEqual(result['scoreGiven']/result['scoreMaximum'],sum(q['score'] for q in result['slots'])/len(result['slots']))
 
     def test_assigned_defense_launch_uses_current_native_journal(self):
         status,result=self.launch(**self.f['assignedDefenseQuery']);self.assertEqual(status,200)

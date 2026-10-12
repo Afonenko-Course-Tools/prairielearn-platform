@@ -86,6 +86,8 @@ def validate_uuids_and_assessments(course, questions):
     def visit(question):
         if not isinstance(question, dict):
             raise BuildError('Assessment question must be an object')
+        if 'id' in question and 'alternatives' in question:raise BuildError('id and alternatives cannot coexist')
+        if 'alternatives' in question and question.get('numberChoose')!=1:raise BuildError('A random slot requires numberChoose1')
         if 'id' in question:
             if not isinstance(question['id'], str) or question['id'] not in questions:
                 raise BuildError(f'Assessment refers to an absent question: {question["id"]}')
@@ -93,7 +95,7 @@ def validate_uuids_and_assessments(course, questions):
             raise BuildError('Assessment question requires an id or alternatives')
         if 'alternatives' in question:
             alternatives = question['alternatives']
-            if not isinstance(alternatives, list) or not alternatives:
+            if not isinstance(alternatives, list) or len(alternatives)<2:
                 raise BuildError('Question alternatives must be a nonempty list')
             for alternative in alternatives:
                 visit(alternative)
@@ -104,6 +106,7 @@ def validate_uuids_and_assessments(course, questions):
         for zone in zones:
             if not isinstance(zone, dict) or not isinstance(zone.get('questions'), list):
                 raise BuildError(f'Assessment zone requires a questions list: {path}')
+            if zone.get('numberChoose') is not None:raise BuildError('Zone subset selection is unsupported')
             for question in zone['questions']:
                 visit(question)
 
@@ -118,7 +121,7 @@ def publish_directory(source, destination):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None) -> None:
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
@@ -134,12 +137,13 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     with tempfile.TemporaryDirectory(prefix='.pl-full-export-',dir=output.parent) as tmp:
         stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
         command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
+        if candidate_image:command+=['--candidate-image',candidate_image]
         try:subprocess.run(command,cwd=source,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
         files=tree(native)
         if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
         delivery=read_json(native/'delivery.json');manifest=read_json(checks)
-        if delivery.get('schemaVersion')!=1 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
+        if delivery.get('schemaVersion')!=2 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
         validate_uuids_and_assessments(native,delivery['questions'])
         provenance={'schema':'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':{'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
         write_json(native/'provenance.json',provenance)
@@ -156,7 +160,7 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);args=parser.parse_args()
-    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image)
     except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
 if __name__=='__main__':main()

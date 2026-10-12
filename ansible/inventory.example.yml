@@ -1,0 +1,17 @@
+all:
+  children:
+    prairielearn:
+      hosts:
+        pilot:
+          ansible_host: 192.0.2.20
+          ansible_user: pladmin
+          ansible_ssh_private_key_file: /absolute/private/operator-key
+      vars:
+        pl_source_dir: /absolute/platform-checkout
+        pl_release_dir: /srv/prairielearn/releases/REVIEWED_SOURCE_SHA
+        pl_course_source: /absolute/verified-native-courses
+        pl_course_dir: /srv/prairielearn/courses
+        pl_private_source: /absolute/private/runtime
+        pl_runtime_env_source: /absolute/private/runtime.env
+        pl_images_archive: /absolute/private/images.tar
+        pl_image_ids: []

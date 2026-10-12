@@ -51,7 +51,7 @@ class CourseStorageTests(unittest.TestCase):
         (q/'tests/grading-job.json').write_text(json.dumps(cfg))
         scenarios=[{'qualifiedId':qid,'scenario':name,'optional':False} for name in ['contract:counterexample','reference:default','starter']]
         files={name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in ['infoCourse.json','questions/'+qid+'/info.json','questions/'+qid+'/tests/grading-job.json']}
-        delivery={'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':[qid],'verificationInventoryHash':digest(scenarios),'files':files}
+        delivery={'schemaVersion':2,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':[qid],'verificationInventoryHash':digest(scenarios),'files':files}
         delivery['deliveryHash']=digest(delivery)
         (self.repo/'delivery.json').write_text(json.dumps(delivery))
         results=[]
@@ -93,6 +93,19 @@ class CourseStorageTests(unittest.TestCase):
         with self.assertRaises(self.module.StorageError):self.stage()
     def test_two_course_ids_keep_separate_storage(self):
         first=self.stage();self.course['id']='course-b';self.course['mount']='/course2';second=self.stage();self.assertNotEqual(first,second);self.assertTrue(first.is_dir());self.assertTrue(second.is_dir())
+    def test_registry_upgrade_one_course_preserves_other_pin_and_payload(self):
+        a=dict(self.course);b=dict(self.course,id='course-b',mount='/course2')
+        registry={'schema':'pl-courses-v1','courses':[a,b]}
+        images=self.module.builder.read_json(SCRIPT.parents[1]/'images.lock.json')
+        first=self.module.stage_registry(registry,images,self.storage)
+        original=(Path(first['services']['pl']['volumes'][0]['source'])/'infoCourse.json').read_bytes()
+        (self.repo/'infoCourse.json').write_text('{"name":"SYN2"}\n');self.update_provenance();self.git('add','.');self.git('commit','-qm','Only B upgraded');self.git('update-server-info')
+        b['commit']=self.git('rev-parse','HEAD')
+        second=self.module.stage_registry(registry,images,self.storage)
+        self.assertEqual(first['services']['pl']['volumes'][0],second['services']['pl']['volumes'][0])
+        self.assertEqual((Path(second['services']['pl']['volumes'][0]['source'])/'infoCourse.json').read_bytes(),original)
+        self.assertNotEqual(first['services']['pl']['volumes'][1]['source'],second['services']['pl']['volumes'][1]['source'])
+        self.assertTrue(Path(first['services']['pl']['volumes'][1]['source']).exists())
     def test_symlink_storage_parent_is_refused(self):
         (self.storage/'course-a').symlink_to(self.repo)
         with self.assertRaises(self.module.StorageError):self.stage()

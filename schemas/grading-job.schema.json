@@ -357,7 +357,6 @@
         "testFiles",
         "mode",
         "runtime",
-        "java",
         "limits",
         "scoring",
         "discovery"
@@ -385,7 +384,10 @@
           "else": {
             "properties": {
               "runtime": {
-                "const": "java25-junit-v1"
+                "enum": [
+                  "java25-junit-v1",
+                  "fish-git-v1"
+                ]
               }
             },
             "not": {
@@ -395,6 +397,30 @@
                     "variants"
                   ]
                 }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "java25-mutation-v1"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "java"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "java"
               ]
             }
           }
