@@ -101,26 +101,18 @@ bounded spike evidence are recorded separately from final Gateway/AGS release ac
 Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
 
 Версии контрактов и проверенный порядок публикации описаны в
-[releasing.md](docs/releasing.md). Checked-in [runtime-image.json](runtime-image.json)
-свидетельствует о прежнем выпуске1.0.1 из исходника
-`756d9dfb96fcb43cb02d499594a7408d174be16c` с Java/Community digests.
-Текущий Tool2.0.0 сохраняет native-readable feedback, raw grading results и
-containment; delivery/results используют позиции v2. Новый publisher выпускает
-отдельные Java/Community/fish образы и receipt v2 с их фактическими digests.
-До успешной новой публикации прежние pins не обозначают текущий образ.
-Локальные config IDs предназначены для диагностической проверки кандидата.
+[releasing.md](docs/releasing.md). [runtime-image.json](runtime-image.json) закрепляет фактический исходный commit сборки и опубликованные Java/Community/fish digests версии 2.0.0. Delivery/results v2 описывают позиции работы. [runtime-profiles.json](runtime-profiles.json) связывает профили с соответствующими образами. Локальные config IDs позволяют сверить загруженные образы; production использует опубликованные digest pins.
 
 ## Серверный пилот и дополнительные runtime
 
 [Proxmox, Ansible и обновление одного курса](docs/proxmox-pilot.md) описывают
 production стенд с двумя native-курсами. [Текстовый fish runtime](docs/fish-text-runtime.md)
-использует проверки из репозитория курса; его опубликованный image пока не назначен.
+использует проверки из репозитория курса. Опубликованный image закреплён в runtime registry и release receipt.
 
-## Текущий контракт2
+## Текущий контракт v2
 
-Версия2.0.0 (`VERSION`) использует delivery/results v2 и случайные позиции;
+Версия 2.0.0 (`VERSION`) использует delivery/results v2 и случайные позиции;
 прежние transports отклоняются до операций sync/Bridge. Все кандидаты позиции
 проверяются и сохраняются в delivery. Порядок сборки трёх собственных образов,
 соответствие runtime-профилей и registry receipts описаны в [выпуске](docs/releasing.md).
-Новый выпуск требует фактических digests; старые published pins не обозначают
-образ с текущим candidate кодом.
+Каждая следующая версия требует новых фактических digests и полного порядка выпуска; прежние pins не перезаписываются.

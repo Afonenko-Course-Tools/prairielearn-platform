@@ -18,13 +18,13 @@
 | Java/JUnit | Java25, JUnit console1.14.1, JSON simple1.1.1 |
 
 Registry закрепляет runner и полный набор зависимостей по hash. Образ должен
-соответствовать этому набору. Проверенная версия опубликованных metadata
-[runtime-image.json](../runtime-image.json), [runtime-profiles.json](../runtime-profiles.json)
-и [images.lock.json](../images.lock.json) пока свидетельствует о предыдущем выпуске
-1.0.1 из исходника756d9dfb96fcb43cb02d499594a7408d174be16c
-([успешная публикация](https://github.com/Afonenko-Course-Tools/prairielearn-platform/actions/runs/38061254263)).
-Эти pins не обозначают образ текущих исходников2.0.0. Их заменяют только полученными
-после успешной публикации фактическими digests.
+ соответствовать этому набору. [runtime-image.json](../runtime-image.json)
+ содержит фактический исходный commit сборки и опубликованные OCI digests версии
+ 2.0.0; [runtime-profiles.json](../runtime-profiles.json) связывает каждый профиль
+ с соответствующим образом. [images.lock.json](../images.lock.json) закрепляет
+ базы и служебные образы. Source tag может включать следующий commit с metadata;
+ различие исходников сборки и итогового tag должно ограничиваться metadata и
+ документацией, с сохранением runner/library hashes.
 
 ## Диагностическая проверка кандидата
 
@@ -60,7 +60,7 @@ Candidate не допускается к staging независимо от ус�
    заканчиваются до pushes. Затем отдельно публикует три образа и получает их
    repository@sha256 digests; каждый digest проверяется docker pull.
 4. Receipt schemaVersion2 содержит sourceCommit/version, три images,
-   delivery/results2 и runtimeRegistrySha256. published-runtime-profiles.json
+   delivery/results2 и runtimeProfilesSha256. published-runtime-profiles.json
    связывает оба Java профиля с java25-grader, fish с fish-git-grader. Скачать artifact
    platform-runtime-digests-VERSION, проверить sourceCommit и сохранить receipt и
    registry как release assets. Metadata commit обновляет checked-in pins по этим

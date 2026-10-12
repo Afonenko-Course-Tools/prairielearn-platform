@@ -58,7 +58,7 @@ python3 -m unittest discover -s tests -p test_gateway_acl.py -v
 
 The localhost-only patch permits a null cookieDomain in production solely when hostname equals localhost. This emits host-only cookies. Other production host/domain checks and encryption-key validation remain in force; devMode stays false. The patch script refuses a changed upstream guard rather than guessing.
 
-Actual verified Moodle Student sessions passed native list/direct URL/reassignment and real built-in grading in the isolated fixture; production Gateway workflow/AGS integration remains a separate release gate. See the private release report for evidence. A healthy listener or synthetic score row alone cannot satisfy those gates.
+Приёмка выпуска на изолированном стенде проверяет native Student список, прямые URL и повторное назначение, реальные оценки встроенного grader и интеграцию Gateway/AGS. Следуйте [порядку выпуска](releasing.md). Работающий listener и синтетическая строка оценки не подтверждают прохождение этих проверок.
 
 ## Ordinary work reads and bootstrap
 

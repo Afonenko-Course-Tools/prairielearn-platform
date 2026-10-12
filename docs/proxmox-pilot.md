@@ -1,6 +1,6 @@
 # Пилот на Proxmox
 
-Платформа обслуживает несколько native-курсов в одной VM. Проверенный стенд:
+Платформа обслуживает несколько native-курсов в одной VM. Конфигурация пилота:
 Ubuntu Server 26.04.1 LTS, 4 vCPU, 8 GiB RAM и диск 60 GiB. Новая VM имеет
 отдельный state OpenTofu; существующие VM и конфигурации QCL-NEGF не изменяются.
 Для пилота до десяти одновременных пользователей резервное копирование не входит
@@ -80,18 +80,18 @@ ansible-playbook -i /absolute/private/inventory.yml ansible/site.yml
 ```
 
 Изменение runtime files требует перечитать конфигурации: Ansible делает
-`up -d --force-recreate` при материальных изменениях. PostgreSQL/SQLite volumes
-и старые snapshots сохраняются. Systemd включает запуск после reboot.
+`up -d --force-recreate` при материальных изменениях. При неизменной delivery PostgreSQL/SQLite state и snapshots сохраняются после перезапуска. Для изменённой delivery требуется свежая Gateway БД schema3; прежняя БД может остаться архивом, без переноса назначений. Systemd включает запуск после reboot.
 Docker socket предоставлен только PL для запуска grader containers; ответ
 студента выполняется в ограниченном grader без socket и сети. На уровне PL
 одновременно выполняются максимум два локальных grader job по 512 MiB.
 
 ## Обновление одного курса
 
+Замена delivery не переносит assignments, labels и attempts прежнего native-экземпляра. Если экземпляр уже имеет такие данные, описанная операция не поддерживает их повторное использование: подготовьте новый независимый native instance/scope и свежую Gateway БД schema3. Свяжите новый scope с его фактическими ID в Gateway и bridge; старый scope не используйте для новой delivery. Эта процедура не задаёт миграцию данных существующего сервера.
+
 1. Экспортировать и проверить выбранный курс; его UUID и source course ID должны
    сохраняться. Создать новый каталог `<id>/<newDeliveryHash>`, старый оставить.
-2. Выбрать новый путь только в соответствующей конфигурации Gateway и binding
-   native bridge. Конфигурацию другого курса и его snapshots не менять.
+2. Подготовить для изменённой delivery свежую Gateway БД schema3 и новый путь в соответствующем именованном профиле; прежние назначения и observations автоматически не переносить. Старую БД можно сохранить как архив. Обновить только delivery path и binding выбранного native-курса. Конфигурацию другого курса, его БД и snapshots не менять.
 3. Доставить файлы и перечитать конфигурации через
    `ansible-playbook -i /absolute/private/inventory.yml ansible/site.yml --tags deployment`.
    Этот режим использует уже установленный Docker и не обновляет APT repositories;
@@ -100,7 +100,7 @@ Docker socket предоставлен только PL для запуска gra
 
 ```sh
 sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
-  /PrairieLearn/apps/prairielearn/bridge/operator-tools/sync-native-course.mjs \
+  /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs \
   --course-id ACTUAL_COURSE_ID --path /course/COURSE_ID/NEW_DELIVERY_HASH
 ```
 
@@ -112,19 +112,20 @@ models, audit и named locks используются без прямого SQL 
 проверить фактический native path и повторить операцию либо выбрать прежнюю версию.
 Native `loadFromDisk` — dev-only route и для production этой командой не заменяется.
 
-## Границы проверки
+## Проверка установленной версии
 
-Проверка сервера 11 октября 2026 использует настоящие подписанные LTI launches
-локального Moodle mock с ноутбука, доверенный HTTPS, Student HTTP submissions
-и AGS readonly readback. Настоящий Moodle учреждения пока недоступен.
-Стенд использует diagnostic candidate images с проверенными config IDs и
-архивами: доступ к опубликованным GHCR artifacts не подтверждён текущими токенами.
-Это не опубликованный runtime release и не прохождение published staging gate.
-Публикация immutable runtime images и проверка реального Moodle остаются отдельными
-этапами. `runtime-profiles.json` для нового fish profile намеренно содержит
-`image: null` до публикации; существующие published checks не ослабляются.
+ Используйте согласованные Platform/Gateway 2.0.0 и только опубликованные digest
+ pins из release receipts. Перед установкой подтвердите pull всех образов с
+ целевого узла; отсутствие доступа к GHCR не доказывает отсутствие версии.
+ Диагностические candidate images не проходят production staging gate.
 
-На проверенном узле исходящий доступ VM к package repositories отсутствовал:
-bootstrap использовал ограниченный relay ноутбука. Для последующих обновлений
-системных пакетов требуется разрешённый оператором транспорт; работа уже
-размещённого runtime и режим `--tags deployment` от relay не зависят.
+ На новом изолированном стенде проверьте доверенный HTTPS, подписанные LTI
+ launches, native Student editor, фактические оценки, выбор случайных позиций,
+ teacher/student isolation, AGS readback, очередь, конкурентные отправки и
+ сохранение состояния после перезапуска. Moodle mock проверяет протокол, а
+ подключение Moodle учреждения требует отдельной фактической проверки.
+
+ Для bootstrap и последующих обновлений системных пакетов нужен доступ VM к
+ закреплённым repositories или разрешённый оператором транспорт тех же байтов.
+ Режим обновления одного курса `--tags deployment` использует установленный
+ Docker и не требует изменения сети или доступа к APT repositories.

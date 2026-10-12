@@ -37,5 +37,4 @@ docker image inspect fish-git-grader:candidate --format '{{.Id}}'
 
 Dockerfile использует закреплённый официальный grader base с Landlock и sbuser;
 fish, Git, Python и jsonschema устанавливаются в image. Config ID и dependency
-hashes необходимо записать при проверке candidate. Публичный digest нового image
-пока не назначен: для публикации нужны отдельная сборка/release и полный receipt.
+hashes необходимо записать при проверке candidate. Опубликованный digest fish image закреплён в `runtime-profiles.json` и `runtime-image.json`. Для новой версии выполните полный порядок [публикации](releasing.md), включая build, проверки, push и фактический pull по digest.
