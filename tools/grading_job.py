@@ -10,7 +10,7 @@ import tempfile
 import secrets
 import jsonschema
 ROOT=Path(__file__).resolve().parents[1]
-TOOL_VERSION='1.0.1'
+TOOL_VERSION='2.0.0'
 class JobError(Exception):pass
 class ProjectDefect(JobError):pass
 class GradingJob(dict):
@@ -146,7 +146,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
     expectations=case[0]['expected'] if scenario.startswith('contract:') else check.get('verification-expectations',{}).get('reference' if scenario.startswith('reference:') else 'starter',{})
     job=GradingJob(schemaVersion=1,scope=scope,qualifiedId=id,scenario=scenario,sourceSnapshotHash=manifest['sourceSnapshotHash'],inventoryHash=manifest['inventoryHash'],runtime=check['runtime'],imageDigest=runtime['image'] or os.environ.get('PL_LOCAL_IMAGE_ID'),sources=selected,trustedTests=tests,verificationTests=public,grading=grading,expectations=expectations,sourceHashes={x['projectRelativePath']:x['sha256'] for x in selected},testsHashes={x['projectRelativePath']:x['sha256'] for x in [*tests,*public]})
     if scope=='delivery':
-        if not delivery or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
+        if not delivery or delivery.get('schemaVersion')!=2 or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
         job['deliveryHash']=delivery['deliveryHash']
         expected_scenarios=scenario_inventory(manifest,snapshot,set(delivery['questions']))
         if delivery.get('verificationInventoryHash')!=digest(expected_scenarios):raise JobError('Delivery scenario inventory does not match declared checks')
@@ -299,6 +299,7 @@ def validate_receipt_integrity(receipt):
     if {rid+'/'+name:sha for rid,closure in used.items() for name,sha in closure['dependencyHashes'].items()}!=receipt['dependencyHashes']:raise JobError('Receipt flattened dependency closure is inconsistent')
 
 def validate_release_receipt(receipt,delivery,native,registry=None):
+    if delivery.get('schemaVersion')!=2:raise JobError('Unsupported native delivery; version2 required')
     validate_receipt_integrity(receipt)
     if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Receipt identity mismatch')
     for field in ('deliveryHash','sourceSnapshotHash','inventoryHash'):

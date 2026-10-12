@@ -3,10 +3,10 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "source": {
-      "const": "per-question-results-v1"
+      "const": "per-slot-results-v2"
     },
     "assignmentId": {
       "type": "string",
@@ -57,7 +57,40 @@
         }
       ]
     },
-    "questions": {
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "completedRequired": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "atLeast": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "completedRequired",
+        "requiredCount",
+        "atLeast",
+        "passed"
+      ]
+    },
+    "state": {
+      "enum": [
+        "started",
+        "not-started"
+      ]
+    },
+    "slots": {
       "type": "array",
       "items": {
         "type": "object",
@@ -93,6 +126,10 @@
               "grading",
               "unanswered"
             ]
+          },
+          "slotId": {
+            "type": "string",
+            "minLength": 1
           }
         },
         "required": [
@@ -100,36 +137,10 @@
           "score",
           "points",
           "maxPoints",
-          "status"
+          "status",
+          "slotId"
         ]
       }
-    },
-    "completion": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "completedRequired": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "requiredCount": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "atLeast": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "passed": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "completedRequired",
-        "requiredCount",
-        "atLeast",
-        "passed"
-      ]
     }
   },
   "required": [
@@ -142,9 +153,41 @@
     "deliveryHash",
     "workId",
     "currentAttempt",
-    "questions",
-    "completion"
+    "slots",
+    "completion",
+    "state"
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "gateway-results.schema.json"
+  "$id": "gateway-results.schema.json",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "not-started"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "currentAttempt": {
+            "type": "null"
+          },
+          "slots": {
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "currentAttempt": {
+            "type": "object"
+          },
+          "slots": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
 }

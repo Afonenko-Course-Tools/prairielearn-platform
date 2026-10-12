@@ -1,3 +1,4 @@
+import {bridgeDeliverySchema} from '../bridge/delivery.mjs';
 /** Локальная операция администратора: sync ровно одной immutable поставки. */
 import { readFile,lstat } from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -6,14 +7,14 @@ import * as db from '@prairielearn/postgres';
 import * as namedLocks from '@prairielearn/named-locks';
 import {z} from 'zod';
 import {authorizeCourseSync} from './course-sync-policy.mjs';
-import {authorizeAdministrator,canonicalJSONString} from '../policy.mjs';
+import {authorizeAdministrator,canonicalJSONString} from '../bridge/policy.mjs';
 const root=process.env.PL_ROOT??'/PrairieLearn';
 const native=(path)=>import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
 const args=process.argv.slice(2);
 if(args.length!==4||args[0]!=='--course-id'||!/^[1-9][0-9]*$/.test(args[1])||args[2]!=='--path')throw new Error('Use --course-id ID --path /course/ID/DELIVERY_HASH');
 const id=args[1],path=args[3];
 const settings=JSON.parse(await readFile(process.env.PL_GATEWAY_CONFIG,'utf8'));
-const delivery=JSON.parse(await readFile(path+'/delivery.json','utf8'));
+const delivery=bridgeDeliverySchema.parse(JSON.parse(await readFile(path+'/delivery.json','utf8')));
 const info=JSON.parse(await readFile(path+'/infoCourse.json','utf8'));
 const {deliveryHash,...payload}=delivery;
 if(createHash('sha256').update(canonicalJSONString(payload)).digest('hex')!==deliveryHash)throw new Error('Delivery hash mismatch');

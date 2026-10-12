@@ -51,67 +51,34 @@ SET
   request = EXCLUDED.request,
   updated_at = clock_timestamp();
 
+-- BLOCK select_assignment_attempt
+SELECT ai.id::text AS id, ai.number
+FROM assessment_instances ai JOIN assessments a ON a.id=ai.assessment_id
+WHERE a.course_instance_id=$course_instance_id AND a.tid=$work_id AND a.deleted_at IS NULL
+AND ai.user_id=$user_id AND ai.team_id IS NULL AND ai.date >= $activated_at::timestamptz
+ORDER BY ai.number DESC,ai.id DESC LIMIT 1;
+
 -- BLOCK select_results
-WITH
-  current_attempt AS (
-    SELECT
-      ai.*
-    FROM
-      assessment_instances ai
-      JOIN assessments a ON a.id = ai.assessment_id
-    WHERE
-      a.course_instance_id = $course_instance_id
-      AND a.tid = $work_id
-      AND a.deleted_at IS NULL
-      AND ai.user_id = $user_id
-      AND ai.team_id IS NULL
-      AND ai.date >= $activated_at::timestamptz
-    ORDER BY
-      ai.number DESC,
-      ai.id DESC
-    LIMIT
-      1
-  )
-SELECT
-  ai.id::text AS attempt_id,
-  ai.number AS attempt_number,
-  q.qid AS qualified_id,
-  iq.points,
-  aq.max_points,
-  iq.score_perc / 100.0 AS score,
-  iq.status::text AS native_status
-FROM
-  current_attempt ai
-  JOIN instance_questions iq ON iq.assessment_instance_id = ai.id
-  JOIN assessment_questions aq ON aq.id = iq.assessment_question_id
-  AND aq.deleted_at IS NULL
-  JOIN questions q ON q.id = aq.question_id
-  AND q.deleted_at IS NULL
-WHERE
-  q.qid = ANY ($question_ids::text[])
-ORDER BY
-  q.qid;
+SELECT ai.id::text AS attempt_id,ai.number AS attempt_number,q.qid AS qualified_id,
+ aq.alternative_group_id::text AS group_id,iq.points,aq.max_points,
+ iq.score_perc/100.0 AS score,iq.status::text AS native_status
+FROM assessment_instances ai JOIN assessments a ON a.id=ai.assessment_id
+JOIN instance_questions iq ON iq.assessment_instance_id=ai.id
+JOIN assessment_questions aq ON aq.id=iq.assessment_question_id AND aq.deleted_at IS NULL AND aq.assessment_id=a.id
+JOIN questions q ON q.id=aq.question_id AND q.deleted_at IS NULL
+WHERE ai.id=$assessment_instance_id AND a.course_instance_id=$course_instance_id
+AND a.tid=$work_id AND a.deleted_at IS NULL AND ai.user_id=$user_id AND ai.team_id IS NULL
+ORDER BY iq.id;
 
 -- BLOCK validate_assessment
-SELECT
-  a.id::text AS id,
-  array_agg(
-    q.qid
-    ORDER BY
-      q.qid
-  ) AS question_ids
-FROM
-  assessments a
-  JOIN assessment_questions aq ON aq.assessment_id = a.id
-  AND aq.deleted_at IS NULL
-  JOIN questions q ON q.id = aq.question_id
-  AND q.deleted_at IS NULL
-WHERE
-  a.course_instance_id = $course_instance_id
-  AND a.tid = $work_id
-  AND a.deleted_at IS NULL
-GROUP BY
-  a.id;
+SELECT ag.id::text AS group_id,ag.number_choose,z.number_choose AS zone_number_choose,
+ array_agg(q.qid ORDER BY q.qid) AS question_ids
+FROM assessments a JOIN assessment_questions aq ON aq.assessment_id=a.id AND aq.deleted_at IS NULL
+LEFT JOIN alternative_groups ag ON ag.id=aq.alternative_group_id AND ag.assessment_id=a.id
+LEFT JOIN zones z ON z.id=ag.zone_id
+JOIN questions q ON q.id=aq.question_id AND q.deleted_at IS NULL
+WHERE a.course_instance_id=$course_instance_id AND a.tid=$work_id AND a.deleted_at IS NULL
+GROUP BY ag.id,z.id ORDER BY ag.number;
 
 -- BLOCK select_slot
 SELECT
@@ -159,6 +126,7 @@ SELECT
   ai.points AS attempt_points,
   ai.max_points AS attempt_max_points,
   q.qid AS qualified_id,
+  aq.alternative_group_id::text AS group_id,
   iq.points,
   aq.max_points,
   iq.score_perc / 100.0 AS score,
@@ -178,6 +146,5 @@ WHERE
   AND a.tid = $work_id
   AND ai.user_id = $user_id
   AND ai.team_id IS NULL
-  AND q.qid = ANY ($question_ids::text[])
 ORDER BY
   q.qid;

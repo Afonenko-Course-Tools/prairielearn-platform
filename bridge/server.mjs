@@ -1,10 +1,11 @@
+import {bridgeDeliverySchema} from './delivery.mjs';
 import { readFile } from 'node:fs/promises';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import * as db from '@prairielearn/postgres';
 import { z } from 'zod';
-import { BridgeError, resolveAssignment, assignmentTransition, completion } from './policy.mjs';
+import { BridgeError, resolveAssignment, assignmentTransition, completion, validateNativeGroups, assignedSlots } from './policy.mjs';
 import {
   canonicalJSONString as canonical,
   validateBindings,
@@ -51,65 +52,6 @@ const settings = settingsSchema.parse(
 );
 const token = (await readFile(settings.tokenFile, 'utf8')).trim();
 if (token.length < 32) throw new Error('Service token needs at least 32 characters');
-const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
-const idsSchema = z
-  .array(z.string().min(1))
-  .refine((v) => new Set(v).size === v.length, 'Duplicate IDs');
-const completionSchema = z
-  .strictObject({
-    schemaVersion: z.literal(1),
-    mode: z.literal('required-question-completion'),
-    source: z.literal('per-question-results-v1'),
-    questionIds: idsSchema.min(1),
-    requiredQuestionIds: idsSchema.min(1),
-    atLeast: z.number().int().positive(),
-    fullyCompletedScore: z.literal(1),
-  })
-  .refine(
-    (c) =>
-      c.atLeast <= c.requiredQuestionIds.length &&
-      c.requiredQuestionIds.every((id) => c.questionIds.includes(id)),
-    'Invalid required pool',
-  );
-const bridgeDeliverySchema = z
-  .strictObject({
-    schemaVersion: z.literal(1),
-    courseId: z.string().min(1),
-    bookRoot: z.string(),
-    sourceSnapshotHash: hashSchema,
-    inventoryHash: hashSchema,
-    verificationInventoryHash: hashSchema,
-    deliveryHash: hashSchema,
-    questions: idsSchema.min(1),
-    gradingPayloads: z.record(z.string(), z.json()),
-    works: z
-      .array(
-        z.strictObject({
-          id: z.string().min(1),
-          items: idsSchema.optional(),
-          assignments: z.record(z.string(), z.json()).optional(),
-          policy: z.record(z.string(), z.json()),
-          completion: completionSchema,
-          relatedExercise: z.string().optional(),
-        }),
-      )
-      .min(1),
-    instances: z.record(
-      z.string(),
-      z.strictObject({ works: idsSchema.min(1), selfEnrollment: z.boolean() }),
-    ),
-    files: z.record(z.string(), hashSchema),
-    candidate: z.boolean().optional(),
-  })
-  .refine(
-    (d) =>
-      new Set(d.works.map((w) => w.id)).size === d.works.length &&
-      Object.values(d.instances).every((i) =>
-        i.works.every((id) => d.works.some((w) => w.id === id)),
-      ) &&
-      d.works.every((w) => w.completion.questionIds.every((id) => d.questions.includes(id))),
-    'Invalid work/question inventory',
-  );
 const bindings = [];
 for (const binding of settings.bindings) {
   const delivery = bridgeDeliverySchema.parse(
@@ -168,6 +110,7 @@ const resultRow = z.strictObject({
   max_points: z.number().nullable(),
   score: z.number().nullable(),
   native_status: z.string(),
+  group_id: z.string(),
 });
 const workResultRow = resultRow.extend({
   attempt_points: z.number().nullable(),
@@ -196,18 +139,9 @@ async function context(request, assignment = true) {
 }
 async function validateWork(binding, ci, workId) {
   const work = binding.delivery.works.find((w) => w.id === workId);
-  const row = await db.queryOptionalRow(
-    sql.validate_assessment,
-    { course_instance_id: ci.id, work_id: workId },
-    z.object({ id: z.string(), question_ids: z.array(z.string()) }),
-  );
-  if (
-    !row ||
-    canonical([...new Set(row.question_ids)].sort()) !==
-      canonical([...work.completion.questionIds].sort())
-  )
-    throw new BridgeError(409, 'Native assessment differs from manifest');
-  return work;
+  const groups = await db.queryRows(sql.validate_assessment,{course_instance_id:ci.id,work_id:workId},z.strictObject({group_id:z.string(),question_ids:z.array(z.string()),number_choose:z.number().int().nullable(),zone_number_choose:z.number().int().nullable()}));
+  validateNativeGroups(work,groups);
+  return {...work,nativeGroups:groups};
 }
 async function apply(id, request) {
   const { binding, ci, user } = await context(request);
@@ -295,46 +229,22 @@ async function results(id, version) {
       !(await labels.selectStudentLabelsForEnrollment(enrollment)).some((l) => l.name === label)
     )
       throw new BridgeError(403, 'Assignment ACL absent');
-    const rows = await db.queryRows(
-      sql.select_results,
-      {
-        course_instance_id: ci.id,
-        work_id: work.id,
-        user_id: user.id,
-        question_ids: work.completion.questionIds,
-        activated_at: row.activated_at,
-      },
-      resultRow,
-    );
-    const questions = work.completion.questionIds.map((qualifiedId) => {
-      const r = rows.find((r) => r.qualified_id === qualifiedId);
-      return {
-        qualifiedId,
-        score: r?.score ?? null,
-        points: r?.points ?? null,
-        maxPoints: r?.max_points ?? null,
-        status:
-          r && ['complete', 'correct', 'incorrect'].includes(r.native_status)
-            ? 'complete'
-            : r?.native_status === 'grading'
-              ? 'grading'
-              : 'unanswered',
-      };
-    });
+    const attemptRow=await db.queryOptionalRow(sql.select_assignment_attempt,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,activated_at:row.activated_at},z.strictObject({id:z.string(),number:z.number().int()}));
+    const rows = attemptRow ? await db.queryRows(sql.select_results,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,assessment_instance_id:attemptRow.id},resultRow) : [];
+    const slots=assignedSlots(work,rows,attemptRow,work.nativeGroups);
     return {
-      schemaVersion: 1,
-      source: 'per-question-results-v1',
+      schemaVersion: 2,
+      source: 'per-slot-results-v2',
       assignmentId: id,
       version,
       userUid: user.uid,
       instance: request.instance,
       deliveryHash: request.deliveryHash,
       workId: work.id,
-      currentAttempt: rows.length
-        ? { id: rows[0].attempt_id, number: rows[0].attempt_number }
-        : null,
-      questions,
-      completion: completion(work, questions),
+      state: attemptRow ? 'started' : 'not-started',
+      currentAttempt: attemptRow,
+      slots,
+      completion: completion(work, slots),
     };
   });
 }
@@ -422,37 +332,24 @@ async function workResults(request) {
       work_id: work.id,
       user_id: user.id,
       assessment_instance_id: attempt.id,
-      question_ids: work.completion.questionIds,
     },
     workResultRow,
   ) : [];
-  const questions = work.completion.questionIds.map((qualifiedId) => {
-    const r = rows.find((r) => r.qualified_id === qualifiedId);
-    return {
-      qualifiedId,
-      score: r?.score ?? null,
-      points: r?.points ?? null,
-      maxPoints: r?.max_points ?? null,
-      status:
-        r && ['complete', 'correct', 'incorrect'].includes(r.native_status)
-          ? 'complete'
-          : r?.native_status === 'grading'
-            ? 'grading'
-            : 'unanswered',
-    };
-  });
+  const currentAttempt=attempt?{id:attempt.id,number:attempt.number}:null;
+  const slots=assignedSlots(work,rows,currentAttempt,work.nativeGroups);
   return {
-    schemaVersion: 1,
-    source: 'per-question-results-v1',
+    schemaVersion: 2,
+    source: 'per-slot-results-v2',
     userUid: user.uid,
     instance: request.instance,
     deliveryHash: request.deliveryHash,
     workId: work.id,
-    currentAttempt: attempt ? { id: attempt.id, number: attempt.number } : null,
+    state: currentAttempt ? 'started' : 'not-started',
+    currentAttempt,
     scoreGiven: rows[0]?.attempt_points ?? null,
     scoreMaximum: rows[0]?.attempt_max_points ?? null,
-    questions,
-    completion: completion(work, questions),
+    slots,
+    completion: completion(work, slots),
   };
 }
 async function workLaunch(request) {

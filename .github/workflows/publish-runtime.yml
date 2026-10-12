@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Immutable runtime version (for example 1.0.0)
+        description: Immutable runtime version (например 2.0.0)
         required: true
         type: string
       reviewed_commit:
@@ -37,53 +37,49 @@ jobs:
           [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
           [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
+          [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
           echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "FISH_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fish-git-grader:${VERSION}" >> "$GITHUB_ENV"
           echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
       - name: Authenticate with scoped package token
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - name: Reject an existing immutable version
+      - name: Подтвердить отсутствие всех трёх registry tags
         run: |
-          for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE"; do
-            if docker manifest inspect "$IMAGE" >manifest-check.log 2>&1; then
-              echo 'Version already published; choose a new version.' >&2
-              exit 1
-            elif ! grep -Eq 'manifest unknown|no such manifest|not found' manifest-check.log; then
-              echo 'Cannot verify that version is absent; refusing publication.' >&2
-              cat manifest-check.log >&2
-              exit 1
-            fi
-          done
-      - name: Build exact checkout and run owner tests
+          for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE" "$FISH_IMAGE"; do bash tools/require-absent-image.sh "$IMAGE"; done
+      - name: Собрать и проверить Java
         run: |
           python3 -m pip install --requirement requirements.txt
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends fish
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
-          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
           PL_TEST_IMAGE="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -v
-      - name: Publish verified image and record actual digest
+      - name: Собрать и проверить Community
         run: |
-          docker push "$RUNTIME_IMAGE"
-          docker push "$COMMUNITY_IMAGE"
-          IMAGE_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
-          COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
-          export IMAGE_DIGEST COMMUNITY_DIGEST
-          python3 - <<'PY'
-          import json, os, re
-          from pathlib import Path
-          digest = os.environ['IMAGE_DIGEST']
-          community = os.environ['COMMUNITY_DIGEST']
-          for tag, value in ((os.environ['RUNTIME_IMAGE'], digest), (os.environ['COMMUNITY_IMAGE'], community)):
-              repository = tag.rsplit(':', 1)[0]
-              if not re.fullmatch(re.escape(repository) + r'@sha256:[a-f0-9]{64}', value):
-                  raise SystemExit('Published repository digest missing or belongs to another image')
-          registry = json.loads(Path('runtime-profiles.json').read_text())
-          for profile in registry['profiles'].values():
-              profile['image'] = digest
-          Path('published-runtime-profiles.json').write_text(json.dumps(registry, indent=2)+'\n')
-          Path('runtime-image.json').write_text(json.dumps({'schemaVersion':1,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['RUNTIME_IMAGE'].rsplit(':',1)[1],'image':digest,'communityImage':community},indent=2)+'\n')
-          PY
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
+          docker run --rm --entrypoint node "$COMMUNITY_IMAGE" --check /PrairieLearn/apps/prairielearn/bridge/server.mjs
+          node --test tests/bridge/*.test.mjs
+          python3 tests/bridge/cookie-domain.test.py
+          python3 tests/bridge/grader-patch.test.py
+      - name: Собрать и проверить fish
+        run: |
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/fish-git-grader/Dockerfile -t "$FISH_IMAGE" .
+          PL_FISH_TEST_IMAGE="$(docker image inspect "$FISH_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -p 'test_fish*.py' -v
+      - name: Опубликовать Java
+        run: docker push "$RUNTIME_IMAGE"
+      - name: Опубликовать Community
+        run: docker push "$COMMUNITY_IMAGE"
+      - name: Опубликовать fish
+        run: docker push "$FISH_IMAGE"
+      - name: Проверить загрузку digest и сохранить receipt v2
+        run: |
+          export JAVA_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
+          export COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
+          export FISH_DIGEST="$(docker image inspect "$FISH_IMAGE" --format '{{index .RepoDigests 0}}')"
+          for IMAGE in "$JAVA_DIGEST" "$COMMUNITY_DIGEST" "$FISH_DIGEST"; do docker pull "$IMAGE"; done
+          python3 tools/publish-receipt.py
           cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

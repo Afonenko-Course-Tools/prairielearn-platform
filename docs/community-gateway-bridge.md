@@ -115,3 +115,19 @@ administrator=true и единственный путь `/pl/administrator/cours
 по явному решению пользователя; Moodle Instructor сам по себе их не даёт.
 Это исключение из прежнего ограничения teacher-only Gateway; обычные teachers
 по-прежнему не получают native staff/admin автоматически.
+
+## Позиции и native выбор: версия2
+
+Platform2.0.0 принимает только native delivery2: work.slots с полным набором
+candidates, completion required-slot-completion/per-slot-results-v2. Bridge
+сверяет каждую native alternative group по точному набору кандидатов. Random
+требует number_choose1; singleton fixed допускает штатный NULL либо1. Выбор
+подмножества зоны не поддерживается. Проверяются также лишние/неполные группы.
+
+Результаты читаются из instance_questions захваченного assessment_instance_id,
+включая обычные singleton позиции. `started` содержит ровно один выбранный
+вопрос каждой позиции и currentAttempt.id/number. Пропавший, чужой, множественный
+или принадлежащий другой попытке выбор отклоняется. `not-started` возвращает
+null attempt и пустые slots: completedRequired0, requiredCount/atLeast из delivery.
+Совершенный результат требует complete, score1, points=maxPoints>0. Не выбранные
+альтернативы не выдаются как пропущенные и не увеличивают знаменатель.

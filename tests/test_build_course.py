@@ -42,7 +42,7 @@ out=pathlib.Path(sys.argv[4]);out.mkdir();checks=pathlib.Path(sys.argv[8])
 q=out/'questions/synthetic/exr-a';q.mkdir(parents=True)
 (q/'info.json').write_text(json.dumps({'uuid':'00000000-0000-4000-8000-000000000001'}))
 (q/'question.html').write_text('Synthetic condition')
-delivery={'schemaVersion':1,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
+delivery={'schemaVersion':2,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
 (out/'delivery.json').write_text(json.dumps(delivery));checks.write_text(json.dumps({'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[]}))
 ''');(binary/'quarto').chmod(0o755)
    output=root/'candidate'

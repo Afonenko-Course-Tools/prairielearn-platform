@@ -51,7 +51,7 @@ class CourseStorageTests(unittest.TestCase):
         (q/'tests/grading-job.json').write_text(json.dumps(cfg))
         scenarios=[{'qualifiedId':qid,'scenario':name,'optional':False} for name in ['contract:counterexample','reference:default','starter']]
         files={name:hashlib.sha256((self.repo/name).read_bytes()).hexdigest() for name in ['infoCourse.json','questions/'+qid+'/info.json','questions/'+qid+'/tests/grading-job.json']}
-        delivery={'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':[qid],'verificationInventoryHash':digest(scenarios),'files':files}
+        delivery={'schemaVersion':2,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':[qid],'verificationInventoryHash':digest(scenarios),'files':files}
         delivery['deliveryHash']=digest(delivery)
         (self.repo/'delivery.json').write_text(json.dumps(delivery))
         results=[]

@@ -45,7 +45,7 @@ export function resolveAssignment(request, delivery) {
     if (
       !label ||
       !work.completion ||
-      work.completion.questionIds.some((q) => !delivery.questions.includes(q))
+      work.slots.flatMap(slot=>slot.candidates).some((q) => !delivery.questions.includes(q))
     )
       fail('Work is not bridge ready');
     return label;
@@ -71,29 +71,46 @@ export function assignmentTransition(request, prior) {
   if (request.deliveryHash !== prior.deliveryHash) fail('Delivery migration required');
   return 'apply';
 }
-export function completion(work, rows) {
-  const c = work.completion;
-  const seen = new Set();
-  let count = 0;
-  for (const row of rows) {
-    if (!c.questionIds.includes(row.qualifiedId) || seen.has(row.qualifiedId))
-      fail('Unscoped or duplicate result');
-    seen.add(row.qualifiedId);
-    if (row.score !== null && (!Number.isFinite(row.score) || row.score < 0 || row.score > 1))
-      fail('Invalid result score');
-    if (
-      c.requiredQuestionIds.includes(row.qualifiedId) &&
-      row.score === c.fullyCompletedScore &&
-      row.status === 'complete'
-    )
-      count++;
+export function validateNativeGroups(work, groups) {
+  if (!Array.isArray(groups) || groups.length !== work.slots.length) fail('Native group inventory differs from delivery');
+  const mapping = new Map(), used = new Set();
+  for (const slot of work.slots) {
+    const matches = groups.filter(group => canonicalJSONString([...group.question_ids].sort()) === canonicalJSONString([...slot.candidates].sort()));
+    if (matches.length !== 1 || (matches[0].number_choose !== 1 && !(slot.selection==='fixed' && matches[0].number_choose===null)) || used.has(matches[0].group_id)) fail('Native group candidate set or selection differs from delivery');
+    if(matches[0].zone_number_choose!=null)fail('Zone subset selection is unsupported');
+    used.add(matches[0].group_id);mapping.set(slot.id,matches[0].group_id);
   }
-  return {
-    completedRequired: count,
-    requiredCount: c.requiredQuestionIds.length,
-    atLeast: c.atLeast,
-    passed: count >= c.atLeast,
-  };
+  return mapping;
+}
+export function assignedSlots(work, rows, attempt, groups) {
+  const mapping=validateNativeGroups(work,groups);
+  if (!attempt) {if(rows.length)fail('Selection without native attempt');return [];}
+  if(rows.length!==work.slots.length)fail('Exactly one assigned question per slot required');
+  const result=[],seen=new Set();
+  for(const slot of work.slots){
+    const selected=rows.filter(row=>row.group_id===mapping.get(slot.id));
+    if(selected.length!==1)fail('Missing or multiple native selections');
+    const row=selected[0];
+    if(!slot.candidates.includes(row.qualified_id)||seen.has(row.qualified_id)||row.attempt_id!==attempt.id||row.attempt_number!==attempt.number)fail('Selected question or attempt differs from delivery');
+    seen.add(row.qualified_id);
+    result.push({slotId:slot.id,qualifiedId:row.qualified_id,score:row.score,points:row.points,maxPoints:row.max_points,status:['complete','correct','incorrect'].includes(row.native_status)?'complete':row.native_status==='grading'?'grading':'unanswered'});
+  }
+  return result;
+}
+export function completion(work, rows) {
+  const c=work.completion,seen=new Set();let count=0;
+  if(rows.length && rows.length!==c.slotIds.length)fail('Incomplete assigned slot inventory');
+  for(const row of rows){
+    const slot=work.slots.find(slot=>slot.id===row.slotId);
+    if(!slot||seen.has(row.slotId)||!slot.candidates.includes(row.qualifiedId)||!['complete','grading','unanswered'].includes(row.status))fail('Unscoped or duplicate slot result');
+    seen.add(row.slotId);
+    if(row.score!==null&&(!Number.isFinite(row.score)||row.score<0||row.score>1))fail('Invalid result score');
+    for(const field of ['points','maxPoints'])if(row[field]!==null&&(!Number.isFinite(row[field])||row[field]<0))fail('Invalid native points');
+    if(row.points!==null&&row.maxPoints!==null&&row.points>row.maxPoints)fail('Native points exceed ceiling');
+    if(row.status==='complete'&&row.score===1&&(row.points===null||row.maxPoints===null||row.maxPoints<=0||row.points!==row.maxPoints))fail('Incomplete full native result');
+    if(c.requiredSlotIds.includes(row.slotId)&&row.score===c.fullyCompletedScore&&row.status==='complete')count++;
+  }
+  return {completedRequired:count,requiredCount:c.requiredSlotIds.length,atLeast:c.atLeast,passed:count>=c.atLeast};
 }
 
 export function canonicalJSONString(value) {

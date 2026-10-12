@@ -116,3 +116,12 @@ local image IDs identify diagnostic builds, separately from the published digest
 [Proxmox, Ansible и обновление одного курса](docs/proxmox-pilot.md) описывают
 production стенд с двумя native-курсами. [Текстовый fish runtime](docs/fish-text-runtime.md)
 использует проверки из репозитория курса; его опубликованный image пока не назначен.
+
+## Текущий контракт2
+
+Версия2.0.0 (`VERSION`) использует delivery/results v2 и случайные позиции;
+прежние transports отклоняются до операций sync/Bridge. Все кандидаты позиции
+проверяются и сохраняются в delivery. Порядок сборки трёх собственных образов,
+соответствие runtime-профилей и registry receipts описаны в [выпуске](docs/releasing.md).
+Новый выпуск требует фактических digests; старые published pins не обозначают
+образ с текущим candidate кодом.

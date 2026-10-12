@@ -105,3 +105,15 @@ blocker, not permission to bypass the existing-version guard.
 See GitHub's primary instructions for
 [manual workflow dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
 and [Container registry authentication, repository access and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+
+## Согласованный publisher2
+
+Текущий VERSION —2.0.0. Publisher отдельно собирает и проверяет Java, Community и
+fish, затем публикует каждый образ. Все tags должны быть доказанно отсутствующими
+в registry; authorization/network ошибки запрещают push. Java profiles получают
+digest java25-grader, fish-git-v1 — fish-git-grader. Каждый фактический digest
+загружается через docker pull. Receipt v2 связывает sourceCommit, три images,
+версии delivery/results2 и hash опубликованного runtime registry. Нынешние
+checked-in опубликованные pins остаются свидетельством прежнего выпуска до
+фактической новой публикации. Их замена выполняется по реальным digests, без
+переиспользования частично опубликованного номера.
