@@ -1,119 +1,80 @@
-# Platform versions and image publication
+# Версии Platform и публикация образов
 
-The tool contract is **1.0.1**. It adds native-readable JUnit tests/messages,
-execution-limit messages and a bounded expected-outcome summary for submitted tests.
-It preserves raw results, classification, score policies and containment limits.
-Runtime images **1.0.1** were published from reviewed integrated source
-`756d9dfb96fcb43cb02d499594a7408d174be16c` by successful
-[publication run 38061254263](https://github.com/Afonenko-Course-Tools/prairielearn-platform/actions/runs/38061254263).
-The checked-in [runtime-image.json](../runtime-image.json) is the emitted actual
-source/version/OCI receipt; [runtime-profiles.json](../runtime-profiles.json) is the
-emitted registry with the published Java digest in both profiles. The runner hash is
-`3e6d45c783e3972aa02c294312244f6f81c284897418954a7653cf64bfe4a051`;
-reviewed library/source hashes are preserved. [images.lock.json](../images.lock.json)
-records current Java and Community deployment pins, with the separately inspected
-local feedback image retained only as a diagnostic identity. Historical 1.0.0 assets
-remain in that release. Public pull and final native integration require their own
-observed receipts. The following contracts are versioned independently:
+Текущий исходный контракт — **2.0.0** (`VERSION`). Body/delivery/results используют
+позиции: каждый native экземпляр выбирает один вопрос каждой позиции, все кандидаты
+остаются в каталоге. Прежние delivery/results отклоняются до sync/Bridge операций.
 
-| Interface | Current contract |
+| Интерфейс | Текущий контракт |
 | --- | --- |
-| `check-course.py inventory/verify` and `grading_job.py` | Tool 1.0.1 |
-| Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | `schemaVersion: 1`; closed owner schemas in `schemas/` |
-| Resolved project check | Closed `project-check.schema.json`, versioned with tool 1.0.1; no redundant schemaVersion field |
-| Gateway question/work results | `schemaVersion: 1`; closed owner schemas in `schemas/` |
-| Gateway enrollment, assignment and work launch | Closed named schemas, versioned with tool 1.0.1; assignment `version` is the monotonic grant revision |
-| Native course registry | `pl-courses-v1` |
-| Image lock | `pl-images-v1`; `image` fields carry published deployment pins, local image IDs are diagnostic |
-| Runtime profiles | `java25-junit-v1` implementation, `java25-mutation-v1` student tests |
-| Java/JUnit | Actual Java release 25; pinned official JUnit console 1.14.1 and JSON simple 1.1.1 |
+| `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.0.0 |
+| Native delivery и Gateway results | schemaVersion2; per-slot-results-v2 |
+| Completion | required-slot-completion, позиции requiredSlotIds |
+| Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | schemaVersion1, отдельные закрытые schemas/ |
+| Project check | project-check.schema.json, без отдельного schemaVersion |
+| Enrollment, assignment и work launch | Закрытые named schemas; assignment.version — ревизия предоставления доступа |
+| Native course registry / image lock | pl-courses-v1 / pl-images-v1 |
+| Профили Java | java25-junit-v1 и java25-mutation-v1, образ java25-grader |
+| Текстовый профиль | fish-git-v1, собственный образ fish-git-grader |
+| Java/JUnit | Java25, JUnit console1.14.1, JSON simple1.1.1 |
 
-The runtime registry pins every library/source hash and the runner hash. Both
-profiles share the same runner and libraries; the registry carries their exact hashes.
-The production image must match those hashes, rather than reuse a preceding release pin.
-A registry with `image: null` refuses production verification/staging.
-`PL_LOCAL_IMAGE_ID` permits explicit candidate verification;
-a local image ID cannot substitute for a published repository digest.
+Registry закрепляет runner и полный набор зависимостей по hash. Образ должен
+соответствовать этому набору. Проверенная версия опубликованных metadata
+[runtime-image.json](../runtime-image.json), [runtime-profiles.json](../runtime-profiles.json)
+и [images.lock.json](../images.lock.json) пока свидетельствует о предыдущем выпуске
+1.0.1 из исходника756d9dfb96fcb43cb02d499594a7408d174be16c
+([успешная публикация](https://github.com/Afonenko-Course-Tools/prairielearn-platform/actions/runs/38061254263)).
+Эти pins не обозначают образ текущих исходников2.0.0. Их заменяют только полученными
+после успешной публикации фактическими digests.
 
-The Community bridge retains the reviewed assignment/enrollment/work/result
-protocol. Complex cross-delivery migration remains deferred in a separate branch.
-That branch is not part of this runtime image or release.
+## Диагностическая проверка кандидата
 
-## Reviewed publication sequence
+`build-course.py --runtime-registry PATH --candidate-image sha256:...` передаёт
+экспортёру отдельный registry с image:null для проверяемого профиля и точный локальный
+config ID образа. Экспортёр проверяет этот ID через docker image inspect и помечает
+поставку candidate:true. Профили опубликованного registry остаются без изменений.
+`check-course.py --runtime-registry PATH` использует тот же registry на prepare,
+выполнение (включая public verification) и проверку receipt. `PL_LOCAL_IMAGE_ID`
+задаёт локальный ID только для профиля image:null; опубликованный pin по умолчанию
+имеет приоритет. `--backend container --scope delivery` проверяет реальную поставку.
+Candidate не допускается к staging независимо от успешного diagnostic receipt.
+Опубликованный repository@sha256 digest нужен для authoritative release проверки.
 
-1. Independently review the exact PR head and both image sources, including
-   `.github/workflows/publish-runtime.yml`. Complete the owner checks. Normally
-   merge the PR into `main`, then confirm that the merged tree matches the reviewed
-   tree and record the exact merged commit. Preserve deferred migration branches.
-2. Dispatch **Publish reviewed Platform images** on that merged `main` only after
-   confirming its current commit is the reviewed merge. Choose an unused version:
+## Проверенная последовательность публикации
+
+1. Независимо проверить точную вершину PR, три Dockerfile и publisher workflow;
+   выполнить owner suites. После merge зафиксировать actual merged SHA и сравнить
+   дерево с проверенной кандидатурой.
+2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=NEXT_UNUSED_VERSION \
+   gh workflow run publish-runtime.yml --ref main -f version=2.0.0 \
      -f reviewed_commit=ACTUAL_MERGED_SHA
    ```
 
-   Replace `ACTUAL_MERGED_SHA` with the actual 40-character merged commit and
-   `NEXT_UNUSED_VERSION` with an unused `N.N.N` version. The
-   workflow refuses any other branch or a checkout that differs from that commit.
-   Versions 1.0.0 and 1.0.1 already have published images; choose a new unused version for
-   subsequent runtime changes. The workflow must exist on the default branch
-   for manual dispatch.
-   It uses its ephemeral `GITHUB_TOKEN` with `contents: read` and `packages: write`;
-   the operator's GitHub CLI token does not need `write:packages`. SSH can push
-   workflow changes without adding an OAuth workflow scope. The source/revision
-   OCI labels associate both packages with this repository. Existing packages must
-   grant this repository Actions access; an unrelated existing package cannot be
-   overwritten by assuming token permissions.
-3. The workflow rejects an existing version and fails closed if registry absence
-   cannot be established. It builds both images from the exact checkout and pinned
-   upstream bases, then runs the owner suite on actual JDK25 with the newly built
-   Java image. Only after those checks does it push both images. It records actual
-   `repository@sha256:...` values, exact source commit and version in
-   `runtime-image.json`, and emits `published-runtime-profiles.json` with those
-   actual Java digest pins. The artifact is named
-   `platform-runtime-digests-VERSION`.
-4. Download the successful run's artifact and verify `sourceCommit` against the
-   reviewed merge. Preserve the receipt and published registry as release assets;
-   an expiring Actions artifact alone is not a durable release. Replace the
-   checked-in `runtime-profiles.json` with the emitted registry in a normal metadata
-   commit. Keep runner/library hashes identical to the reviewed source. Review this
-   pin commit before issuing the final source tag. Use the recorded Community
-   digest as `PL_GATEWAY_IMAGE` with Compose `--no-build`.
-5. Pull and inspect both actual published digests, verify package access from the
-   target machine, and run the affected final native/container/Moodle smoke gates
-   on those published pins. A source-based rebuild can have a different local image
-   ID because it installs distribution packages and adds OCI provenance labels;
-   the prior local candidate's ID is not the new publication's identity.
-6. Tag the integrated, pinned release commit and publish the versioned source
-   release together with `runtime-image.json` and the registry. Record source tag,
-   image source commit, OCI digests, receipt hashes and actual integration outcomes.
-   Course/downstream releases must use these observed pins.
+   Workflow проверяет branch/commit/version и использует scoped GITHUB_TOKEN
+   contents:read/packages:write. Package должен предоставлять этому repository
+   Actions access. Authentication/network ошибки не доказывают отсутствие tag.
+3. Publisher требует доказанного отсутствия всех трёх registry tags. Отдельно
+   собирает Java, Community и fish из точного checkout и закреплённых bases;
+   отдельно проверяет каждый образ, Java/fish фактически в контейнерах. Все checks
+   заканчиваются до pushes. Затем отдельно публикует три образа и получает их
+   repository@sha256 digests; каждый digest проверяется docker pull.
+4. Receipt schemaVersion2 содержит sourceCommit/version, три images,
+   delivery/results2 и runtimeRegistrySha256. published-runtime-profiles.json
+   связывает оба Java профиля с java25-grader, fish с fish-git-grader. Скачать artifact
+   platform-runtime-digests-VERSION, проверить sourceCommit и сохранить receipt и
+   registry как release assets. Metadata commit обновляет checked-in pins по этим
+   фактическим digests; runner/library hashes сохраняются.
+5. Проверить pull/package access с целевого узла, выполнить native/container/Moodle
+   acceptance на опубликованных pins. Локальный image config ID и опубликованный
+   OCI manifest digest — разные наблюдаемые идентификаторы.
+6. После проверки pin commit поставить source tag и выпустить source/receipt/registry
+   вместе. Downstream использует наблюдённые digests и точные source refs.
 
-The two image pushes are not atomic. If a failure publishes only one image, retain
-its receipt/log and use a fresh version for a reviewed retry; do not replace or
-reuse the partially published version. The workflow serializes one version within
-this repository. GHCR tags are mutable registry aliases, so deployment and runtime
-registry pins always use digests.
+Три pushes не атомарны. При частичной публикации сохранить логи и перейти к новому
+номеру для повторной проверенной публикации; существующий номер не перезаписывается.
+GHCR tags изменяемы, deployment использует digests. Новая публикация сама по себе
+не доказывает public visibility: нужный доступ подтверждается фактическим pull.
 
-New GHCR packages are private by default. Publishing an image does not establish
-public anonymous pull access. If public distribution is required, the package owner
-must set and verify the desired visibility, then test an anonymous digest pull.
-An auth/network/registry failure during the absence check remains a publication
-blocker, not permission to bypass the existing-version guard.
-
-See GitHub's primary instructions for
-[manual workflow dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
-and [Container registry authentication, repository access and visibility](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
-
-## Согласованный publisher2
-
-Текущий VERSION —2.0.0. Publisher отдельно собирает и проверяет Java, Community и
-fish, затем публикует каждый образ. Все tags должны быть доказанно отсутствующими
-в registry; authorization/network ошибки запрещают push. Java profiles получают
-digest java25-grader, fish-git-v1 — fish-git-grader. Каждый фактический digest
-загружается через docker pull. Receipt v2 связывает sourceCommit, три images,
-версии delivery/results2 и hash опубликованного runtime registry. Нынешние
-checked-in опубликованные pins остаются свидетельством прежнего выпуска до
-фактической новой публикации. Их замена выполняется по реальным digests, без
-переиспользования частично опубликованного номера.
+Первичные инструкции: [workflow dispatch](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)
+и [GHCR authentication/access](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).

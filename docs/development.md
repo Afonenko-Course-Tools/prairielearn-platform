@@ -242,3 +242,14 @@ inner compilation/execution limits, Java25 release, official source and signatur
 scoring policies and typed outcomes are unchanged. runnerCompilation duration is
 zero for variants that reuse the adapter; the first successful variant records its
 actual cold compilation cost.
+
+Свежие student JVM, в том числе ProcessBuilder с static Scanner, наследуют
+RLIMIT_NOFILE hard≤4096 от supervisor. Soft limit сохраняется, если он ниже;
+ограничение ставится только дочерним процессам для host/container/native пути.
+Это ограничивает перебор FD в JDK helper при запрещённом /proc; Landlock и
+таймауты остаются прежними. Общие JVM между сценариями не используются.
+
+Supervisor задаёт LANG/LC_ALL=C.UTF-8 всем дочерним процессам. Это сохраняет
+Unicode native argv при запуске свежей JVM, в том числе через ProcessBuilder;
+одних -Dfile.encoding/stdio flags для native argument decoding недостаточно.
+Другие переменные окружения сохраняются.

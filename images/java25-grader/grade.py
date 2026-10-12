@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import resource
 import selectors
 import secrets
 import signal
@@ -39,11 +40,22 @@ def _protect_input_identity(job):
         raise GraderError('Cannot isolate sandbox UID from mounted input owners')
 
 
+def _child_file_limit():
+    # Denied /proc makes JDK jspawnhelper close descriptors up to the hard
+    # limit. Bound that work before Landlock, without granting new filesystem
+    # access or changing the host supervisor's limit.
+    soft,hard=resource.getrlimit(resource.RLIMIT_NOFILE)
+    hard=4096 if hard==resource.RLIM_INFINITY else min(hard,4096)
+    soft=hard if soft==resource.RLIM_INFINITY else min(soft,hard)
+    resource.setrlimit(resource.RLIMIT_NOFILE,(soft,hard))
+
+
 def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT):
     try:
         process = subprocess.Popen(
             command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True,
+            stdin=subprocess.DEVNULL, start_new_session=True, preexec_fn=_child_file_limit,
+            env={**os.environ,"LANG":"C.UTF-8","LC_ALL":"C.UTF-8"},
         )
     except OSError as exc:
         raise GraderError("Required grading executable is unavailable") from exc

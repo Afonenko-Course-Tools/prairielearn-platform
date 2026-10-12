@@ -90,7 +90,7 @@ def _selection(project,items):
         names.add(target);out.append(dict(x))
     return out
 
-def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
+def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,registry=None):
     projects=[p for p in inventory(manifest) if p['qualifiedId']==id]
     if len(projects)!=1:raise JobError('ID is not in declared check inventory')
     p=projects[0];check=p['check']
@@ -141,7 +141,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
     limits={'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536};limits.update(check.get('limits',{}))
     grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
     if 'variants' in check:grading['variants']=check['variants']
-    runtime=json.loads((ROOT/'runtime-profiles.json').read_text())['profiles'][check['runtime']]
+    runtime=(registry or load_runtime_registry())['profiles'][check['runtime']]
     if check['runtime']=='fish-git-v1': grading.pop('java')
     expectations=case[0]['expected'] if scenario.startswith('contract:') else check.get('verification-expectations',{}).get('reference' if scenario.startswith('reference:') else 'starter',{})
     job=GradingJob(schemaVersion=1,scope=scope,qualifiedId=id,scenario=scenario,sourceSnapshotHash=manifest['sourceSnapshotHash'],inventoryHash=manifest['inventoryHash'],runtime=check['runtime'],imageDigest=runtime['image'] or os.environ.get('PL_LOCAL_IMAGE_ID'),sources=selected,trustedTests=tests,verificationTests=public,grading=grading,expectations=expectations,sourceHashes={x['projectRelativePath']:x['sha256'] for x in selected},testsHashes={x['projectRelativePath']:x['sha256'] for x in [*tests,*public]})
@@ -184,14 +184,14 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None):
         (publicroot/'tests/grading-job.json').write_text(json.dumps(cfg,sort_keys=True))
     return job
 
-def run_job(job,backend='host'):
+def run_job(job,backend='host',registry=None):
     validate('grading-job',job)
     if not getattr(job,'root',None):raise JobError('Prepared private job root required')
     common={k:job[k] for k in ('scope','qualifiedId','scenario','sourceSnapshotHash','inventoryHash','runtime','imageDigest','sourceHashes','testsHashes')}
     if 'deliveryHash' in job:common['deliveryHash']=job['deliveryHash']
     try:
         if backend=='host':
-            profile=load_runtime_registry()['profiles'][job['runtime']]
+            profile=(registry or load_runtime_registry())['profiles'][job['runtime']]
             spec=importlib.util.spec_from_file_location('platform_grader',safe(ROOT,profile.get('runner','images/java25-grader/grade.py')));grader=importlib.util.module_from_spec(spec);spec.loader.exec_module(grader)
             try:result=grader.grade(job.root)
             except grader.GraderError as error:raise JobError(str(error)) from error
@@ -210,10 +210,10 @@ def run_job(job,backend='host'):
     except (JobError,OSError,ValueError,subprocess.TimeoutExpired) as error:result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':str(error)}
     if (job.root/'public-verification').is_dir() and result.get('infrastructure')=='complete':
         publicjob=GradingJob(job);publicjob.root=job.root/'public-verification'
-        publicresult=run_job(publicjob,backend)
+        publicresult=run_job(publicjob,backend,registry)
         result['publicResult']={k:v for k,v in publicresult.items() if k not in {'schemaVersion','scope','qualifiedId','scenario','sourceSnapshotHash','inventoryHash','deliveryHash','runtime','imageDigest','sourceHashes','testsHashes','backend'}}
         if publicresult.get('infrastructure')!='complete':result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':'Public verification infrastructure failed','publicResult':result['publicResult']}
-    if result.get('infrastructure')=='complete' and result.get('executionEvidence')!=runtime_evidence(job['runtime']):raise JobError('Executed image dependency closure differs from prepared runtime')
+    if result.get('infrastructure')=='complete' and result.get('executionEvidence')!=runtime_evidence(job['runtime'],registry):raise JobError('Executed image dependency closure differs from prepared runtime')
     value={'schemaVersion':1,'backend':backend,**common,**result}
     validate('check-result',value)
     return value
@@ -237,7 +237,7 @@ def _matches(result,expected):
     if 'test-ids' in expected and not set(expected['test-ids']).issubset(c.get('outcomes',{})):return False,'test-ids'
     return True,''
 
-def verify_results(results,expectations,required_scenarios=None,unavailable=None):
+def verify_results(results,expectations,required_scenarios=None,unavailable=None,registry=None):
     if not results:raise JobError('No results; empty receipt forbidden')
     first=results[0];status=0;checks=[];bindings={};runtimes={};closures={};observed=set()
     for r in results:
@@ -249,7 +249,7 @@ def verify_results(results,expectations,required_scenarios=None,unavailable=None
         observed.add(key)
         if rid in runtimes and runtimes[rid]!=image:raise JobError('Mixed images for one runtime')
         runtimes[rid]=image
-        expected_evidence=runtime_evidence(rid)
+        expected_evidence=runtime_evidence(rid,registry)
         evidence=r.get('executionEvidence',expected_evidence)
         if evidence!=expected_evidence:raise JobError('Executed runtime dependency closure differs from registry')
         binding={'qualifiedId':q,'runtime':rid,'imageDigest':image,'dependencyHash':evidence['dependencyHash']}

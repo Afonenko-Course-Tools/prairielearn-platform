@@ -75,10 +75,12 @@ a defense assignment slot. Joined enrollment and native Student publishing/asses
 access resolver authorize the read. The resolver always uses ordinary Student roles;
 there is no staff override. Modern individual assessments are supported; other access
 models fail closed. `schemas/gateway-work-results.schema.json` has the same scoped
-per-question result core, without assignmentId/version, plus native current attempt
+per-slot result core v2, without assignmentId/version, plus native current attempt
 `scoreGiven` (points) and `scoreMaximum` (max_points). These preserve declared weighted
 grades; Gateway must not infer aggregate weights from question counts. An unattempted
-work has null attempt/aggregate values. Reads perform no enrollment/label writes.
+work has state:not-started, null attempt/aggregate values and empty slots; completion
+requiredCount/atLeast remains bound to delivery. Started results contain exactly one
+selected instance_question per slot from the captured native assessment instance. Reads perform no enrollment/label writes.
 
 `GET /internal/gateway/work-launch` uses the same scoped query. It returns only
 workId, userUid, instance, deliveryHash and a native server-derived assessment path.

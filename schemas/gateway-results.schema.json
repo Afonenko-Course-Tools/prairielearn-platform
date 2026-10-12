@@ -175,6 +175,16 @@
           },
           "slots": {
             "maxItems": 0
+          },
+          "completion": {
+            "properties": {
+              "completedRequired": {
+                "const": 0
+              },
+              "passed": {
+                "const": false
+              }
+            }
           }
         }
       },

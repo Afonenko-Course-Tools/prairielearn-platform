@@ -293,7 +293,7 @@ async function nativeStudentWorkContext(request, allowAssignment = false) {
       .has_student_access_with_enrollment
   )
     throw new BridgeError(403, 'Native Student instance access denied');
-  await validateWork(binding, ci, work.id);
+  const nativeWork=await validateWork(binding, ci, work.id);
   const assessment = await nativeAssessment.selectAssessmentByTid({
     course_instance_id: ci.id,
     tid: work.id,
@@ -320,7 +320,7 @@ async function nativeStudentWorkContext(request, allowAssignment = false) {
       })
     : await assessmentAccess.resolveModernAssessmentAccess(input);
   if (!access.authorized) throw new BridgeError(403, 'Native Student assessment access denied');
-  return { binding, ci, user, work, assessment, attemptRow };
+  return { binding, ci, user, work:nativeWork, assessment, attemptRow };
 }
 async function workResults(request) {
   const { ci, user, work, attemptRow } = await nativeStudentWorkContext(request);

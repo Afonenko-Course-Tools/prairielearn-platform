@@ -121,7 +121,7 @@ def publish_directory(source, destination):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None) -> None:
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
@@ -137,6 +137,7 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     with tempfile.TemporaryDirectory(prefix='.pl-full-export-',dir=output.parent) as tmp:
         stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
         command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
+        if candidate_image:command+=['--candidate-image',candidate_image]
         try:subprocess.run(command,cwd=source,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
         files=tree(native)
@@ -159,7 +160,7 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);args=parser.parse_args()
-    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image)
     except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
 if __name__=='__main__':main()
