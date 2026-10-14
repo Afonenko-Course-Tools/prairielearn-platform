@@ -17,7 +17,7 @@ Commit generated native files into the public delivery repository, then choose
 that exact commit in a `pl-courses-v1` registry:
 
 ```json
-{"schema":"pl-courses-v1","courses":[{"id":"java-portal","repository":"https://github.com/BSU-RFCT-Afonenko-Courses/pl-course-java","commit":"<exact 40-hex commit>","mount":"/course"}]}
+{"schema":"pl-courses-v2","courses":[{"id":"java-portal","institution":"bsu","repository":"https://github.com/BSU-RFCT-Afonenko-Courses/pl-course-java","commit":"<exact 40-hex commit>","mount":"/course"}]}
 ```
 
 The example placeholder is deliberately rejected. Registry validation rejects
@@ -39,6 +39,16 @@ HEAD, cleanliness, native metadata and provenance hashes, refuses symlinks and
 unexpected payload, then publishes without replacing an existing directory.
 Repeated staging verifies existing content; an upgrade retains prior versions.
 Generated mounts are read-only and refuse absent host directories.
+
+Учреждение задано один раз в versioned [config/institutions.json](../config/institutions.json),
+контракт — [institutions.schema.json](../schemas/institutions.schema.json). Запись
+[pl-courses-v2](../schemas/courses-v2.schema.json) ссылается на ключ, не на ID БД.
+`check_registry.py` и `stage_courses.py` принимают `--institutions PATH` для
+другого проверяемого каталога. Неизвестный ключ, неоднозначное native короткое
+имя и неверный timezone отклоняются. Legacy `pl-courses-v1` сохранён только для
+прежнего staging; новый institution bootstrap требует v2, без fallback Default.
+Stage не создаёт учреждение и не импортирует курс. Для production новой поставки
+используйте [штатный локальный bootstrap](proxmox-pilot.md#учреждение-и-новый-native-курс).
 
 Staging files does not import a course. In the pinned PL dev UI open the navbar
 and click **Load from disk**, then wait for **Success** and `Course sync successful`

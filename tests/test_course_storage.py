@@ -117,6 +117,23 @@ class CourseStorageTests(unittest.TestCase):
         self.git('add','.');self.git('commit','-qm','Wrong receipt');self.course['commit']=self.git('rev-parse','HEAD');self.git('update-server-info')
         with self.assertRaises(self.module.StorageError):self.stage()
 
+    def test_v2_institution_reference_survives_staging_and_repeat(self):
+        catalog={'schema':'pl-institutions-v1','institutions':{'synthetic':{'shortName':'SYN','longName':'Synthetic University','displayTimezone':'Europe/Minsk','uidRegexp':None}}}
+        course={**self.course,'institution':'synthetic'}
+        registry={'schema':'pl-courses-v2','courses':[course]}
+        images=self.module.builder.read_json(SCRIPT.parents[1]/'images.lock.json')
+        first=self.module.stage_registry(registry,images,self.storage,catalog)
+        self.assertEqual(first,self.module.stage_registry(registry,images,self.storage,catalog))
+        self.assertTrue(Path(first['services']['pl']['volumes'][0]['source']).is_dir())
+
+    def test_unknown_institution_rejects_before_checkout(self):
+        catalog={'schema':'pl-institutions-v1','institutions':{'synthetic':{'shortName':'SYN','longName':'Synthetic University','displayTimezone':'Europe/Minsk','uidRegexp':None}}}
+        registry={'schema':'pl-courses-v2','courses':[{**self.course,'institution':'unknown'}]}
+        images=self.module.builder.read_json(SCRIPT.parents[1]/'images.lock.json')
+        with patch.object(self.module,'git',wraps=self.module.git) as invoked:
+            with self.assertRaises(self.module.RegistryError):self.module.stage_registry(registry,images,self.storage,catalog)
+            invoked.assert_not_called()
+
     def rewrite_receipt(self,receipt):
         from grading_job import digest
         receipt['identityHash']=digest({k:v for k,v in receipt.items() if k!='identityHash'})

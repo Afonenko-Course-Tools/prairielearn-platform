@@ -12,7 +12,8 @@
 | Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | schemaVersion1, отдельные закрытые schemas/ |
 | Project check | project-check.schema.json, без отдельного schemaVersion |
 | Enrollment, assignment и work launch | Закрытые named schemas; assignment.version — ревизия предоставления доступа |
-| Native course registry / image lock | pl-courses-v1 / pl-images-v1 |
+| Native course registry / image lock | pl-courses-v2 с institution key; legacy v1 только staging / pl-images-v1 |
+| Каталог учреждений | pl-institutions-v1; config/institutions.json; numeric ID разрешается native model |
 | Профили Java | java25-junit-v1 и java25-mutation-v1, образ java25-grader |
 | Текстовый профиль | fish-git-v1, собственный образ fish-git-grader |
 | Java/JUnit | Java25, JUnit console1.14.1, JSON simple1.1.1 |

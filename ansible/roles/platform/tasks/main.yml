@@ -46,8 +46,16 @@
     src: '{{ pl_source_dir }}/tools/{{ item }}'
     dest: '{{ pl_release_dir }}/tools/{{ item }}'
     mode: '0755'
-  loop: [start-pl.sh, sync-native-course.mjs, course-sync-policy.mjs]
+  loop: [start-pl.sh, sync-native-course.mjs, course-sync-policy.mjs, institution-bootstrap.mjs, bootstrap-native-course.mjs, native-course-payload.mjs]
   register: pl_startup
+
+- name: Доставить versioned каталог учреждений отдельно от runtime secrets
+  ansible.builtin.copy:
+    src: '{{ pl_source_dir }}/config/institutions.json'
+    dest: '{{ pl_release_dir }}/config/institutions.json'
+    mode: '0644'
+    directory_mode: '0755'
+  register: pl_institutions
 
 - name: Доставить immutable course
   ansible.builtin.copy:
@@ -126,7 +134,7 @@
 - name: Применить deployment
   ansible.builtin.command:
     argv: [docker, compose, --env-file, '{{ pl_release_dir }}/runtime.env', -f, '{{ pl_release_dir }}/compose/compose.prod.yml', up, -d, --force-recreate]
-  when: not ansible_check_mode and (pl_code.changed or pl_startup.changed or pl_course.changed or pl_config.changed or pl_env.changed or pl_service.changed or pl_images_loaded is changed)
+  when: not ansible_check_mode and (pl_code.changed or pl_startup.changed or pl_institutions.changed or pl_course.changed or pl_config.changed or pl_env.changed or pl_service.changed or pl_images_loaded is changed)
 
 - name: Включить запуск после reboot
   ansible.builtin.systemd_service:

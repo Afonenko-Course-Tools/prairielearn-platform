@@ -14,7 +14,7 @@ import tempfile
 
 TOOLS=Path(__file__).resolve().parent
 sys.path.insert(0,str(TOOLS))
-from check_registry import RegistryError, validate_registry
+from check_registry import RegistryError, validate_registry, INSTITUTIONS
 from grading_job import validate as validate_contract, digest as contract_digest, JobError, validate_release_receipt, load_runtime_registry
 spec=importlib.util.spec_from_file_location('native_builder',TOOLS/'build-course.py')
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
@@ -66,10 +66,11 @@ def validate_checkout(path,course):
     except (builder.BuildError,JobError,OSError,ValueError) as error:
         raise StorageError('Invalid native delivery or provenance') from error
 
-def stage_course(course,storage):
+def stage_course(course,storage,institutions=None):
     try:
         images=builder.read_json(TOOLS.parent/'images.lock.json')
-        validate_registry({'schema':'pl-courses-v1','courses':[course]},images)
+        version='pl-courses-v2' if 'institution' in course else 'pl-courses-v1'
+        validate_registry({'schema':version,'courses':[course]},images,institutions)
         storage=Path(storage).absolute()
         if not storage.is_dir() or storage.resolve()!=storage or storage.is_symlink():
             raise StorageError('Storage must be an existing absolute real directory')
@@ -91,21 +92,23 @@ def stage_course(course,storage):
     except (RegistryError,builder.BuildError,OSError) as error:
         raise StorageError(str(error)) from error
 
-def stage_registry(registry,images,storage):
-    courses=validate_registry(registry,images)
+def stage_registry(registry,images,storage,institutions=None):
+    courses=validate_registry(registry,images,institutions)
     volumes=[]
     for course in courses:
-        path=stage_course(course,storage)
+        path=stage_course(course,storage,institutions)
         volumes.append({'type':'bind','source':str(path),'target':course['mount'],'read_only':True,'bind':{'create_host_path':False}})
     return {'services':{'pl':{'volumes':volumes}}}
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('registry',type=Path);parser.add_argument('--storage',required=True,type=Path);parser.add_argument('--compose-output',required=True,type=Path)
-    parser.add_argument('--images',type=Path,default=TOOLS.parent/'images.lock.json');args=parser.parse_args()
+    parser.add_argument('--images',type=Path,default=TOOLS.parent/'images.lock.json')
+    parser.add_argument('--institutions',type=Path,default=INSTITUTIONS);args=parser.parse_args()
     try:
         registry=builder.read_json(args.registry);images=builder.read_json(args.images)
-        override=stage_registry(registry,images,args.storage)
+        catalog=builder.read_json(args.institutions) if isinstance(registry,dict) and registry.get('schema')=='pl-courses-v2' else None
+        override=stage_registry(registry,images,args.storage,catalog)
         data=json.dumps(override,indent=2)+'\n'
         if args.compose_output.exists():
             if args.compose_output.read_text()!=data:raise StorageError('Compose output exists with different contents; choose a fresh output')

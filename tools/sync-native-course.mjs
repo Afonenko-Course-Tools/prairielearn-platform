@@ -8,11 +8,21 @@ import * as namedLocks from '@prairielearn/named-locks';
 import {z} from 'zod';
 import {authorizeCourseSync} from './course-sync-policy.mjs';
 import {authorizeAdministrator,canonicalJSONString} from '../bridge/policy.mjs';
+import {selectRegistryCourse,resolveInstitution} from './institution-bootstrap.mjs';
 const root=process.env.PL_ROOT??'/PrairieLearn';
 const native=(path)=>import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
 const args=process.argv.slice(2);
-if(args.length!==4||args[0]!=='--course-id'||!/^[1-9][0-9]*$/.test(args[1])||args[2]!=='--path')throw new Error('Use --course-id ID --path /course/ID/DELIVERY_HASH');
+if(args.length<4||args[0]!=='--course-id'||!/^[1-9][0-9]*$/.test(args[1])||args[2]!=='--path')throw new Error('Use --course-id ID --path /course/ID/DELIVERY_HASH [--registry PATH --course-key KEY --institutions PATH]');
 const id=args[1],path=args[3];
+const options={};
+for(let i=4;i<args.length;i+=2) {
+ if(!['--registry','--course-key','--institutions'].includes(args[i])||!args[i+1]||Object.hasOwn(options,args[i]))throw new Error('Invalid registry sync options');
+ options[args[i]]=args[i+1];
+}
+if(Boolean(options['--registry'])!==Boolean(options['--course-key'])||options['--institutions']&&!options['--registry'])throw new Error('Registry and course key must be supplied together');
+const catalog=options['--registry']?JSON.parse(await readFile(options['--institutions']??new URL('../config/institutions.json',import.meta.url),'utf8')):null;
+const record=options['--registry']?selectRegistryCourse(JSON.parse(await readFile(options['--registry'],'utf8')),options['--course-key'],catalog):null;
+if(record&&!new RegExp('^/course/'+record.id+'/[a-f0-9]{64}$').test(path))throw new Error('Registry course path mismatch');
 const settings=JSON.parse(await readFile(process.env.PL_GATEWAY_CONFIG,'utf8'));
 const delivery=bridgeDeliverySchema.parse(JSON.parse(await readFile(path+'/delivery.json','utf8')));
 const info=JSON.parse(await readFile(path+'/infoCourse.json','utf8'));
@@ -39,6 +49,11 @@ try {
  authorizeAdministrator(uid,settings.administratorUid);
  const actor=await(await native('models/user')).selectOptionalUserByUid(uid);
  if(!actor||!await db.queryScalar('SELECT EXISTS(SELECT 1 FROM administrators WHERE user_id=$id)',{id:actor.id},z.boolean()))throw new Error('Verified native administrator must exist');
+ if(record) {
+  const institutions=await native('models/institution');
+  const institutionId=await resolveInstitution(catalog,record.institution,{...institutions,withLock:(name,fn)=>namedLocks.doWithLock(name,{timeout:30000},fn)});
+  if(course.institution_id!==institutionId)throw new Error('Native course institution mismatch; migration is not supported');
+ }
  if(course.path!==path)course=await courses.updateCourseColumn({courseId:id,columnName:'path',value:path,authnUserId:actor.id});
  const logger={info:message=>process.stderr.write(String(message)+'\n'),verbose:()=>{},error:message=>process.stderr.write(String(message)+'\n')};
  const result=await(await native('sync/syncFromDisk')).syncDiskToSql(course,logger);

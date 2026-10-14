@@ -1,0 +1,11 @@
+{
+  "schema": "pl-institutions-v1",
+  "institutions": {
+    "bsu": {
+      "shortName": "БГУ",
+      "longName": "Белорусский государственный университет",
+      "displayTimezone": "Europe/Minsk",
+      "uidRegexp": null
+    }
+  }
+}

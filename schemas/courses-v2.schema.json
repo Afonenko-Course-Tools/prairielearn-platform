@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "courses"],
+  "properties": {
+    "schema": {"const": "pl-courses-v2"},
+    "courses": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "institution", "repository", "commit", "mount"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "institution": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "repository": {"type": "string", "pattern": "^https://"},
+          "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+          "mount": {"type": "string", "pattern": "^/course([2-9]|[1-9][0-9]+)?$"}
+        }
+      }
+    }
+  }
+}

@@ -12,8 +12,33 @@ services:
       HOST_JOBS_DIR: ${HOST_JOBS_DIR:?Нужен абсолютный существующий jobs path}
     volumes:
       - type: bind
-        source: ../tools
-        target: /PrairieLearn/apps/prairielearn/bridge/operator-tools
+        source: ../tools/sync-native-course.mjs
+        target: /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../tools/course-sync-policy.mjs
+        target: /PrairieLearn/apps/prairielearn/tools/course-sync-policy.mjs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../tools/institution-bootstrap.mjs
+        target: /PrairieLearn/apps/prairielearn/tools/institution-bootstrap.mjs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../tools/bootstrap-native-course.mjs
+        target: /PrairieLearn/apps/prairielearn/tools/bootstrap-native-course.mjs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../tools/native-course-payload.mjs
+        target: /PrairieLearn/apps/prairielearn/tools/native-course-payload.mjs
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../config/institutions.json
+        target: /PrairieLearn/apps/prairielearn/config/institutions.json
         read_only: true
         bind: {create_host_path: false}
       - type: bind

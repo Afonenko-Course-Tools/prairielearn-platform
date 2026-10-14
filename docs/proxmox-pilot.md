@@ -87,6 +87,69 @@ Docker socket предоставлен только PL для запуска gra
 
 ## Обновление одного курса
 
+### Учреждение и новый native курс
+
+Авторитетный descriptor хранится в versioned `config/institutions.json`, запись
+`pl-courses-v2` ссылается на `institution` key. Для БГУ это `bsu`; другой descriptor
+работает тем же generic кодом. Не задавайте numeric native ID или названия
+учреждения в записи курса. Перед переносом snapshot выполните `check_registry.py`
+и `stage_courses.py`; публикуемый payload должен иметь полный release receipt.
+
+Для новой изолированной поставки подготовьте readonly `/course/KEY/DELIVERY_HASH`
+и разрешённый bridge binding. Используйте уже существующего native administrator,
+его private allowlist и **те же** токены, ключи и сертификаты. Каталог учреждений
+не содержит SSO registration и не изменяет issuer/client/deployment/subjects.
+Registry смонтируйте отдельным readonly файлом в контейнер; путь ниже — пример,
+его отсутствие является ошибкой, скрипт не генерирует конфигурацию.
+
+```sh
+sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
+  /PrairieLearn/apps/prairielearn/tools/bootstrap-native-course.mjs \
+  --registry /run/deployment/courses.json --course-key COURSE_KEY \
+  --path /course/COURSE_KEY/DELIVERY_HASH
+```
+
+CLI проверяет v2 registry и institution catalog до native dependencies, затем
+inventory/hash/symlinks и bridge path, production config и фактическую administrator
+роль. Он вызывает native `models/institution.selectAllInstitutions` и
+`insertInstitution({shortName,longName,displayTimezone,uidRegexp})`, далее native
+`models/course.insertCourse` с разрешённым `institution_id` и actor/audit. Это те
+же модели, которые используют административные tRPC `institutions.addInstitution`
+и `courses.insert`. Course repository остаётся `null`: snapshot immutable, native
+repository sync не используется. Результат JSON содержит фактические course и
+institution IDs, но не credentials; native disk sync ещё нужен.
+
+Повтор одинакового descriptor/path возвращает прежние IDs. Named locks защищают
+одновременный bootstrap. Если native короткое имя совпало, но descriptor отличается,
+или course принадлежит другому institution, команда завершается ошибкой; существующее
+учреждение/курс не переименовываются и не перемещаются. CLI не создаёт admin и не
+мигрирует предыдущую delivery. Для другого каталога передайте `--institutions PATH`;
+descriptor поля — shortName/longName/displayTimezone/uidRegexp; timezone должен быть
+известен runtime, UID regexp при наличии проходит штатные ограничения синтаксиса.
+
+После bootstrap выполните sync с полученным actual course ID и той же registry:
+
+```sh
+sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
+  /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs \
+  --course-id ACTUAL_COURSE_ID --path /course/COURSE_KEY/DELIVERY_HASH \
+  --registry /run/deployment/courses.json --course-key COURSE_KEY
+```
+
+Sync дополнительно сравнивает фактический institution ID до изменения native path.
+Прежняя форма с actual ID без registry остаётся локальной операцией существующего
+курса, она не создаёт institution и не выбирает Default. Наличие неизвестного key
+в явно переданной registry всегда ошибка. Сам bootstrap не подтверждает native
+Student launch, grader или Moodle grades: нужны сквозные live evidence.
+
+Повторный импорт **той же** новой поставки проверяйте на тестовой БД после
+штатного создания enrollment/attempt/result. Сохраняйте их IDs и grades. Для нового
+семестра key меняет instance UUID; не объявляйте это миграцией pilot. Assessment,
+course, access и question namespaces не менять. Legacy Default/pilot данные
+не удалять, credentials не регенерировать и LTI registration не заменять.
+
+### Прежний курс и другая delivery
+
 Замена delivery не переносит assignments, labels и attempts прежнего native-экземпляра. Если экземпляр уже имеет такие данные, описанная операция не поддерживает их повторное использование: подготовьте новый независимый native instance/scope и свежую Gateway БД schema3. Свяжите новый scope с его фактическими ID в Gateway и bridge; старый scope не используйте для новой delivery. Эта процедура не задаёт миграцию данных существующего сервера.
 
 1. Экспортировать и проверить выбранный курс; его UUID и source course ID должны
