@@ -49,6 +49,12 @@
   loop: [start-pl.sh, sync-native-course.mjs, course-sync-policy.mjs, institution-bootstrap.mjs, bootstrap-native-course.mjs, native-course-payload.mjs]
   register: pl_startup
 
+- name: Создать каталог versioned deployment конфигурации
+  ansible.builtin.file:
+    path: '{{ pl_release_dir }}/config'
+    state: directory
+    mode: '0755'
+
 - name: Доставить versioned каталог учреждений отдельно от runtime secrets
   ansible.builtin.copy:
     src: '{{ pl_source_dir }}/config/institutions.json'
