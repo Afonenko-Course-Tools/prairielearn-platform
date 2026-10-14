@@ -62,3 +62,17 @@ class BrowserAssetsIntegration(unittest.TestCase):
                 self.assertTrue(name in cookies, name + " отсутствует в Set-Cookie")
                 self.assertTrue(cookies[name]['secure'], name + ' требует Secure через HTTPS')
                 self.assertTrue(cookies[name]['httponly'])
+
+    def test_native_favicon_reaches_browser(self):
+        status, content_type, body, _ = self.request('/favicon.ico')
+        self.assertEqual(status, 200)
+        self.assertIn(content_type, ('image/x-icon', 'image/vnd.microsoft.icon'))
+        self.assertTrue(body)
+
+    def test_logo_and_gateway_root_open_native_platform(self):
+        for path in ('/', '/gateway', '/gateway/'):
+            with self.subTest(path=path):
+                status, content_type, body, _ = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertEqual(content_type, 'text/html')
+                self.assertIn(b'PrairieLearn', body)
