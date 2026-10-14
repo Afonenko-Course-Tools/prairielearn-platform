@@ -129,3 +129,28 @@ Native `loadFromDisk` — dev-only route и для production этой кома�
  закреплённым repositories или разрешённый оператором транспорт тех же байтов.
  Режим обновления одного курса `--tags deployment` использует установленный
  Docker и не требует изменения сети или доступа к APT repositories.
+
+## Проверка браузера за HTTPS-прокси
+
+В native private `pl.json` задайте `trustProxy: 1`, если перед PrairieLearn
+находится ровно один управляемый nginx. Proxy должен перезаписывать
+`X-Forwarded-Proto`, а native порт не должен публиковаться наружу. Это позволяет
+штатному `secure: auto` выдавать Secure cookies при внешнем HTTPS. Без этой
+настройки cookie с `SameSite=None` отвергается браузером, даже если HTTP-клиент
+принимает её.
+
+Production nginx должен проксировать `/assets/` в native PrairieLearn с сохранением
+пути: стили, модули JavaScript и шрифты находятся вне `/pl/`. Проверка HTML200
+без загрузки этих ресурсов не подтверждает работоспособность панели.
+
+Проверка фактического развёртывания (URL и CA принадлежат своему стенду):
+
+```sh
+PL_BROWSER_TEST_URL=https://АДРЕС_СТЕНДА \
+PL_BROWSER_TEST_CA=/абсолютный/путь/ca.crt \
+python3 -m unittest discover -s tests -p test_browser_assets_live.py
+```
+
+Тест читает настоящую страницу, проверяет HTTP200 и MIME её CSS/JS, затем
+проверяет Secure/HttpOnly native cookies. Для административной панели дополнительно
+проверьте её ресурсы и отображение интерфейса в настоящем браузере.
