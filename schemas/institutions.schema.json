@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "institutions"],
+  "properties": {
+    "schema": {"const": "pl-institutions-v1"},
+    "institutions": {
+      "type": "object", "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["shortName", "longName", "displayTimezone", "uidRegexp"],
+        "properties": {
+          "shortName": {"type": "string", "minLength": 1},
+          "longName": {"type": "string", "minLength": 1},
+          "displayTimezone": {"type": "string", "minLength": 1},
+          "uidRegexp": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

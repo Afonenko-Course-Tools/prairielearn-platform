@@ -10,7 +10,7 @@ import tempfile
 import secrets
 import jsonschema
 ROOT=Path(__file__).resolve().parents[1]
-TOOL_VERSION='2.0.0'
+TOOL_VERSION='2.1.0'
 class JobError(Exception):pass
 class ProjectDefect(JobError):pass
 class GradingJob(dict):

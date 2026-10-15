@@ -5,6 +5,7 @@ RUN python3 /tmp/patch-localhost-cookies.py /PrairieLearn/apps/prairielearn/src/
 COPY images/prairielearn/patch-local-grader.py /tmp/patch-local-grader.py
 RUN python3 /tmp/patch-local-grader.py /PrairieLearn/apps/prairielearn/src/lib/externalGraderLocal.ts /PrairieLearn/apps/prairielearn/dist/lib/externalGraderLocal.js && rm /tmp/patch-local-grader.py
 COPY bridge /PrairieLearn/apps/prairielearn/bridge
-COPY tools/sync-native-course.mjs tools/course-sync-policy.mjs /PrairieLearn/apps/prairielearn/tools/
+COPY tools/sync-native-course.mjs tools/course-sync-policy.mjs tools/institution-bootstrap.mjs tools/bootstrap-native-course.mjs tools/native-course-payload.mjs /PrairieLearn/apps/prairielearn/tools/
+COPY config/institutions.json /PrairieLearn/apps/prairielearn/config/institutions.json
 COPY images/prairielearn/start-bridge.sh /PrairieLearn/scripts/start-gateway-bridge.sh
 CMD ["/PrairieLearn/scripts/start-gateway-bridge.sh"]

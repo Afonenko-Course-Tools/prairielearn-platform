@@ -1,18 +1,19 @@
 # Версии Platform и публикация образов
 
-Текущий исходный контракт — **2.0.0** (`VERSION`). Body/delivery/results используют
+Текущий исходный контракт — **2.1.0** (`VERSION`). Body/delivery/results используют
 позиции: каждый native экземпляр выбирает один вопрос каждой позиции, все кандидаты
 остаются в каталоге. Прежние delivery/results отклоняются до sync/Bridge операций.
 
 | Интерфейс | Текущий контракт |
 | --- | --- |
-| `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.0.0 |
+| `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.1.0 |
 | Native delivery и Gateway results | schemaVersion2; per-slot-results-v2 |
 | Completion | required-slot-completion, позиции requiredSlotIds |
 | Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | schemaVersion1, отдельные закрытые schemas/ |
 | Project check | project-check.schema.json, без отдельного schemaVersion |
 | Enrollment, assignment и work launch | Закрытые named schemas; assignment.version — ревизия предоставления доступа |
-| Native course registry / image lock | pl-courses-v1 / pl-images-v1 |
+| Native course registry / image lock | pl-courses-v2 с institution key; legacy v1 только staging / pl-images-v1 |
+| Каталог учреждений | pl-institutions-v1; config/institutions.json; numeric ID разрешается native model |
 | Профили Java | java25-junit-v1 и java25-mutation-v1, образ java25-grader |
 | Текстовый профиль | fish-git-v1, собственный образ fish-git-grader |
 | Java/JUnit | Java25, JUnit console1.14.1, JSON simple1.1.1 |
@@ -47,7 +48,7 @@ Candidate не допускается к staging независимо от ус�
 2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=2.0.0 \
+   gh workflow run publish-runtime.yml --ref main -f version=2.1.0 \
      -f reviewed_commit=ACTUAL_MERGED_SHA
    ```
 
