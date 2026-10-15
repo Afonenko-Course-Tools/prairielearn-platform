@@ -80,7 +80,7 @@ ansible-playbook -i /absolute/private/inventory.yml ansible/site.yml
 ```
 
 Изменение runtime files требует перечитать конфигурации: Ansible делает
-`up -d --force-recreate` при материальных изменениях. При неизменной delivery PostgreSQL/SQLite state и snapshots сохраняются после перезапуска. Для изменённой delivery требуется свежая Gateway БД schema3; прежняя БД может остаться архивом, без переноса назначений. Systemd включает запуск после reboot.
+`up -d --force-recreate` при материальных изменениях. При неизменной delivery PostgreSQL/SQLite state и snapshots сохраняются после перезапуска. Для новой delivery соблюдайте условия раздела [«Прежний курс и другая delivery»](#прежний-курс-и-другая-delivery). Systemd включает запуск после reboot.
 Docker socket предоставлен только PL для запуска grader containers; ответ
 студента выполняется в ограниченном grader без socket и сети. На уровне PL
 одновременно выполняются максимум два локальных grader job по 512 MiB.
@@ -150,11 +150,18 @@ course, access и question namespaces не менять. Legacy Default/pilot д
 
 ### Прежний курс и другая delivery
 
-Замена delivery не переносит assignments, labels и attempts прежнего native-экземпляра. Если экземпляр уже имеет такие данные, описанная операция не поддерживает их повторное использование: подготовьте новый независимый native instance/scope и свежую Gateway БД schema3. Свяжите новый scope с его фактическими ID в Gateway и bridge; старый scope не используйте для новой delivery. Эта процедура не задаёт миграцию данных существующего сервера.
+Для новой delivery подготовьте новый native course и отдельный instance, например `2026-2027-s1`, в существующем профиле Gateway.
+Сохраните ту же SQLite schema3, routePrefix/cookie path, HTTPS origin, LTI registration и activity bindings;
+ключи signing/handoff/bridge и шифрования БД, bearer tokens и TLS certificates не заменяйте.
+Сохранённые строки `GatewaySession` и CSRF продолжают действовать до обычного expiry; одноразовость handoff/state не меняется.
+Прежний pilot, его enrollments, attempts, assignments, labels и observations остаются в прежнем scope без переноса в новый instance.
+Замена delivery внутри того же instance здесь не поддерживается: `Explicit delivery migration required` нельзя обходить.
+Свежая БД допустима для первого отдельного развёртывания, но не обеспечивает непрерывность существующих cookies/session bearer.
+Условия переключения и проверка сохранности состояния описаны в [инструкции Gateway](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/blob/73ea3c64e32af9805bc3fc5cc06b59d6630717c0/docs/two-courses.md).
 
 1. Экспортировать и проверить выбранный курс; его UUID и source course ID должны
    сохраняться. Создать новый каталог `<id>/<newDeliveryHash>`, старый оставить.
-2. Подготовить для изменённой delivery свежую Gateway БД schema3 и новый путь в соответствующем именованном профиле; прежние назначения и observations автоматически не переносить. Старую БД можно сохранить как архив. Обновить только delivery path и binding выбранного native-курса. Конфигурацию другого курса, его БД и snapshots не менять.
+2. Сохранить существующую Gateway БД schema3 и её путь в именованном профиле. Проверить фактические ID нового native course/instance, затем обновить только его delivery path и согласованную binding в Gateway и bridge. Прежние назначения и observations не переносить; конфигурацию другого курса, его БД и snapshots не менять.
 3. Доставить файлы и перечитать конфигурации через
    `ansible-playbook -i /absolute/private/inventory.yml ansible/site.yml --tags deployment`.
    Этот режим использует уже установленный Docker и не обновляет APT repositories;
