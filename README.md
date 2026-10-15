@@ -101,7 +101,7 @@ bounded spike evidence are recorded separately from final Gateway/AGS release ac
 Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
 
 Версии контрактов и проверенный порядок публикации описаны в
-[releasing.md](docs/releasing.md). [runtime-image.json](runtime-image.json) закрепляет фактический исходный commit сборки и опубликованные Java/Community/fish digests версии 2.0.0. Delivery/results v2 описывают позиции работы. [runtime-profiles.json](runtime-profiles.json) связывает профили с соответствующими образами. Локальные config IDs позволяют сверить загруженные образы; production использует опубликованные digest pins.
+[releasing.md](docs/releasing.md). [runtime-image.json](runtime-image.json) закрепляет фактический исходный commit сборки и опубликованные Java/Community/fish digests версии 2.1.0. Delivery/results v2 описывают позиции работы. [runtime-profiles.json](runtime-profiles.json) связывает профили с соответствующими образами. Локальные config IDs позволяют сверить загруженные образы; production использует опубликованные digest pins.
 
 ## Серверный пилот и дополнительные runtime
 

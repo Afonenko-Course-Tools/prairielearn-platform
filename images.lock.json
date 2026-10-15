@@ -7,12 +7,12 @@
   },
   "javaGrader": {
     "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-    "localImage": "ghcr.io/afonenko-course-tools/java25-grader:2.0.0",
-    "localImageId": "sha256:0dc81ae0caece549b21f08effa5392b910a50dce0519e11baa844dea49af3309",
+    "localImage": "ghcr.io/afonenko-course-tools/java25-grader:2.1.0",
+    "localImageId": "sha256:4becf3a64e6fb1c9b9c4208e723bf3e93e6e7662be15f38ac705cf78dffea511",
     "status": "Опубликованный Java25/JUnit runtime; localImage/localImageId закрепляют фактический version tag и config ID проверенного pull. Production и staging используют immutable image digest.",
-    "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:f791e5590e6102961669e838cb2476f2dde91d888b0fb5a5292bc226cb2f127d",
-    "sourceCommit": "5bf3a070ff2d21a5c6cebf636775a21bfab2641f",
-    "version": "2.0.0"
+    "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:143e2023d1e6ea1c23950d2a6804becc6225abc1806d1be921b14206e14fa02d",
+    "sourceCommit": "901cda93ce847e6a29386277b07b71a39215b86d",
+    "version": "2.1.0"
   },
   "proxy": {
     "image": "docker.io/library/nginx@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
@@ -21,17 +21,17 @@
   "communityGateway": {
     "baseImage": "docker.io/prairielearn/prairielearn@sha256:60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63",
     "status": "Опубликованный Community bridge; deployment использует immutable image digest.",
-    "image": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:230b4eed786229922111da9a74e3b841d82ec66ff8ccfe82f309070c667e1aa2",
-    "sourceCommit": "5bf3a070ff2d21a5c6cebf636775a21bfab2641f",
-    "version": "2.0.0"
+    "image": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:70f9202c4e0a4592d221b5bc32fbc18b8265d8a586cbbf4f50ee7211336a2ee2",
+    "sourceCommit": "901cda93ce847e6a29386277b07b71a39215b86d",
+    "version": "2.1.0"
   },
   "fishGrader": {
     "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-    "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:da7f44391f125ef6ffee838fbf5a47a96289e590eff7381448635639b6544b6a",
-    "sourceCommit": "5bf3a070ff2d21a5c6cebf636775a21bfab2641f",
-    "version": "2.0.0",
-    "localImage": "ghcr.io/afonenko-course-tools/fish-git-grader:2.0.0",
-    "localImageId": "sha256:f0e397368c8ca28706924ce72d3440298816d7727aa09bd5ec6fa26535e22417",
+    "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:fa4f2bf5c4034e269323d58362dafd26e5b0eaf6796f49a66e68e43fdca0dc94",
+    "sourceCommit": "901cda93ce847e6a29386277b07b71a39215b86d",
+    "version": "2.1.0",
+    "localImage": "ghcr.io/afonenko-course-tools/fish-git-grader:2.1.0",
+    "localImageId": "sha256:fed2431833b58c46ccf861f1b4015eea34cb26fe841bb00ddbb30f642e3a757d",
     "status": "Опубликованный fish runtime; profile fish-git-v1 закреплён за этим immutable image digest."
   }
 }
