@@ -1,12 +1,12 @@
 # Версии Platform и публикация образов
 
-Текущий исходный контракт — **2.0.0** (`VERSION`). Body/delivery/results используют
+Текущий исходный контракт — **2.1.0** (`VERSION`). Body/delivery/results используют
 позиции: каждый native экземпляр выбирает один вопрос каждой позиции, все кандидаты
 остаются в каталоге. Прежние delivery/results отклоняются до sync/Bridge операций.
 
 | Интерфейс | Текущий контракт |
 | --- | --- |
-| `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.0.0 |
+| `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.1.0 |
 | Native delivery и Gateway results | schemaVersion2; per-slot-results-v2 |
 | Completion | required-slot-completion, позиции requiredSlotIds |
 | Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | schemaVersion1, отдельные закрытые schemas/ |
@@ -48,7 +48,7 @@ Candidate не допускается к staging независимо от ус�
 2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=2.0.0 \
+   gh workflow run publish-runtime.yml --ref main -f version=2.1.0 \
      -f reviewed_commit=ACTUAL_MERGED_SHA
    ```
 
