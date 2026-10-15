@@ -1,13 +1,13 @@
 {
   "schemaVersion": 2,
-  "sourceCommit": "5bf3a070ff2d21a5c6cebf636775a21bfab2641f",
-  "version": "2.0.0",
+  "sourceCommit": "901cda93ce847e6a29386277b07b71a39215b86d",
+  "version": "2.1.0",
   "images": {
-    "java": "ghcr.io/afonenko-course-tools/java25-grader@sha256:f791e5590e6102961669e838cb2476f2dde91d888b0fb5a5292bc226cb2f127d",
-    "fish": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:da7f44391f125ef6ffee838fbf5a47a96289e590eff7381448635639b6544b6a",
-    "community": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:230b4eed786229922111da9a74e3b841d82ec66ff8ccfe82f309070c667e1aa2"
+    "java": "ghcr.io/afonenko-course-tools/java25-grader@sha256:143e2023d1e6ea1c23950d2a6804becc6225abc1806d1be921b14206e14fa02d",
+    "fish": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:fa4f2bf5c4034e269323d58362dafd26e5b0eaf6796f49a66e68e43fdca0dc94",
+    "community": "ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:70f9202c4e0a4592d221b5bc32fbc18b8265d8a586cbbf4f50ee7211336a2ee2"
   },
   "deliverySchemaVersion": 2,
   "resultsSchemaVersion": 2,
-  "runtimeProfilesSha256": "c2f04781e2a0f67a3de332177710b28bc8a4a263b94914a266aad7ed1657d866"
+  "runtimeProfilesSha256": "088b5980fca1da2c5186c83067dff8df61718aec4ee62908646fe9e2b35b7904"
 }

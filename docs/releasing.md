@@ -21,7 +21,7 @@
 Registry закрепляет runner и полный набор зависимостей по hash. Образ должен
  соответствовать этому набору. [runtime-image.json](../runtime-image.json)
  содержит фактический исходный commit сборки и опубликованные OCI digests версии
- 2.0.0; [runtime-profiles.json](../runtime-profiles.json) связывает каждый профиль
+ 2.1.0; [runtime-profiles.json](../runtime-profiles.json) связывает каждый профиль
  с соответствующим образом. [images.lock.json](../images.lock.json) закрепляет
  базы и служебные образы. Source tag может включать следующий commit с metadata;
  различие исходников сборки и итогового tag должно ограничиваться metadata и
