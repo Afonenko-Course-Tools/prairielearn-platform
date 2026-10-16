@@ -27,6 +27,28 @@ public final class PlatformApiPrecheck {
             this.classes = classes; this.scratch = scratch;
             loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, ClassLoader.getPlatformClassLoader());
         }
+        /**
+         * Имена кандидатов из compiled student directory, без loading/initialization.
+         * Для member classes binary name содержит '$'; точный getSimpleName и API
+         * проверяет вызывающий после отдельного type(name). Classpath не сканируется.
+         */
+        public List<String> typeNames(String simpleName) throws java.io.IOException {
+            if (simpleName == null || !javax.lang.model.SourceVersion.isIdentifier(simpleName)
+                    || javax.lang.model.SourceVersion.isKeyword(simpleName))
+                throw new IllegalArgumentException("Нужно простое имя Java-типа");
+            if (!Files.isDirectory(classes, LinkOption.NOFOLLOW_LINKS))
+                throw new java.io.IOException("Compiled student directory отсутствует или является ссылкой");
+            var names = new TreeSet<String>();
+            try (var paths = Files.walk(classes)) {
+                for (Path path : paths.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)).toList()) {
+                    String leaf = path.getFileName().toString();
+                    if (!leaf.equals(simpleName + ".class") && !leaf.endsWith("$" + simpleName + ".class")) continue;
+                    String binary = classes.relativize(path).toString().replace(java.io.File.separatorChar, '.');
+                    names.add(binary.substring(0, binary.length() - ".class".length()));
+                }
+            }
+            return List.copyOf(names);
+        }
         public Class<?> type(String name) throws Mismatch {
             try { return Class.forName(name, false, loader); }
             catch (ClassNotFoundException | LinkageError e) { throw new Mismatch("класс " + name, e.toString()); }

@@ -15,9 +15,9 @@
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
-        "PlatformApiPrecheck.java": "7248a330f9baa43e4ef012e4b5a41e5bbf11011c138931a81135d967cd113093"
+        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
       },
-      "runnerSha256": "164b5f7b6124cf1ce3e60d9109ac6968d1d9dcc0eae10fc6b00aca09d3a5b87f"
+      "runnerSha256": "ba64b4e29d7b6395fa5d6dc023a9e597bb864e02fa1d7c1102c96d7877892630"
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
@@ -33,9 +33,9 @@
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
-        "PlatformApiPrecheck.java": "7248a330f9baa43e4ef012e4b5a41e5bbf11011c138931a81135d967cd113093"
+        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
       },
-      "runnerSha256": "164b5f7b6124cf1ce3e60d9109ac6968d1d9dcc0eae10fc6b00aca09d3a5b87f"
+      "runnerSha256": "ba64b4e29d7b6395fa5d6dc023a9e597bb864e02fa1d7c1102c96d7877892630"
     },
     "fish-git-v1": {
       "mode": "implementation",

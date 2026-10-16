@@ -441,6 +441,53 @@
         "observed"
       ],
       "additionalProperties": false
+    },
+    "additionalSources": {
+      "type": "object",
+      "properties": {
+        "archive": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+        },
+        "archiveSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1048576
+              }
+            },
+            "required": [
+              "path",
+              "sha256",
+              "bytes"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "archive",
+        "archiveSha256",
+        "files"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -828,6 +875,53 @@
           "required": [
             "expected",
             "observed"
+          ],
+          "additionalProperties": false
+        },
+        "additionalSources": {
+          "type": "object",
+          "properties": {
+            "archive": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+            },
+            "archiveSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "files": {
+              "type": "array",
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576
+                  }
+                },
+                "required": [
+                  "path",
+                  "sha256",
+                  "bytes"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "archive",
+            "archiveSha256",
+            "files"
           ],
           "additionalProperties": false
         }

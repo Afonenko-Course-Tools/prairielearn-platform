@@ -2,6 +2,9 @@
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
 import argparse
 import hashlib
+import stat
+import zipfile
+import zlib
 import shutil
 import json
 import os
@@ -207,7 +210,7 @@ def _score(raw,counts,policy):
     raise GraderError('Unknown scoring policy')
 
 def validate_config(config):
-    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck'}
+    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck','additionalJavaSources'}
     if not isinstance(config,dict) or set(config)-allowed or config.get('schemaVersion')!=1:
         raise GraderError('Expected closed schemaVersion1 JUnit grading descriptor')
     if config.get('mode') not in ('implementation','student-tests'):raise GraderError('Invalid submission mode')
@@ -218,6 +221,17 @@ def validate_config(config):
             raise GraderError('Invalid Java API precheck')
         names=_names(api,'files');tests=_names(config,'testFiles')
         if not set(names)<set(tests):raise GraderError('API precheck files must be a proper subset of trusted tests')
+    if 'additionalJavaSources' in config:
+        policy=config['additionalJavaSources']
+        caps={'maxFiles':128,'maxFileBytes':1048576,'maxTotalBytes':4194304,'maxArchiveBytes':2097152}
+        if (config.get('runtime')!='java25-junit-v1' or config['mode']!='implementation'
+                or not isinstance(policy,dict) or set(policy)!={'archive',*caps}
+                or not isinstance(policy['archive'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip',policy['archive'])
+                or any(type(policy[k]) is not int or not 1<=policy[k]<=limit for k,limit in caps.items())):
+            raise GraderError('Invalid closed additional Java sources policy')
+        reserved=[*_names(config,'sourceFiles'),*_names(config,'testFiles'),'grading-job.json','tests/grading-job.json']
+        if any(_path_collision(policy['archive'],name) for name in reserved):
+            raise GraderError('Additional Java archive conflicts with a declared/private path')
     java=config.get('java',{})
     if set(java)-{'release','encoding','compiler-options'} or java.get('release')!=25 or java.get('encoding')!='UTF-8':raise GraderError('Java25 UTF-8 is required')
     opts=java.get('compiler-options',[])
@@ -400,6 +414,77 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         base.update(score=_score(raw,counts,config['scoring']),classification='behavior-failure' if counts['failed'] else 'success')
         return base
 
+def _path_collision(left,right):
+    return left==right or left.startswith(right+'/') or right.startswith(left+'/')
+
+
+class _AdditionalSubmissionError(Exception):
+    def __init__(self,message,classification='unsafe-submission'):
+        self.classification=classification
+        super().__init__('ZIP дополнительных Java sources: '+message+'. Исправьте доставку или используйте ручную сдачу.')
+
+
+def _additional_inventory(job,config):
+    """Fully validate bounded bytes before creating any extracted source file."""
+    policy=config.get('additionalJavaSources')
+    if policy is None:return [],None
+    root=job/'student';file=root/policy['archive']
+    if root.is_symlink() or not root.is_dir():raise _AdditionalSubmissionError('небезопасный каталог student')
+    if not file.exists() and not file.is_symlink():return [],None
+    if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
+        raise _AdditionalSubmissionError('архив должен быть обычным файлом без symlink')
+    if file.stat().st_size>policy['maxArchiveBytes']:raise _AdditionalSubmissionError('превышен maxArchiveBytes')
+    reserved=[*config['sourceFiles'],*config['testFiles'],'grading-job.json','tests/grading-job.json',policy['archive']]
+    members=[];names={};total=0
+    try:
+        with file.open('rb') as raw:
+            archive_bytes=raw.read(policy['maxArchiveBytes']+1)
+        if len(archive_bytes)>policy['maxArchiveBytes']:raise _AdditionalSubmissionError('превышен maxArchiveBytes')
+        import io
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            entries=archive.infolist()
+            if len(entries)>256:raise _AdditionalSubmissionError('больше 256 записей ZIP')
+            for info in entries:
+                original=info.orig_filename
+                directory=original.endswith('/')
+                name=original[:-1] if directory else original
+                parts=name.split('/')
+                if (original!=info.filename or not name or '\\' in name or name.startswith('/')
+                        or re.match(r'^[A-Za-z]:',name) or any(not part or part in ('.','..') or part.startswith('.') for part in parts)
+                        or any(ord(c)<32 or ord(c)==127 for c in name) or len(parts)>32 or len(name.encode('utf-8'))>512):
+                    raise _AdditionalSubmissionError('недопустимый относительный путь '+repr(original))
+                mode=stat.S_IFMT(info.external_attr>>16)
+                if info.flag_bits&1 or info.compress_type not in (zipfile.ZIP_STORED,zipfile.ZIP_DEFLATED):
+                    raise _AdditionalSubmissionError('encrypted/неподдерживаемая запись '+repr(name))
+                if mode not in (0,stat.S_IFDIR if directory else stat.S_IFREG):
+                    raise _AdditionalSubmissionError('symlink/специальный тип записи '+repr(name))
+                if name in names:raise _AdditionalSubmissionError('повтор пути '+repr(name))
+                if any(_path_collision(name,x) and not (isdir and name.startswith(x+'/')) and not (directory and x.startswith(name+'/')) for x,isdir in names.items()):
+                    raise _AdditionalSubmissionError('конфликт file/directory путей '+repr(name))
+                if any(_path_collision(name,x) and not (directory and x.startswith(name+'/')) for x in reserved):raise _AdditionalSubmissionError('конфликт с основным/доверенным путём '+repr(name))
+                names[name]=directory
+                if directory:
+                    if info.file_size:raise _AdditionalSubmissionError('каталог с содержимым '+repr(name))
+                    continue
+                if not name.endswith('.java'):raise _AdditionalSubmissionError('разрешены только .java: '+repr(name))
+                if len(members)>=policy['maxFiles'] or info.file_size>policy['maxFileBytes'] or total+info.file_size>policy['maxTotalBytes']:
+                    raise _AdditionalSubmissionError('превышен лимит количества/размера исходников')
+                data=bytearray()
+                with archive.open(info) as member:
+                    while chunk:=member.read(min(65536,policy['maxFileBytes']-len(data)+1)):
+                        data.extend(chunk)
+                        if len(data)>policy['maxFileBytes'] or total+len(data)>policy['maxTotalBytes']:
+                            raise _AdditionalSubmissionError('превышен фактический лимит bytes')
+                if len(data)!=info.file_size:raise _AdditionalSubmissionError('размер записи не совпадает '+repr(name))
+                try:bytes(data).decode('utf-8')
+                except UnicodeError as error:raise _AdditionalSubmissionError('исходник не UTF-8: '+repr(name),'student-compilation-failure') from error
+                total+=len(data);members.append((name,bytes(data)))
+    except (zipfile.BadZipFile,zipfile.LargeZipFile,UnicodeError,zlib.error,NotImplementedError,RuntimeError,ValueError,OSError) as error:
+        raise _AdditionalSubmissionError('повреждённый или неподдерживаемый архив ('+type(error).__name__+')') from error
+    members.sort()
+    return members,{'archive':policy['archive'],'archiveSha256':hashlib.sha256(archive_bytes).hexdigest(),'files':[{'path':name,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)} for name,data in members]}
+
+
 def grade(job_dir):
     job=Path(job_dir).absolute()
     try:config=json.loads(_files_any(job,'tests/grading-job.json').read_text())
@@ -407,7 +492,9 @@ def grade(job_dir):
     validate_config(config);profile,bundle,toolchain=preflight(config['runtime'])
     closure={**profile['files'],'runner/grade.py':profile['runnerSha256']}
     evidence={'dependencyHashes':closure,'dependencyHash':hashlib.sha256(json.dumps(closure,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()}
+    additional_evidence=None
     def finish(value):
+        if additional_evidence is not None:value['additionalSources']=additional_evidence
         value['executionEvidence']=evidence
         return value
     if profile['mode']!=config['mode']:raise GraderError('Runtime mode mismatch')
@@ -416,7 +503,19 @@ def grade(job_dir):
     except ValueError as error:raise GraderError('Missing or unsafe trusted sources') from error
     try:sources=_files(job/'student',source_names)
     except ValueError:return finish(_invalid('Upload all declared Java files'))
+    try:additional,additional_evidence=_additional_inventory(job,config)
+    except _AdditionalSubmissionError as error:
+        result=_invalid(str(error),classification=error.classification)
+        if 'apiPrecheck' in config:result.update(apiPrecheck='not-run',dependentExecution='not-run')
+        return finish(result)
     with tempfile.TemporaryDirectory(prefix='java25-job-runtime-') as runtime_dir:
+        extra_root=Path(runtime_dir)/'additional-sources'
+        if additional:extra_root.mkdir(mode=0o700)
+        for name,data in additional:
+            target=extra_root/name;target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+            with target.open('xb') as output:
+                target.chmod(0o600);output.write(data)
+            sources.append(str(target))
         runtime=_JobRuntime(Path(runtime_dir),bundle)
         if config['mode']=='implementation':return finish(_execute(job,config,sources,tests,bundle,toolchain,runtime))
         variants=config.get('variants')
