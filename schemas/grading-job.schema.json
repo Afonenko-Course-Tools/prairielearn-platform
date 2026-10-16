@@ -349,6 +349,30 @@
             "mutants"
           ],
           "additionalProperties": false
+        },
+        "apiPrecheck": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+              },
+              "minItems": 1,
+              "maxItems": 64,
+              "uniqueItems": true
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+            }
+          },
+          "required": [
+            "files",
+            "entry"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -424,6 +448,26 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "apiPrecheck"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "const": "java25-junit-v1"
+              },
+              "mode": {
+                "const": "implementation"
+              }
+            },
+            "required": [
+              "java"
+            ]
+          }
         }
       ]
     },
@@ -451,7 +495,8 @@
             "student-timeout",
             "student-output-overflow",
             "unsafe-submission",
-            "infrastructure-failure"
+            "infrastructure-failure",
+            "student-api-mismatch"
           ]
         },
         "required-tests": {

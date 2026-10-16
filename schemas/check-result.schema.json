@@ -93,7 +93,8 @@
         "student-timeout",
         "student-output-overflow",
         "unsafe-submission",
-        "infrastructure-failure"
+        "infrastructure-failure",
+        "student-api-mismatch"
       ]
     },
     "counts": {
@@ -403,6 +404,43 @@
     },
     "tests": {
       "$ref": "#/properties/rawResult/properties/tests"
+    },
+    "apiPrecheck": {
+      "enum": [
+        "success",
+        "failure",
+        "not-run"
+      ]
+    },
+    "dependentExecution": {
+      "enum": [
+        "complete",
+        "not-run"
+      ]
+    },
+    "apiContainment": {
+      "enum": [
+        "host-diagnostic",
+        "official-landlock-sbuser"
+      ]
+    },
+    "apiDiagnostic": {
+      "type": "object",
+      "properties": {
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "expected",
+        "observed"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -459,7 +497,8 @@
             "student-timeout",
             "student-output-overflow",
             "unsafe-submission",
-            "infrastructure-failure"
+            "infrastructure-failure",
+            "student-api-mismatch"
           ]
         },
         "counts": {
@@ -754,12 +793,124 @@
         },
         "tests": {
           "$ref": "#/properties/rawResult/properties/tests"
+        },
+        "apiPrecheck": {
+          "enum": [
+            "success",
+            "failure",
+            "not-run"
+          ]
+        },
+        "dependentExecution": {
+          "enum": [
+            "complete",
+            "not-run"
+          ]
+        },
+        "apiContainment": {
+          "enum": [
+            "host-diagnostic",
+            "official-landlock-sbuser"
+          ]
+        },
+        "apiDiagnostic": {
+          "type": "object",
+          "properties": {
+            "expected": {
+              "type": "string",
+              "minLength": 1
+            },
+            "observed": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "expected",
+            "observed"
+          ],
+          "additionalProperties": false
         }
       },
       "additionalProperties": false,
       "allOf": [
         {
           "$ref": "#/$defs/outcomePolicy"
+        },
+        {
+          "if": {
+            "required": [
+              "apiPrecheck"
+            ],
+            "properties": {
+              "apiPrecheck": {
+                "const": "failure"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "student-api-mismatch"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "apiPrecheck"
+            ],
+            "properties": {
+              "apiPrecheck": {
+                "const": "success"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "studentCompilation": {
+                "const": "success"
+              },
+              "trustedCompilation": {
+                "const": "success"
+              },
+              "dependentExecution": {
+                "const": "complete"
+              }
+            },
+            "required": [
+              "studentCompilation",
+              "trustedCompilation",
+              "dependentExecution"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "apiPrecheck"
+            ],
+            "properties": {
+              "apiPrecheck": {
+                "const": "not-run"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "studentCompilation": {
+                "const": "failure"
+              },
+              "dependentExecution": {
+                "const": "not-run"
+              }
+            },
+            "required": [
+              "studentCompilation",
+              "dependentExecution"
+            ]
+          }
         }
       ]
     },
@@ -1369,6 +1520,81 @@
               }
             ]
           }
+        },
+        {
+          "properties": {
+            "classification": {
+              "const": "student-api-mismatch"
+            },
+            "infrastructure": {
+              "const": "complete"
+            },
+            "gradable": {
+              "const": false
+            },
+            "studentCompilation": {
+              "const": "success"
+            },
+            "trustedCompilation": {
+              "const": "not-run"
+            },
+            "apiPrecheck": {
+              "const": "failure"
+            },
+            "dependentExecution": {
+              "const": "not-run"
+            }
+          },
+          "required": [
+            "studentCompilation",
+            "trustedCompilation",
+            "apiPrecheck",
+            "dependentExecution",
+            "apiDiagnostic",
+            "message",
+            "durations",
+            "diagnostics",
+            "apiContainment"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              },
+              {
+                "required": [
+                  "grading_error"
+                ]
+              },
+              {
+                "required": [
+                  "format_errors"
+                ]
+              }
+            ]
+          }
         }
       ]
     }
@@ -1467,6 +1693,81 @@
       "then": {
         "required": [
           "executionEvidence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "apiPrecheck"
+        ],
+        "properties": {
+          "apiPrecheck": {
+            "const": "failure"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "classification": {
+            "const": "student-api-mismatch"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "apiPrecheck"
+        ],
+        "properties": {
+          "apiPrecheck": {
+            "const": "success"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "studentCompilation": {
+            "const": "success"
+          },
+          "trustedCompilation": {
+            "const": "success"
+          },
+          "dependentExecution": {
+            "const": "complete"
+          }
+        },
+        "required": [
+          "studentCompilation",
+          "trustedCompilation",
+          "dependentExecution"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "apiPrecheck"
+        ],
+        "properties": {
+          "apiPrecheck": {
+            "const": "not-run"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "studentCompilation": {
+            "const": "failure"
+          },
+          "dependentExecution": {
+            "const": "not-run"
+          }
+        },
+        "required": [
+          "studentCompilation",
+          "dependentExecution"
         ]
       }
     }

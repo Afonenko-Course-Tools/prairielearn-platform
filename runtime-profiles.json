@@ -14,9 +14,10 @@
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
-        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
+        "PlatformApiPrecheck.java": "7248a330f9baa43e4ef012e4b5a41e5bbf11011c138931a81135d967cd113093"
       },
-      "runnerSha256": "48f29c813ee923d50062774034f2c530da6a49588d2f891d51c4c9d9cc76f63b"
+      "runnerSha256": "164b5f7b6124cf1ce3e60d9109ac6968d1d9dcc0eae10fc6b00aca09d3a5b87f"
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
@@ -31,9 +32,10 @@
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
-        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
+        "PlatformApiPrecheck.java": "7248a330f9baa43e4ef012e4b5a41e5bbf11011c138931a81135d967cd113093"
       },
-      "runnerSha256": "48f29c813ee923d50062774034f2c530da6a49588d2f891d51c4c9d9cc76f63b"
+      "runnerSha256": "164b5f7b6124cf1ce3e60d9109ac6968d1d9dcc0eae10fc6b00aca09d3a5b87f"
     },
     "fish-git-v1": {
       "mode": "implementation",

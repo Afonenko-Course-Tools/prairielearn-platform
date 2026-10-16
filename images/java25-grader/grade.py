@@ -207,10 +207,17 @@ def _score(raw,counts,policy):
     raise GraderError('Unknown scoring policy')
 
 def validate_config(config):
-    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants'}
+    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck'}
     if not isinstance(config,dict) or set(config)-allowed or config.get('schemaVersion')!=1:
         raise GraderError('Expected closed schemaVersion1 JUnit grading descriptor')
     if config.get('mode') not in ('implementation','student-tests'):raise GraderError('Invalid submission mode')
+    if 'apiPrecheck' in config:
+        api=config['apiPrecheck']
+        if (config['mode']!='implementation' or not isinstance(api,dict) or set(api)!={'files','entry'}
+                or not isinstance(api['entry'],str) or not re.fullmatch(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*',api['entry'])):
+            raise GraderError('Invalid Java API precheck')
+        names=_names(api,'files');tests=_names(config,'testFiles')
+        if not set(names)<set(tests):raise GraderError('API precheck files must be a proper subset of trusted tests')
     java=config.get('java',{})
     if set(java)-{'release','encoding','compiler-options'} or java.get('release')!=25 or java.get('encoding')!='UTF-8':raise GraderError('Java25 UTF-8 is required')
     opts=java.get('compiler-options',[])
@@ -260,7 +267,7 @@ class _JobRuntime:
         if self.compiled:
             durations['runnerCompilation']=0.0
             return
-        files=[str(self.bundle/'PlatformJUnitAdapter.java'),*map(str,(self.bundle/'upstream').rglob('*.java'))]
+        files=[str(self.bundle/'PlatformJUnitAdapter.java'),str(self.bundle/'PlatformApiPrecheck.java'),*map(str,(self.bundle/'upstream').rglob('*.java'))]
         start=time.monotonic()
         code,text,reason=_run([*self.compiler(),'-cp',self.libs,'-d',str(self.adapter),*files],job,limits.get('compile-seconds',15),int(limits['max-output-bytes']))
         self.protect_archive()
@@ -274,6 +281,40 @@ class _JobRuntime:
                 directory.chmod(0o755)
                 for file in directory.rglob('*'):file.chmod(0o755 if file.is_dir() else 0o644)
 
+
+def _api_precheck(job,config,stage,student,files,runtime,limits,durations,diagnostics):
+    """Trusted Java API code executes with the same official containment as JUnit."""
+    runtime.ensure_adapter(job,limits,durations,diagnostics)
+    compiled=stage/'precheck';compiled.mkdir()
+    start=time.monotonic()
+    code,text,reason=_run([*runtime.compiler(),'-cp',os.pathsep.join([runtime.libs,str(runtime.adapter)]),'-d',str(compiled),*files],job,limits.get('compile-seconds',15),int(limits['max-output-bytes']))
+    runtime.protect_archive();durations['apiCompilation']=time.monotonic()-start;diagnostics['apiCompilation']=text.replace(str(job),'/grade').replace(str(stage),'/scratch')
+    if code or reason:raise GraderError('API precheck compilation failed: '+(reason or diagnostics['apiCompilation']))
+    output=stage/'api-results';output.mkdir();scratch=stage/'api-scratch';scratch.mkdir();params=stage/'api-params';params.mkdir()
+    signature=secrets.token_hex(32);result_file=output/(secrets.token_hex(32)+'.json');parameter_file=params/'params.json'
+    parameter_file.write_text(json.dumps({'classes':str(student),'scratch':str(scratch),'entry':config['entry'],'signature':signature,'result_file':str(result_file)}))
+    prefix=[];containment='host-diagnostic'
+    if os.environ.get('PL_CONTAINMENT')=='official':
+        if os.geteuid()!=0 or not Path('/usr/local/bin/landlock_sandbox').is_file() or not shutil.which('runuser'):raise GraderError('Official API precheck containment prerequisites missing')
+        _protect_input_identity(job);stage.chmod(0o711)
+        for directory in (student,compiled,runtime.adapter,runtime.library_dir):
+            directory.chmod(0o755)
+            for file in directory.rglob('*'):file.chmod(0o755 if file.is_dir() else 0o644)
+        for directory in (output,scratch,params):directory.chmod(0o777)
+        parameter_file.chmod(0o644);job.chmod(0o711)
+        for folder in ('student','tests'):(job/folder).chmod(0o700)
+        prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox'];containment='official-landlock-sbuser'
+    classpath=os.pathsep.join([str(runtime.adapter),runtime.libs,str(compiled)])
+    start=time.monotonic()
+    code,text,reason=_run([*prefix,'java','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'org.prairielearn.api.PlatformApiPrecheck',str(parameter_file)],scratch,limits.get('run-seconds',10),int(limits['max-output-bytes']))
+    durations['apiExecution']=time.monotonic()-start;diagnostics['apiExecution']=text.replace(str(stage),'/scratch')
+    if code or reason:raise GraderError('API precheck execution failed: '+(reason or str(code)))
+    try:
+        value=json.loads(result_file.read_text())
+        if value.pop('signature')!=signature or value.get('status') not in ('success','mismatch','infrastructure'):raise ValueError('Invalid API report')
+    except (OSError,ValueError,KeyError) as error:raise GraderError('API precheck report missing or invalid') from error
+    if value['status']=='infrastructure':raise GraderError('API precheck infrastructure failure: '+value.get('message',''))
+    return value,compiled,containment
 
 def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=False):
     limits=config['limits'];durations={};diagnostics={}
@@ -296,14 +337,24 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         else:
             code,reason=compile_phase('studentCompilation',sources,student,libs)
         if reason:raise GraderError('Student compilation infrastructure limit: '+reason)
-        if code:return _invalid('Your submission could not be compiled',diagnostics['studentCompilation'])
+        if code:
+            value=_invalid('Your submission could not be compiled',diagnostics['studentCompilation'])
+            if 'apiPrecheck' in config:value.update(apiPrecheck='not-run',dependentExecution='not-run')
+            return value
+        api_classes=None;api_containment=None
+        if 'apiPrecheck' in config:
+            selected=set(config['apiPrecheck']['files']);api_files=[f for f in tests if Path(f).relative_to(job/'tests').as_posix() in selected]
+            value,api_classes,api_containment=_api_precheck(job,config['apiPrecheck'],stage,student,api_files,runtime,limits,durations,diagnostics)
+            if value['status']=='mismatch':
+                return {'gradable':False,'classification':'student-api-mismatch','studentCompilation':'success','trustedCompilation':'not-run','apiPrecheck':'failure','dependentExecution':'not-run','infrastructure':'complete','apiDiagnostic':{'expected':value['expected'],'observed':value['observed']},'message':value['message']+'. Зависимые unit-тесты не выполнены.','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'apiContainment':api_containment}
+            tests=[f for f in tests if f not in api_files]
         if not student_tests:
-            code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student)]))
+            code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student),*([str(api_classes),str(runtime.adapter)] if api_classes else [])]))
             if code or reason:raise GraderError('Trusted suite compilation failed: '+diagnostics['trustedCompilation'])
         student_fqcn={x.relative_to(student).as_posix() for x in student.rglob('*.class')}
         trusted_fqcn={x.relative_to(trusted).as_posix() for x in trusted.rglob('*.class')}
         if student_fqcn&trusted_fqcn:return _invalid('Submitted classes collide with trusted classes',classification='unsafe-submission')
-        runtime.ensure_adapter(job,limits,durations,diagnostics)
+        if api_classes is None:runtime.ensure_adapter(job,limits,durations,diagnostics)
         reports=stage/'results';reports.mkdir()
         params=stage/'params';params.mkdir()
         rawfile=reports/(secrets.token_hex(32)+'.json');countfile=reports/(secrets.token_hex(32)+'.json');signature=secrets.token_hex(32)
@@ -325,10 +376,11 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             for folder in ('student','tests'):(job/folder).chmod(0o700)
             prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
             containment='official-landlock-sbuser'
-        classpath=os.pathsep.join([str(adapter),libs,str(trusted),str(student)])
+        classpath=os.pathsep.join([str(adapter),libs,str(trusted),*([str(api_classes)] if api_classes else []),str(student)])
         command=[*prefix,'java','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'PlatformJUnitAdapter',str(parameter_file)]
         start=time.monotonic();code,text,reason=_run(command,job,limits.get('run-seconds',10),int(limits['max-output-bytes']));durations['execution']=time.monotonic()-start
         base={'gradable':True,'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'containment':containment,'scoring':config['scoring'],'output':text}
+        if api_classes is not None:base.update(apiPrecheck='success',dependentExecution='complete',apiContainment=api_containment)
         if reason:
             base.update(score=0,classification='student-timeout' if reason=='timeout' else 'student-output-overflow',timed_out=reason=='timeout',output_limited=reason=='output_limit')
             base['message']=(f"Your code exceeded the execution time limit of {limits.get('run-seconds',10):g} seconds." if reason=='timeout' else f"Your code exceeded the output limit of {int(limits['max-output-bytes'])} bytes.")

@@ -140,6 +140,21 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     java={'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']};java.update(check.get('java',{}))
     limits={'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536};limits.update(check.get('limits',{}))
     grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
+    def api_selection(field,selection):
+        value=p.get(field)
+        if value is None:return None
+        names={x['submissionRelativePath'] for x in selection}
+        declaration=check.get('api-precheck' if field=='apiPrecheck' else 'verification-api-precheck',{})
+        if (not isinstance(value,dict) or set(value)!={'files','entry'} or not isinstance(value['files'],list)
+                or not value['files'] or any(not isinstance(x,str) for x in value['files'])
+                or len(set(value['files']))!=len(value['files']) or not set(value['files'])<names
+                or value['entry']!=declaration.get('entry')):
+            raise JobError('API precheck is not a proper subset of selected trusted sources')
+        return dict(value,files=list(value['files']))
+    api=api_selection('apiPrecheck',tests);public_api=api_selection('verificationApiPrecheck',public)
+    if api and public and not public_api:raise JobError('Public fixed-API verification requires an explicit API precheck')
+    if bool(check.get('api-precheck'))!=bool(api) or bool(check.get('verification-api-precheck'))!=bool(public_api):raise JobError('API precheck selection missing or undeclared')
+    if api:grading['apiPrecheck']=api
     if 'variants' in check:grading['variants']=check['variants']
     runtime=(registry or load_runtime_registry())['profiles'][check['runtime']]
     if check['runtime']=='fish-git-v1': grading.pop('java')
@@ -181,6 +196,8 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         for x in public:
             target=safe(publicroot,'tests/'+x['submissionRelativePath']);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(safe(project,x['projectRelativePath']).read_bytes())
         cfg=dict(grading,testFiles=[x['submissionRelativePath'] for x in public],scoring={'mode':'weighted'})
+        cfg.pop('apiPrecheck',None)
+        if public_api:cfg['apiPrecheck']=public_api
         (publicroot/'tests/grading-job.json').write_text(json.dumps(cfg,sort_keys=True))
     return job
 
