@@ -5,7 +5,7 @@
       "javaRelease": 25,
       "mode": "implementation",
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:143e2023d1e6ea1c23950d2a6804becc6225abc1806d1be921b14206e14fa02d",
+      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17",
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
@@ -23,7 +23,7 @@
       "javaRelease": 25,
       "mode": "student-tests",
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:143e2023d1e6ea1c23950d2a6804becc6225abc1806d1be921b14206e14fa02d",
+      "image": "ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17",
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
@@ -43,7 +43,7 @@
         ".fish"
       ],
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
-      "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:fa4f2bf5c4034e269323d58362dafd26e5b0eaf6796f49a66e68e43fdca0dc94",
+      "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:021adbbb5bb413f39b3e5e6c575dd989509998d89a8fe0cf470217e311a0c3d4",
       "bundle": "runtime/fish-git-v1",
       "runner": "images/fish-git-grader/grade.py",
       "runnerSha256": "afbc91c643306cef74c2fdbe8fadcc4de91b4177ff10a21a6e1fe427fc9396d3",
