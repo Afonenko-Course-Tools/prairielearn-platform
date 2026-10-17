@@ -55,7 +55,8 @@ jobs:
           python3 -m pip install --requirement requirements.txt
           sudo apt-get update && sudo apt-get install -y --no-install-recommends fish
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
-          PL_TEST_IMAGE="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -v
+          TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
+          PL_TEST_IMAGE="$TEST_IMAGE_ID" PL_API_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -v
       - name: Собрать и проверить Community
         run: |
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
