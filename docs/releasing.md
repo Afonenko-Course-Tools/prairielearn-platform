@@ -1,6 +1,8 @@
 # Версии Platform и публикация образов
 
-Кандидат исходного выпуска — **2.2.0** (`VERSION`); этот номер ещё не опубликован.
+Образы **2.2.0** (`VERSION`) опубликованы из commit
+`b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
+проверки metadata commit с фактическими pins.
 Интерфейс Tool2.1.0 и delivery/results2 сохраняются. Body/delivery/results используют
 позиции: каждый native экземпляр выбирает один вопрос каждой позиции, все кандидаты
 остаются в каталоге. Прежние delivery/results отклоняются до sync/Bridge операций.
@@ -22,11 +24,19 @@
 Registry закрепляет runner и полный набор зависимостей по hash. Образ должен
  соответствовать этому набору. [runtime-image.json](../runtime-image.json)
  содержит фактический исходный commit сборки и опубликованные OCI digests версии
- 2.1.0; [runtime-profiles.json](../runtime-profiles.json) связывает каждый профиль
+ 2.2.0; [runtime-profiles.json](../runtime-profiles.json) связывает каждый профиль
  с соответствующим образом. [images.lock.json](../images.lock.json) закрепляет
  базы и служебные образы. Source tag может включать следующий commit с metadata;
  различие исходников сборки и итогового tag должно ограничиваться metadata и
  документацией, с сохранением runner/library hashes.
+
+Publisher [39018028757](https://github.com/Afonenko-Course-Tools/prairielearn-platform/actions/runs/39018028757)
+завершил сборку, проверки, публикацию и pull всех трёх digests. Checked-in receipt
+и registry совпадают побайтово с его artifacts; SHA-256 registry —
+`195eafb709cdd57589e0b626861bc8feb44d58a3c78a4520d0da04e620050650`.
+Java/fish version tags и все три digest доступны при анонимном pull; OCI source
+labels указывают на исходный commit выше. Это подтверждает публикацию образов;
+приёмка реального Moodle и серверного deployment выполняется отдельно.
 
 ## Диагностическая проверка кандидата
 
