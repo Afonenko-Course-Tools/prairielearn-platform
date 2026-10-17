@@ -172,16 +172,11 @@ def _files_any(root,name):
     if not current.is_file():raise GraderError('Missing runtime file')
     return current
 
-def _class_names(files):
-    names=[]
-    for f in files:
-        text=Path(f).read_text(encoding='utf-8')
-        package=re.search(r'^\s*package\s+([\w.]+)\s*;',text,re.M)
-        prefix=package[1]+'.' if package else ''
-        # Include package-private top-level classes, enums and records too.
-        classes=re.findall(r'\b(?:class|interface|enum|record)\s+(\w+)',text)
-        names.extend(prefix+x for x in classes)
-    return names
+def _compiled_class_names(root):
+    # javac writes actual binary names into this fresh private output directory.
+    # Enumerating paths neither loads classes nor runs static initializers.
+    return {'.'.join(path.relative_to(root).with_suffix('').parts)
+            for path in root.rglob('*.class')}
 
 def _source_classes(files):
     names=[]
@@ -304,6 +299,8 @@ def _api_precheck(job,config,stage,student,files,runtime,limits,durations,diagno
     code,text,reason=_run([*runtime.compiler(),'-cp',os.pathsep.join([runtime.libs,str(runtime.adapter)]),'-d',str(compiled),*files],job,limits.get('compile-seconds',15),int(limits['max-output-bytes']))
     runtime.protect_archive();durations['apiCompilation']=time.monotonic()-start;diagnostics['apiCompilation']=text.replace(str(job),'/grade').replace(str(stage),'/scratch')
     if code or reason:raise GraderError('API precheck compilation failed: '+(reason or diagnostics['apiCompilation']))
+    if _compiled_class_names(student)&_compiled_class_names(compiled):
+        return {'status':'unsafe','message':'Классы решения конфликтуют с доверенными API-классами'},compiled,None
     output=stage/'api-results';output.mkdir();scratch=stage/'api-scratch';scratch.mkdir();params=stage/'api-params';params.mkdir()
     signature=secrets.token_hex(32);result_file=output/(secrets.token_hex(32)+'.json');parameter_file=params/'params.json'
     parameter_file.write_text(json.dumps({'classes':str(student),'scratch':str(scratch),'entry':config['entry'],'signature':signature,'result_file':str(result_file)}))
@@ -341,9 +338,14 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             runtime.protect_archive()
             durations[name]=time.monotonic()-start;diagnostics[name]=text.replace(str(job),'/grade').replace(str(stage),'/scratch')
             return code,reason
+        def unsafe(message):
+            value=_invalid(message,classification='unsafe-submission')
+            value.update(studentCompilation='success',trustedCompilation='success' if 'trustedCompilation' in durations else 'not-run',dependentExecution='not-run',durations=durations,diagnostics=diagnostics,toolchain=toolchain)
+            if 'apiPrecheck' in config:
+                value['apiPrecheck']='success' if 'apiExecution' in durations else 'not-run'
+                if 'apiExecution' in durations:value['apiContainment']=api_containment
+            return value
         reserved=('org.junit.','org.prairielearn.','org.json.','java.','javax.','PlatformJUnitAdapter','JUnitAutograder')
-        if any(n.startswith(reserved) for n in _class_names(sources)) or set(_class_names(sources))&set(_class_names(tests)):
-            return _invalid('Submitted classes collide with trusted namespaces',classification='unsafe-submission')
         if student_tests:
             code,reason=compile_phase('trustedCompilation',tests,trusted,libs)
             if code or reason:raise GraderError('Trusted fixture compilation failed: '+diagnostics['trustedCompilation'])
@@ -353,21 +355,25 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         if reason:raise GraderError('Student compilation infrastructure limit: '+reason)
         if code:
             value=_invalid('Your submission could not be compiled',diagnostics['studentCompilation'])
+            value.update(trustedCompilation='success' if student_tests else 'not-run',durations=durations,diagnostics=diagnostics,toolchain=toolchain)
             if 'apiPrecheck' in config:value.update(apiPrecheck='not-run',dependentExecution='not-run')
             return value
+        if any(name.startswith(reserved) for name in _compiled_class_names(student)):
+            return unsafe('Submitted classes collide with trusted namespaces')
         api_classes=None;api_containment=None
         if 'apiPrecheck' in config:
             selected=set(config['apiPrecheck']['files']);api_files=[f for f in tests if Path(f).relative_to(job/'tests').as_posix() in selected]
             value,api_classes,api_containment=_api_precheck(job,config['apiPrecheck'],stage,student,api_files,runtime,limits,durations,diagnostics)
+            if value['status']=='unsafe':return unsafe(value['message'])
             if value['status']=='mismatch':
                 return {'gradable':False,'classification':'student-api-mismatch','studentCompilation':'success','trustedCompilation':'not-run','apiPrecheck':'failure','dependentExecution':'not-run','infrastructure':'complete','apiDiagnostic':{'expected':value['expected'],'observed':value['observed']},'message':value['message']+'. Зависимые unit-тесты не выполнены.','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'apiContainment':api_containment}
             tests=[f for f in tests if f not in api_files]
         if not student_tests:
             code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student),*([str(api_classes),str(runtime.adapter)] if api_classes else [])]))
             if code or reason:raise GraderError('Trusted suite compilation failed: '+diagnostics['trustedCompilation'])
-        student_fqcn={x.relative_to(student).as_posix() for x in student.rglob('*.class')}
-        trusted_fqcn={x.relative_to(trusted).as_posix() for x in trusted.rglob('*.class')}
-        if student_fqcn&trusted_fqcn:return _invalid('Submitted classes collide with trusted classes',classification='unsafe-submission')
+        trusted_names=_compiled_class_names(trusted)
+        if api_classes is not None:trusted_names|=_compiled_class_names(api_classes)
+        if _compiled_class_names(student)&trusted_names:return unsafe('Submitted classes collide with trusted classes')
         if api_classes is None:runtime.ensure_adapter(job,limits,durations,diagnostics)
         reports=stage/'results';reports.mkdir()
         params=stage/'params';params.mkdir()

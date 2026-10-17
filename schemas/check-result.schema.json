@@ -968,15 +968,43 @@
               },
               "trustedCompilation": {
                 "const": "success"
-              },
-              "dependentExecution": {
-                "const": "complete"
               }
             },
             "required": [
               "studentCompilation",
               "trustedCompilation",
               "dependentExecution"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "classification": {
+                      "const": "unsafe-submission"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "dependentExecution": {
+                      "const": "not-run"
+                    },
+                    "durations": {
+                      "required": [
+                        "apiCompilation",
+                        "apiExecution"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "dependentExecution": {
+                      "const": "complete"
+                    }
+                  }
+                }
+              }
             ]
           }
         },
@@ -993,16 +1021,48 @@
           },
           "then": {
             "properties": {
-              "studentCompilation": {
-                "const": "failure"
-              },
               "dependentExecution": {
                 "const": "not-run"
+              },
+              "durations": {
+                "not": {
+                  "required": [
+                    "apiExecution"
+                  ]
+                }
               }
             },
             "required": [
               "studentCompilation",
               "dependentExecution"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "classification": {
+                      "const": "unsafe-submission"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "studentCompilation": {
+                      "enum": [
+                        "failure",
+                        "success"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "studentCompilation": {
+                      "const": "failure"
+                    }
+                  }
+                }
+              }
             ]
           }
         }
@@ -1371,10 +1431,7 @@
           ],
           "properties": {
             "classification": {
-              "enum": [
-                "student-compilation-failure",
-                "unsafe-submission"
-              ]
+              "const": "student-compilation-failure"
             },
             "infrastructure": {
               "const": "complete"
@@ -1386,7 +1443,20 @@
               "const": "failure"
             },
             "trustedCompilation": {
+              "enum": [
+                "not-run",
+                "success"
+              ]
+            },
+            "dependentExecution": {
               "const": "not-run"
+            },
+            "durations": {
+              "not": {
+                "required": [
+                  "execution"
+                ]
+              }
             }
           },
           "not": {
@@ -1422,7 +1492,194 @@
                 ]
               }
             ]
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "trustedCompilation": {
+                    "const": "success"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "durations",
+                  "diagnostics",
+                  "toolchain"
+                ],
+                "properties": {
+                  "runtime": {
+                    "const": "java25-mutation-v1"
+                  },
+                  "durations": {
+                    "required": [
+                      "studentCompilation",
+                      "trustedCompilation"
+                    ]
+                  }
+                },
+                "not": {
+                  "required": [
+                    "apiPrecheck"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "required": [
+            "studentCompilation",
+            "trustedCompilation",
+            "format_errors",
+            "output"
+          ],
+          "properties": {
+            "classification": {
+              "const": "unsafe-submission"
+            },
+            "infrastructure": {
+              "const": "complete"
+            },
+            "gradable": {
+              "const": false
+            },
+            "dependentExecution": {
+              "const": "not-run"
+            },
+            "durations": {
+              "not": {
+                "required": [
+                  "execution"
+                ]
+              }
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "score"
+                ]
+              },
+              {
+                "required": [
+                  "maxPoints"
+                ]
+              },
+              {
+                "required": [
+                  "counts"
+                ]
+              },
+              {
+                "required": [
+                  "rawResult"
+                ]
+              },
+              {
+                "required": [
+                  "variants"
+                ]
+              },
+              {
+                "required": [
+                  "grading_error"
+                ]
+              }
+            ]
+          },
+          "oneOf": [
+            {
+              "properties": {
+                "studentCompilation": {
+                  "const": "failure"
+                },
+                "trustedCompilation": {
+                  "const": "not-run"
+                }
+              }
+            },
+            {
+              "required": [
+                "dependentExecution",
+                "durations",
+                "diagnostics",
+                "toolchain"
+              ],
+              "properties": {
+                "studentCompilation": {
+                  "const": "success"
+                },
+                "trustedCompilation": {
+                  "enum": [
+                    "not-run",
+                    "success"
+                  ]
+                },
+                "dependentExecution": {
+                  "const": "not-run"
+                },
+                "durations": {
+                  "required": [
+                    "studentCompilation"
+                  ],
+                  "not": {
+                    "required": [
+                      "execution"
+                    ]
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "trustedCompilation": {
+                        "const": "success"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "durations": {
+                        "required": [
+                          "trustedCompilation"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "apiPrecheck"
+                    ],
+                    "properties": {
+                      "apiPrecheck": {
+                        "const": "not-run"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "trustedCompilation": {
+                        "const": "not-run"
+                      },
+                      "durations": {
+                        "not": {
+                          "required": [
+                            "apiExecution"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
         },
         {
           "allOf": [
@@ -1827,15 +2084,43 @@
           },
           "trustedCompilation": {
             "const": "success"
-          },
-          "dependentExecution": {
-            "const": "complete"
           }
         },
         "required": [
           "studentCompilation",
           "trustedCompilation",
           "dependentExecution"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "classification": {
+                  "const": "unsafe-submission"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "dependentExecution": {
+                  "const": "not-run"
+                },
+                "durations": {
+                  "required": [
+                    "apiCompilation",
+                    "apiExecution"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "dependentExecution": {
+                  "const": "complete"
+                }
+              }
+            }
+          }
         ]
       }
     },
@@ -1852,16 +2137,48 @@
       },
       "then": {
         "properties": {
-          "studentCompilation": {
-            "const": "failure"
-          },
           "dependentExecution": {
             "const": "not-run"
+          },
+          "durations": {
+            "not": {
+              "required": [
+                "apiExecution"
+              ]
+            }
           }
         },
         "required": [
           "studentCompilation",
           "dependentExecution"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "classification": {
+                  "const": "unsafe-submission"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "studentCompilation": {
+                  "enum": [
+                    "failure",
+                    "success"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "studentCompilation": {
+                  "const": "failure"
+                }
+              }
+            }
+          }
         ]
       }
     }
