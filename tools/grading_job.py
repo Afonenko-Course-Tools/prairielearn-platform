@@ -1,5 +1,8 @@
 """Explicit source inventory -> private /grade jobs -> matching receipts."""
 import hashlib
+import io
+import zipfile
+import stat
 import importlib.util
 import json
 import os
@@ -108,6 +111,13 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         f=safe(project,x['projectRelativePath'])
         if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest()!=x['sha256']:raise JobError('Contract fixture snapshot changed: '+x['projectRelativePath'])
     selected=sources
+    extra_policy=check.get('additional-java-sources')
+    archive_name=extra_policy['archive'] if extra_policy else None
+    primary_names={x['submissionRelativePath'] for x in sources}
+    generated_archive=None
+    if archive_name:
+        reserved=[*primary_names,*[x['submissionRelativePath'] for x in [*tests,*public]],'grading-job.json','tests/grading-job.json']
+        if any(archive_name==name or archive_name.startswith(name+'/') or name.startswith(archive_name+'/') for name in reserved):raise JobError('Additional Java archive conflicts with primary/trusted path')
     if scenario.startswith('reference:'):
         name=scenario.split(':',1)[1];refs=[r for r in check.get('references',[]) if r['name']==name]
         if len(refs)!=1:raise JobError('Undeclared reference '+name)
@@ -116,7 +126,17 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         declared=[r for r in p.get('references',[]) if r['name']==name]
         if len(declared)!=1:raise JobError('Named reference inventory missing '+name)
         selected=_selection(project,declared[0].get('sources',[]))
-        if {x['submissionRelativePath'] for x in selected}!={x['submissionRelativePath'] for x in sources}:raise JobError('Reference source mapping differs from student source names')
+        reference_names={x['submissionRelativePath'] for x in selected}
+        if (not extra_policy and reference_names!=primary_names) or not primary_names<=reference_names:raise JobError('Reference source mapping differs from student source names')
+        extras=[x for x in selected if x['submissionRelativePath'] not in primary_names]
+        if extras:
+            if any(not x['submissionRelativePath'].endswith('.java') for x in extras):raise JobError('Reference extras must be Java sources')
+            buffer=io.BytesIO()
+            with zipfile.ZipFile(buffer,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
+                for x in sorted(extras,key=lambda x:x['submissionRelativePath']):
+                    info=zipfile.ZipInfo(x['submissionRelativePath'],date_time=(1980,1,1,0,0,0));info.create_system=3;info.external_attr=(stat.S_IFREG|0o644)<<16;info.compress_type=zipfile.ZIP_DEFLATED
+                    archive.writestr(info,safe(project,x['projectRelativePath']).read_bytes())
+            generated_archive=buffer.getvalue()
         for x in sources:
             f=safe(root,x['submissionRelativePath'])
             if not f.is_file():raise JobError('Reference source mapping missing '+x['submissionRelativePath'])
@@ -130,21 +150,40 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         if len(case)!=1:raise JobError('Unknown contract case')
         replacements={}
         for x in case[0]['sources']:
-            if not x['fixture'].startswith('tests/fixtures/') or x['submission'] not in {s['submissionRelativePath'] for s in sources}:raise JobError('Unauthorized contract fixture/submission')
+            if not x['fixture'].startswith('tests/fixtures/') or x['submission'] not in primary_names|({archive_name} if archive_name else set()):raise JobError('Unauthorized contract fixture/submission')
             f=safe(project,x['fixture'])
             if not f.is_file():raise JobError('Missing contract fixture')
             if x['submission'] in replacements:raise JobError('Duplicate fixture submission')
             replacements[x['submission']]={'projectRelativePath':x['fixture'],'submissionRelativePath':x['submission'],'sha256':hashlib.sha256(f.read_bytes()).hexdigest()}
         selected=[replacements.get(x['submissionRelativePath'],x) for x in sources]
+        if archive_name in replacements:selected.append(replacements[archive_name])
     elif scenario!='starter':raise JobError('Unknown scenario')
     java={'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']};java.update(check.get('java',{}))
     limits={'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536};limits.update(check.get('limits',{}))
-    grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in selected],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
+    grading={'schemaVersion':1,'sourceFiles':[x['submissionRelativePath'] for x in sources],'testFiles':[x['submissionRelativePath'] for x in tests],'mode':check.get('mode',check.get('sourceProfile',{}).get('mode','implementation')),'runtime':check['runtime'],'java':java,'limits':limits,'scoring':check.get('scoring',{'mode':'weighted'}),'discovery':{'min-executed':1,'allow-skipped':False,**check.get('discovery',{})}}
+    def api_selection(field,selection):
+        value=p.get(field)
+        if value is None:return None
+        names={x['submissionRelativePath'] for x in selection}
+        declaration=check.get('api-precheck' if field=='apiPrecheck' else 'verification-api-precheck',{})
+        if (not isinstance(value,dict) or set(value)!={'files','entry'} or not isinstance(value['files'],list)
+                or not value['files'] or any(not isinstance(x,str) for x in value['files'])
+                or len(set(value['files']))!=len(value['files']) or not set(value['files'])<names
+                or value['entry']!=declaration.get('entry')):
+            raise JobError('API precheck is not a proper subset of selected trusted sources')
+        return dict(value,files=list(value['files']))
+    api=api_selection('apiPrecheck',tests);public_api=api_selection('verificationApiPrecheck',public)
+    if api and public and not public_api:raise JobError('Public fixed-API verification requires an explicit API precheck')
+    if bool(check.get('api-precheck'))!=bool(api) or bool(check.get('verification-api-precheck'))!=bool(public_api):raise JobError('API precheck selection missing or undeclared')
+    if api:grading['apiPrecheck']=api
+    if extra_policy:
+        grading['additionalJavaSources']={'archive':archive_name,**{new:extra_policy[old] for old,new in [('max-files','maxFiles'),('max-file-bytes','maxFileBytes'),('max-total-bytes','maxTotalBytes'),('max-archive-bytes','maxArchiveBytes')]}}
     if 'variants' in check:grading['variants']=check['variants']
     runtime=(registry or load_runtime_registry())['profiles'][check['runtime']]
     if check['runtime']=='fish-git-v1': grading.pop('java')
     expectations=case[0]['expected'] if scenario.startswith('contract:') else check.get('verification-expectations',{}).get('reference' if scenario.startswith('reference:') else 'starter',{})
     job=GradingJob(schemaVersion=1,scope=scope,qualifiedId=id,scenario=scenario,sourceSnapshotHash=manifest['sourceSnapshotHash'],inventoryHash=manifest['inventoryHash'],runtime=check['runtime'],imageDigest=runtime['image'] or os.environ.get('PL_LOCAL_IMAGE_ID'),sources=selected,trustedTests=tests,verificationTests=public,grading=grading,expectations=expectations,sourceHashes={x['projectRelativePath']:x['sha256'] for x in selected},testsHashes={x['projectRelativePath']:x['sha256'] for x in [*tests,*public]})
+    if generated_archive is not None:job['sourceHashes']['$generated/'+archive_name]=hashlib.sha256(generated_archive).hexdigest()
     if scope=='delivery':
         if not delivery or delivery.get('schemaVersion')!=2 or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
         job['deliveryHash']=delivery['deliveryHash']
@@ -173,7 +212,9 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     job.root=Path(tempfile.mkdtemp(prefix='grading-job-'))
     for folder,selection in [('student',selected),('tests',tests)]:
         for x in selection:
+            if folder=='student' and generated_archive is not None and x['submissionRelativePath'] not in primary_names:continue
             target=safe(job.root,folder+'/'+x['submissionRelativePath']);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(safe(project,x['projectRelativePath']).read_bytes())
+    if generated_archive is not None:safe(job.root,'student/'+archive_name).write_bytes(generated_archive)
     (job.root/'tests/grading-job.json').write_text(json.dumps(grading,sort_keys=True))
     if public:
         publicroot=job.root/'public-verification';(publicroot/'student').mkdir(parents=True);(publicroot/'tests').mkdir()
@@ -181,6 +222,8 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         for x in public:
             target=safe(publicroot,'tests/'+x['submissionRelativePath']);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(safe(project,x['projectRelativePath']).read_bytes())
         cfg=dict(grading,testFiles=[x['submissionRelativePath'] for x in public],scoring={'mode':'weighted'})
+        cfg.pop('apiPrecheck',None)
+        if public_api:cfg['apiPrecheck']=public_api
         (publicroot/'tests/grading-job.json').write_text(json.dumps(cfg,sort_keys=True))
     return job
 

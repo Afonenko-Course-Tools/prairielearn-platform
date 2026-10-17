@@ -276,7 +276,8 @@
                 "student-timeout",
                 "student-output-overflow",
                 "unsafe-submission",
-                "infrastructure-failure"
+                "infrastructure-failure",
+                "student-api-mismatch"
               ]
             },
             "required-tests": {
@@ -366,7 +367,8 @@
                 "student-timeout",
                 "student-output-overflow",
                 "unsafe-submission",
-                "infrastructure-failure"
+                "infrastructure-failure",
+                "student-api-mismatch"
               ]
             },
             "required-tests": {
@@ -459,10 +461,147 @@
         "mutants"
       ],
       "additionalProperties": false
+    },
+    "api-precheck": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+        }
+      },
+      "required": [
+        "files",
+        "entry"
+      ],
+      "additionalProperties": false
+    },
+    "verification-api-precheck": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+        }
+      },
+      "required": [
+        "files",
+        "entry"
+      ],
+      "additionalProperties": false
+    },
+    "additional-java-sources": {
+      "type": "object",
+      "properties": {
+        "archive": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+        },
+        "max-files": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max-file-bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "max-total-bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "max-archive-bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2097152
+        }
+      },
+      "required": [
+        "archive",
+        "max-files",
+        "max-file-bytes",
+        "max-total-bytes",
+        "max-archive-bytes"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
     "runtime"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "api-precheck"
+            ]
+          },
+          {
+            "required": [
+              "verification-api-precheck"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          },
+          "mode": {
+            "const": "implementation"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "additional-java-sources"
+        ]
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          },
+          "sourceProfile": {
+            "properties": {
+              "mode": {
+                "const": "implementation"
+              }
+            }
+          },
+          "mode": {
+            "const": "implementation"
+          }
+        }
+      }
+    }
+  ]
 }

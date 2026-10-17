@@ -60,7 +60,8 @@
                   "student-timeout",
                   "student-output-overflow",
                   "unsafe-submission",
-                  "infrastructure-failure"
+                  "infrastructure-failure",
+                  "student-api-mismatch"
                 ]
               },
               "required-tests": {

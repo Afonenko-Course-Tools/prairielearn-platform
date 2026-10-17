@@ -104,3 +104,42 @@ class RuntimeBundleTests(unittest.TestCase):
    try:
     with self.assertRaises(grader.GraderError):grader.preflight('java25-junit-v1')
    finally:grader.PLATFORM=original
+
+class AdditionalSourceDeliveryTests(unittest.TestCase):
+ def test_reference_extra_and_contract_zip_are_explicit_hashed_public_private_inputs(self):
+  import importlib.util
+  import hashlib
+  import shutil
+  import io
+  import zipfile
+  spec=importlib.util.spec_from_file_location('additional_jobs',ROOT/'tools/grading_job.py');jobs=importlib.util.module_from_spec(spec);spec.loader.exec_module(jobs)
+  with tempfile.TemporaryDirectory() as directory:
+   snapshot=Path(directory);project=snapshot/'tasks/p'
+   policy={'archive':'additional-sources.zip','max-files':128,'max-file-bytes':1048576,'max-total-bytes':4194304,'max-archive-bytes':2097152}
+   files={'student/Student.java':'public class Student {public static int answer(){return 0;}}','reference/Student.java':'public class Student extends Base {}','reference/Base.java':'public class Base {public static int answer(){return 42;}}','tests/AnswerTest.java':TEST,'student/public/PublicTest.java':TEST.replace('AnswerTest','PublicTest'),'tests/fixtures/Student.java':'public class Student extends Base {}'}
+   for name,source in files.items():
+    f=project/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text(source)
+   data=io.BytesIO()
+   with zipfile.ZipFile(data,'w') as z:z.writestr('Base.java','public class Base {public static int answer(){return 42;}}')
+   (project/'tests/fixtures/extra.zip').write_bytes(data.getvalue())
+   case={'schemaVersion':1,'cases':[{'id':'extra','sources':[{'fixture':'tests/fixtures/Student.java','submission':'Student.java'},{'fixture':'tests/fixtures/extra.zip','submission':'additional-sources.zip'}],'expected':{'classification':'success','required-tests':'all-pass'}}]}
+   (project/'tests/cases.json').write_text(json.dumps(case))
+   def select(name,target):return {'projectRelativePath':name,'submissionRelativePath':target,'sha256':hashlib.sha256((project/name).read_bytes()).hexdigest()}
+   fact={'qualifiedId':'demo/exr-extra','projectRoot':'p','check':{'runtime':'java25-junit-v1','sourceProfile':{'mode':'implementation','root':'student','include':['*.java']},'additional-java-sources':policy,'references':[{'name':'correct','root':'reference','optional':False}],'contract-cases':'tests/cases.json'},'sources':[select('student/Student.java','Student.java')],'trustedTests':[select('tests/AnswerTest.java','AnswerTest.java')],'verificationTests':[select('student/public/PublicTest.java','PublicTest.java')],'references':[{'name':'correct','sources':[select('reference/Student.java','Student.java'),select('reference/Base.java','Base.java')]}],'contractCasesHash':{'projectRelativePath':'tests/cases.json','sha256':hashlib.sha256((project/'tests/cases.json').read_bytes()).hexdigest()},'contractFixtures':[select('tests/fixtures/Student.java','Student.java'),select('tests/fixtures/extra.zip','additional-sources.zip')]}
+   manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
+   archives=[]
+   for scenario in ['reference:correct','reference:correct','contract:extra']:
+    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra',scenario)
+    try:
+     self.assertEqual(job['grading']['sourceFiles'],['Student.java']);self.assertEqual(job['grading']['additionalJavaSources']['maxFiles'],128)
+     raw=(job.root/'student/additional-sources.zip').read_bytes();self.assertEqual(raw,(job.root/'public-verification/student/additional-sources.zip').read_bytes())
+     if scenario.startswith('reference'):archives.append(raw);self.assertIn('reference/Base.java',job['sourceHashes'])
+     result=jobs.run_job(job,'host');self.assertEqual(result['classification'],'success',result);self.assertEqual(result['publicResult']['classification'],'success');self.assertEqual(result['additionalSources']['files'][0]['path'],'Base.java')
+    finally:shutil.rmtree(job.root)
+   self.assertEqual(archives[0],archives[1])
+   saved=fact['check'].pop('additional-java-sources')
+   with self.assertRaisesRegex(jobs.JobError,'mapping|Unauthorized'):
+    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra','reference:correct');shutil.rmtree(job.root)
+   fact['check']['additional-java-sources']=saved
+   (project/'tests/fixtures/extra.zip').write_bytes(b'tampered')
+   with self.assertRaisesRegex(jobs.JobError,'snapshot changed'):jobs.prepare_job(manifest,snapshot,'demo/exr-extra','contract:extra')

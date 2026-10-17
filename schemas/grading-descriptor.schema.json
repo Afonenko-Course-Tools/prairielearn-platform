@@ -222,6 +222,67 @@
         "mutants"
       ],
       "additionalProperties": false
+    },
+    "apiPrecheck": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+        }
+      },
+      "required": [
+        "files",
+        "entry"
+      ],
+      "additionalProperties": false
+    },
+    "additionalJavaSources": {
+      "type": "object",
+      "properties": {
+        "archive": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+        },
+        "maxFiles": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "maxFileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "maxTotalBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "maxArchiveBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2097152
+        }
+      },
+      "required": [
+        "archive",
+        "maxFiles",
+        "maxFileBytes",
+        "maxTotalBytes",
+        "maxArchiveBytes"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -295,6 +356,43 @@
           "required": [
             "java"
           ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "apiPrecheck"
+        ]
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          },
+          "mode": {
+            "const": "implementation"
+          }
+        },
+        "required": [
+          "java"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "additionalJavaSources"
+        ]
+      },
+      "then": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          },
+          "mode": {
+            "const": "implementation"
+          }
         }
       }
     }

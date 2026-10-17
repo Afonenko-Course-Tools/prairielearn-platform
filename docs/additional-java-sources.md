@@ -1,0 +1,15 @@
+# Необязательные дополнительные исходники Java
+
+Статус: локальный unreleased candidate поверх Platform2.1.0; published image digest и version не изменены.
+
+Implementation descriptor runtime `java25-junit-v1` может содержать закрытый объект `additionalJavaSources` с обязательными полями `archive`, `maxFiles`, `maxFileBytes`, `maxTotalBytes`, `maxArchiveBytes`. Имя — безопасное basename `.zip`; положительные целые не превышают соответственно128/1048576/4194304/2097152. Основные `sourceFiles` обязательны, ZIP необязателен. Прежний лимит64 относится к основным/test lists; до128 extras имеют отдельный bounded inventory и не теряются на этом лимите. Это транспортные пределы с ручным fallback без score, не ограничения классов или алгоритма.
+
+Архив — обычный файл без symlink, STORED/DEFLATED, до256 записей. Внутри только относительные POSIX `.java` и безопасные directory entries, до32 сегментов/512UTF-8 bytes пути. Абсолютные/drive/backslash/пустые/`.`/`..`/скрытые сегменты, control/NUL, повторные пути, symlink/специальные типы, encryption и file/directory collisions отвергаются. Основные/trusted/private пути нельзя перезаписывать. `a/Helper.java` и `b/Helper.java` сохраняются раздельно. Безопасный каталог может быть общим родителем основных/trusted путей.
+
+Preflight проверяет declared и фактические размеры, CRC, сжатие, UTF-8. BOM передаётся как bytes; языковую допустимость решает javac. Все bounded bytes проверяются до записи извлечённых sources. `extractall`, student commands и обход submission не используются. Проверенные bytes записываются в свежий приватный временный каталог; submission/tests/runtime не перезаписываются. Compiler получает прежний explicit list плюс отсортированный inventory extras при `-sourcepath ''` и `-proc:none`.
+
+Порядок прежний: student compile → независимая API precheck → dependent compile → behavior. Небезопасная/повреждённая/слишком большая доставка: `unsafe-submission`, gradable false, без score, trusted/dependent not-run и сообщение о ручной сдаче. Неверная trusted policy — infrastructure failure; malformed Java — student compilation failure; missing API после successful compile — student-api-mismatch. Без policy старые descriptors не расширяются; fish/mutation policy не принимают.
+
+Результат может содержать `additionalSources`: имя/hash архива и принятый отсортированный inventory `{path,sha256,bytes}`. При unsafe ZIP непроверенный inventory не выдаётся как принятый. ZIP fixtures остаются под `tests/fixtures` и входят в snapshot hashes. Reference extras разрешены только с policy: обязательные filenames сохраняются, дополнительные `.java` доверенный код пакует детерминированно. Generated archive hash имеет ключ `$generated/<archive>` в sourceHashes. Descriptor equality и native delivery hashes остаются обязательными.
+
+PrairieLearn exporter показывает штатный optional upload рядом с редакторами либо в существующей upload-форме. Общий штатный предел PL5MB относится ко всему ответу с редакторными bytes; nominal maxArchiveBytes не обещает этот объём при больших основных файлах. Live PL, Windows и публикация этим локальным контрактом не подтверждены.

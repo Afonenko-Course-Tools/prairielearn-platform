@@ -2,6 +2,9 @@
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
 import argparse
 import hashlib
+import stat
+import zipfile
+import zlib
 import shutil
 import json
 import os
@@ -169,16 +172,11 @@ def _files_any(root,name):
     if not current.is_file():raise GraderError('Missing runtime file')
     return current
 
-def _class_names(files):
-    names=[]
-    for f in files:
-        text=Path(f).read_text(encoding='utf-8')
-        package=re.search(r'^\s*package\s+([\w.]+)\s*;',text,re.M)
-        prefix=package[1]+'.' if package else ''
-        # Include package-private top-level classes, enums and records too.
-        classes=re.findall(r'\b(?:class|interface|enum|record)\s+(\w+)',text)
-        names.extend(prefix+x for x in classes)
-    return names
+def _compiled_class_names(root):
+    # javac writes actual binary names into this fresh private output directory.
+    # Enumerating paths neither loads classes nor runs static initializers.
+    return {'.'.join(path.relative_to(root).with_suffix('').parts)
+            for path in root.rglob('*.class')}
 
 def _source_classes(files):
     names=[]
@@ -207,10 +205,28 @@ def _score(raw,counts,policy):
     raise GraderError('Unknown scoring policy')
 
 def validate_config(config):
-    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants'}
+    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck','additionalJavaSources'}
     if not isinstance(config,dict) or set(config)-allowed or config.get('schemaVersion')!=1:
         raise GraderError('Expected closed schemaVersion1 JUnit grading descriptor')
     if config.get('mode') not in ('implementation','student-tests'):raise GraderError('Invalid submission mode')
+    if 'apiPrecheck' in config:
+        api=config['apiPrecheck']
+        if (config['mode']!='implementation' or not isinstance(api,dict) or set(api)!={'files','entry'}
+                or not isinstance(api['entry'],str) or not re.fullmatch(r'[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*',api['entry'])):
+            raise GraderError('Invalid Java API precheck')
+        names=_names(api,'files');tests=_names(config,'testFiles')
+        if not set(names)<set(tests):raise GraderError('API precheck files must be a proper subset of trusted tests')
+    if 'additionalJavaSources' in config:
+        policy=config['additionalJavaSources']
+        caps={'maxFiles':128,'maxFileBytes':1048576,'maxTotalBytes':4194304,'maxArchiveBytes':2097152}
+        if (config.get('runtime')!='java25-junit-v1' or config['mode']!='implementation'
+                or not isinstance(policy,dict) or set(policy)!={'archive',*caps}
+                or not isinstance(policy['archive'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip',policy['archive'])
+                or any(type(policy[k]) is not int or not 1<=policy[k]<=limit for k,limit in caps.items())):
+            raise GraderError('Invalid closed additional Java sources policy')
+        reserved=[*_names(config,'sourceFiles'),*_names(config,'testFiles'),'grading-job.json','tests/grading-job.json']
+        if any(_path_collision(policy['archive'],name) for name in reserved):
+            raise GraderError('Additional Java archive conflicts with a declared/private path')
     java=config.get('java',{})
     if set(java)-{'release','encoding','compiler-options'} or java.get('release')!=25 or java.get('encoding')!='UTF-8':raise GraderError('Java25 UTF-8 is required')
     opts=java.get('compiler-options',[])
@@ -260,7 +276,7 @@ class _JobRuntime:
         if self.compiled:
             durations['runnerCompilation']=0.0
             return
-        files=[str(self.bundle/'PlatformJUnitAdapter.java'),*map(str,(self.bundle/'upstream').rglob('*.java'))]
+        files=[str(self.bundle/'PlatformJUnitAdapter.java'),str(self.bundle/'PlatformApiPrecheck.java'),*map(str,(self.bundle/'upstream').rglob('*.java'))]
         start=time.monotonic()
         code,text,reason=_run([*self.compiler(),'-cp',self.libs,'-d',str(self.adapter),*files],job,limits.get('compile-seconds',15),int(limits['max-output-bytes']))
         self.protect_archive()
@@ -275,6 +291,42 @@ class _JobRuntime:
                 for file in directory.rglob('*'):file.chmod(0o755 if file.is_dir() else 0o644)
 
 
+def _api_precheck(job,config,stage,student,files,runtime,limits,durations,diagnostics):
+    """Trusted Java API code executes with the same official containment as JUnit."""
+    runtime.ensure_adapter(job,limits,durations,diagnostics)
+    compiled=stage/'precheck';compiled.mkdir()
+    start=time.monotonic()
+    code,text,reason=_run([*runtime.compiler(),'-cp',os.pathsep.join([runtime.libs,str(runtime.adapter)]),'-d',str(compiled),*files],job,limits.get('compile-seconds',15),int(limits['max-output-bytes']))
+    runtime.protect_archive();durations['apiCompilation']=time.monotonic()-start;diagnostics['apiCompilation']=text.replace(str(job),'/grade').replace(str(stage),'/scratch')
+    if code or reason:raise GraderError('API precheck compilation failed: '+(reason or diagnostics['apiCompilation']))
+    if _compiled_class_names(student)&_compiled_class_names(compiled):
+        return {'status':'unsafe','message':'Классы решения конфликтуют с доверенными API-классами'},compiled,None
+    output=stage/'api-results';output.mkdir();scratch=stage/'api-scratch';scratch.mkdir();params=stage/'api-params';params.mkdir()
+    signature=secrets.token_hex(32);result_file=output/(secrets.token_hex(32)+'.json');parameter_file=params/'params.json'
+    parameter_file.write_text(json.dumps({'classes':str(student),'scratch':str(scratch),'entry':config['entry'],'signature':signature,'result_file':str(result_file)}))
+    prefix=[];containment='host-diagnostic'
+    if os.environ.get('PL_CONTAINMENT')=='official':
+        if os.geteuid()!=0 or not Path('/usr/local/bin/landlock_sandbox').is_file() or not shutil.which('runuser'):raise GraderError('Official API precheck containment prerequisites missing')
+        _protect_input_identity(job);stage.chmod(0o711)
+        for directory in (student,compiled,runtime.adapter,runtime.library_dir):
+            directory.chmod(0o755)
+            for file in directory.rglob('*'):file.chmod(0o755 if file.is_dir() else 0o644)
+        for directory in (output,scratch,params):directory.chmod(0o777)
+        parameter_file.chmod(0o644);job.chmod(0o711)
+        for folder in ('student','tests'):(job/folder).chmod(0o700)
+        prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox'];containment='official-landlock-sbuser'
+    classpath=os.pathsep.join([str(runtime.adapter),runtime.libs,str(compiled)])
+    start=time.monotonic()
+    code,text,reason=_run([*prefix,'java','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'org.prairielearn.api.PlatformApiPrecheck',str(parameter_file)],scratch,limits.get('run-seconds',10),int(limits['max-output-bytes']))
+    durations['apiExecution']=time.monotonic()-start;diagnostics['apiExecution']=text.replace(str(stage),'/scratch')
+    if code or reason:raise GraderError('API precheck execution failed: '+(reason or str(code)))
+    try:
+        value=json.loads(result_file.read_text())
+        if value.pop('signature')!=signature or value.get('status') not in ('success','mismatch','infrastructure'):raise ValueError('Invalid API report')
+    except (OSError,ValueError,KeyError) as error:raise GraderError('API precheck report missing or invalid') from error
+    if value['status']=='infrastructure':raise GraderError('API precheck infrastructure failure: '+value.get('message',''))
+    return value,compiled,containment
+
 def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=False):
     limits=config['limits'];durations={};diagnostics={}
     with tempfile.TemporaryDirectory(prefix='java25-junit-') as tmp:
@@ -286,9 +338,14 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             runtime.protect_archive()
             durations[name]=time.monotonic()-start;diagnostics[name]=text.replace(str(job),'/grade').replace(str(stage),'/scratch')
             return code,reason
+        def unsafe(message):
+            value=_invalid(message,classification='unsafe-submission')
+            value.update(studentCompilation='success',trustedCompilation='success' if 'trustedCompilation' in durations else 'not-run',dependentExecution='not-run',durations=durations,diagnostics=diagnostics,toolchain=toolchain)
+            if 'apiPrecheck' in config:
+                value['apiPrecheck']='success' if 'apiExecution' in durations else 'not-run'
+                if 'apiExecution' in durations:value['apiContainment']=api_containment
+            return value
         reserved=('org.junit.','org.prairielearn.','org.json.','java.','javax.','PlatformJUnitAdapter','JUnitAutograder')
-        if any(n.startswith(reserved) for n in _class_names(sources)) or set(_class_names(sources))&set(_class_names(tests)):
-            return _invalid('Submitted classes collide with trusted namespaces',classification='unsafe-submission')
         if student_tests:
             code,reason=compile_phase('trustedCompilation',tests,trusted,libs)
             if code or reason:raise GraderError('Trusted fixture compilation failed: '+diagnostics['trustedCompilation'])
@@ -296,14 +353,28 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         else:
             code,reason=compile_phase('studentCompilation',sources,student,libs)
         if reason:raise GraderError('Student compilation infrastructure limit: '+reason)
-        if code:return _invalid('Your submission could not be compiled',diagnostics['studentCompilation'])
+        if code:
+            value=_invalid('Your submission could not be compiled',diagnostics['studentCompilation'])
+            value.update(trustedCompilation='success' if student_tests else 'not-run',durations=durations,diagnostics=diagnostics,toolchain=toolchain)
+            if 'apiPrecheck' in config:value.update(apiPrecheck='not-run',dependentExecution='not-run')
+            return value
+        if any(name.startswith(reserved) for name in _compiled_class_names(student)):
+            return unsafe('Submitted classes collide with trusted namespaces')
+        api_classes=None;api_containment=None
+        if 'apiPrecheck' in config:
+            selected=set(config['apiPrecheck']['files']);api_files=[f for f in tests if Path(f).relative_to(job/'tests').as_posix() in selected]
+            value,api_classes,api_containment=_api_precheck(job,config['apiPrecheck'],stage,student,api_files,runtime,limits,durations,diagnostics)
+            if value['status']=='unsafe':return unsafe(value['message'])
+            if value['status']=='mismatch':
+                return {'gradable':False,'classification':'student-api-mismatch','studentCompilation':'success','trustedCompilation':'not-run','apiPrecheck':'failure','dependentExecution':'not-run','infrastructure':'complete','apiDiagnostic':{'expected':value['expected'],'observed':value['observed']},'message':value['message']+'. Зависимые unit-тесты не выполнены.','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'apiContainment':api_containment}
+            tests=[f for f in tests if f not in api_files]
         if not student_tests:
-            code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student)]))
+            code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student),*([str(api_classes),str(runtime.adapter)] if api_classes else [])]))
             if code or reason:raise GraderError('Trusted suite compilation failed: '+diagnostics['trustedCompilation'])
-        student_fqcn={x.relative_to(student).as_posix() for x in student.rglob('*.class')}
-        trusted_fqcn={x.relative_to(trusted).as_posix() for x in trusted.rglob('*.class')}
-        if student_fqcn&trusted_fqcn:return _invalid('Submitted classes collide with trusted classes',classification='unsafe-submission')
-        runtime.ensure_adapter(job,limits,durations,diagnostics)
+        trusted_names=_compiled_class_names(trusted)
+        if api_classes is not None:trusted_names|=_compiled_class_names(api_classes)
+        if _compiled_class_names(student)&trusted_names:return unsafe('Submitted classes collide with trusted classes')
+        if api_classes is None:runtime.ensure_adapter(job,limits,durations,diagnostics)
         reports=stage/'results';reports.mkdir()
         params=stage/'params';params.mkdir()
         rawfile=reports/(secrets.token_hex(32)+'.json');countfile=reports/(secrets.token_hex(32)+'.json');signature=secrets.token_hex(32)
@@ -325,10 +396,11 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             for folder in ('student','tests'):(job/folder).chmod(0o700)
             prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
             containment='official-landlock-sbuser'
-        classpath=os.pathsep.join([str(adapter),libs,str(trusted),str(student)])
+        classpath=os.pathsep.join([str(adapter),libs,str(trusted),*([str(api_classes)] if api_classes else []),str(student)])
         command=[*prefix,'java','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'PlatformJUnitAdapter',str(parameter_file)]
         start=time.monotonic();code,text,reason=_run(command,job,limits.get('run-seconds',10),int(limits['max-output-bytes']));durations['execution']=time.monotonic()-start
         base={'gradable':True,'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'containment':containment,'scoring':config['scoring'],'output':text}
+        if api_classes is not None:base.update(apiPrecheck='success',dependentExecution='complete',apiContainment=api_containment)
         if reason:
             base.update(score=0,classification='student-timeout' if reason=='timeout' else 'student-output-overflow',timed_out=reason=='timeout',output_limited=reason=='output_limit')
             base['message']=(f"Your code exceeded the execution time limit of {limits.get('run-seconds',10):g} seconds." if reason=='timeout' else f"Your code exceeded the output limit of {int(limits['max-output-bytes'])} bytes.")
@@ -348,6 +420,77 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         base.update(score=_score(raw,counts,config['scoring']),classification='behavior-failure' if counts['failed'] else 'success')
         return base
 
+def _path_collision(left,right):
+    return left==right or left.startswith(right+'/') or right.startswith(left+'/')
+
+
+class _AdditionalSubmissionError(Exception):
+    def __init__(self,message,classification='unsafe-submission'):
+        self.classification=classification
+        super().__init__('ZIP дополнительных Java sources: '+message+'. Исправьте доставку или используйте ручную сдачу.')
+
+
+def _additional_inventory(job,config):
+    """Fully validate bounded bytes before creating any extracted source file."""
+    policy=config.get('additionalJavaSources')
+    if policy is None:return [],None
+    root=job/'student';file=root/policy['archive']
+    if root.is_symlink() or not root.is_dir():raise _AdditionalSubmissionError('небезопасный каталог student')
+    if not file.exists() and not file.is_symlink():return [],None
+    if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
+        raise _AdditionalSubmissionError('архив должен быть обычным файлом без symlink')
+    if file.stat().st_size>policy['maxArchiveBytes']:raise _AdditionalSubmissionError('превышен maxArchiveBytes')
+    reserved=[*config['sourceFiles'],*config['testFiles'],'grading-job.json','tests/grading-job.json',policy['archive']]
+    members=[];names={};total=0
+    try:
+        with file.open('rb') as raw:
+            archive_bytes=raw.read(policy['maxArchiveBytes']+1)
+        if len(archive_bytes)>policy['maxArchiveBytes']:raise _AdditionalSubmissionError('превышен maxArchiveBytes')
+        import io
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            entries=archive.infolist()
+            if len(entries)>256:raise _AdditionalSubmissionError('больше 256 записей ZIP')
+            for info in entries:
+                original=info.orig_filename
+                directory=original.endswith('/')
+                name=original[:-1] if directory else original
+                parts=name.split('/')
+                if (original!=info.filename or not name or '\\' in name or name.startswith('/')
+                        or re.match(r'^[A-Za-z]:',name) or any(not part or part in ('.','..') or part.startswith('.') for part in parts)
+                        or any(ord(c)<32 or ord(c)==127 for c in name) or len(parts)>32 or len(name.encode('utf-8'))>512):
+                    raise _AdditionalSubmissionError('недопустимый относительный путь '+repr(original))
+                mode=stat.S_IFMT(info.external_attr>>16)
+                if info.flag_bits&1 or info.compress_type not in (zipfile.ZIP_STORED,zipfile.ZIP_DEFLATED):
+                    raise _AdditionalSubmissionError('encrypted/неподдерживаемая запись '+repr(name))
+                if mode not in (0,stat.S_IFDIR if directory else stat.S_IFREG):
+                    raise _AdditionalSubmissionError('symlink/специальный тип записи '+repr(name))
+                if name in names:raise _AdditionalSubmissionError('повтор пути '+repr(name))
+                if any(_path_collision(name,x) and not (isdir and name.startswith(x+'/')) and not (directory and x.startswith(name+'/')) for x,isdir in names.items()):
+                    raise _AdditionalSubmissionError('конфликт file/directory путей '+repr(name))
+                if any(_path_collision(name,x) and not (directory and x.startswith(name+'/')) for x in reserved):raise _AdditionalSubmissionError('конфликт с основным/доверенным путём '+repr(name))
+                names[name]=directory
+                if directory:
+                    if info.file_size:raise _AdditionalSubmissionError('каталог с содержимым '+repr(name))
+                    continue
+                if not name.endswith('.java'):raise _AdditionalSubmissionError('разрешены только .java: '+repr(name))
+                if len(members)>=policy['maxFiles'] or info.file_size>policy['maxFileBytes'] or total+info.file_size>policy['maxTotalBytes']:
+                    raise _AdditionalSubmissionError('превышен лимит количества/размера исходников')
+                data=bytearray()
+                with archive.open(info) as member:
+                    while chunk:=member.read(min(65536,policy['maxFileBytes']-len(data)+1)):
+                        data.extend(chunk)
+                        if len(data)>policy['maxFileBytes'] or total+len(data)>policy['maxTotalBytes']:
+                            raise _AdditionalSubmissionError('превышен фактический лимит bytes')
+                if len(data)!=info.file_size:raise _AdditionalSubmissionError('размер записи не совпадает '+repr(name))
+                try:bytes(data).decode('utf-8')
+                except UnicodeError as error:raise _AdditionalSubmissionError('исходник не UTF-8: '+repr(name),'student-compilation-failure') from error
+                total+=len(data);members.append((name,bytes(data)))
+    except (zipfile.BadZipFile,zipfile.LargeZipFile,UnicodeError,zlib.error,NotImplementedError,RuntimeError,ValueError,OSError) as error:
+        raise _AdditionalSubmissionError('повреждённый или неподдерживаемый архив ('+type(error).__name__+')') from error
+    members.sort()
+    return members,{'archive':policy['archive'],'archiveSha256':hashlib.sha256(archive_bytes).hexdigest(),'files':[{'path':name,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)} for name,data in members]}
+
+
 def grade(job_dir):
     job=Path(job_dir).absolute()
     try:config=json.loads(_files_any(job,'tests/grading-job.json').read_text())
@@ -355,7 +498,9 @@ def grade(job_dir):
     validate_config(config);profile,bundle,toolchain=preflight(config['runtime'])
     closure={**profile['files'],'runner/grade.py':profile['runnerSha256']}
     evidence={'dependencyHashes':closure,'dependencyHash':hashlib.sha256(json.dumps(closure,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()}
+    additional_evidence=None
     def finish(value):
+        if additional_evidence is not None:value['additionalSources']=additional_evidence
         value['executionEvidence']=evidence
         return value
     if profile['mode']!=config['mode']:raise GraderError('Runtime mode mismatch')
@@ -364,7 +509,19 @@ def grade(job_dir):
     except ValueError as error:raise GraderError('Missing or unsafe trusted sources') from error
     try:sources=_files(job/'student',source_names)
     except ValueError:return finish(_invalid('Upload all declared Java files'))
+    try:additional,additional_evidence=_additional_inventory(job,config)
+    except _AdditionalSubmissionError as error:
+        result=_invalid(str(error),classification=error.classification)
+        if 'apiPrecheck' in config:result.update(apiPrecheck='not-run',dependentExecution='not-run')
+        return finish(result)
     with tempfile.TemporaryDirectory(prefix='java25-job-runtime-') as runtime_dir:
+        extra_root=Path(runtime_dir)/'additional-sources'
+        if additional:extra_root.mkdir(mode=0o700)
+        for name,data in additional:
+            target=extra_root/name;target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+            with target.open('xb') as output:
+                target.chmod(0o600);output.write(data)
+            sources.append(str(target))
         runtime=_JobRuntime(Path(runtime_dir),bundle)
         if config['mode']=='implementation':return finish(_execute(job,config,sources,tests,bundle,toolchain,runtime))
         variants=config.get('variants')
