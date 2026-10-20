@@ -21,6 +21,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fish
+      - name: Подготовить закреплённые Python зависимости проверок
+        run: |
+          python3 -m venv "$RUNNER_TEMP/platform-ci"
+          "$RUNNER_TEMP/platform-ci/bin/python" -m pip install --requirement requirements.txt
+          echo "$RUNNER_TEMP/platform-ci/bin" >> "$GITHUB_PATH"
       - name: Проверить native bridge и fail-closed patches
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
