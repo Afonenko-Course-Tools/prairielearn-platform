@@ -31,7 +31,7 @@ class JUnitJob(unittest.TestCase):
   (self.job/'student/Student.java').write_text('not java');r=self.run_job();self.assertFalse(r['gradable']);self.assertEqual(r['classification'],'student-compilation-failure')
  def test_trusted_compile_error_is_infrastructure(self):
   (self.job/'tests/AnswerTest.java').write_text('not java')
-  with self.assertRaises(grader.GraderError):self.run_job()
+  r=self.run_job();self.assertEqual(r['classification'],'infrastructure-failure');self.assertEqual(r['studentCompilation'],'success');self.assertEqual(r['trustedCompilation'],'failure');self.assertNotIn('score',r)
  def test_submitted_test_injection_is_not_compiled(self):
   (self.job/'student/AnswerTest.java').write_text('not java');self.assertEqual(self.run_job()['score'],1)
  def test_unsafe_fqcn_collision_rejected(self):

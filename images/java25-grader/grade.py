@@ -373,7 +373,11 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             tests=[f for f in tests if f not in api_files]
         if not student_tests:
             code,reason=compile_phase('trustedCompilation',tests,trusted,os.pathsep.join([libs,str(student),*([str(api_classes),str(runtime.adapter)] if api_classes else [])]))
-            if code or reason:raise GraderError('Trusted suite compilation failed: '+diagnostics['trustedCompilation'])
+            if reason:raise GraderError('Trusted suite compilation infrastructure limit: '+reason)
+            if code:
+                # Preserve established phase fields for private operator diagnosis.
+                # Native callers still pass through student_result in main().
+                return {'gradable':False,'grading_error':True,'classification':'infrastructure-failure','infrastructure':'failure','studentCompilation':'success','trustedCompilation':'failure','dependentExecution':'not-run','durations':durations,'diagnostics':diagnostics,'toolchain':toolchain,'message':'Trusted suite compilation failed'}
         trusted_names=_compiled_class_names(trusted)
         if api_classes is not None:trusted_names|=_compiled_class_names(api_classes)
         if _compiled_class_names(student)&trusted_names:return unsafe('Submitted classes collide with trusted classes')
