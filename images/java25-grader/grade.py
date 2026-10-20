@@ -150,6 +150,8 @@ def preflight(runtime):
             files=_files_any(bundle,name)
             if hashlib.sha256(files.read_bytes()).hexdigest()!=digest:
                 raise GraderError('Runtime bundle checksum mismatch: '+name)
+        for name,sha in profile['sharedFiles'].items():
+            if hashlib.sha256(_files_any(PLATFORM,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
         code,output,reason=_run(['java','-version'],PLATFORM,5)
         if code or reason or not re.search(r'version "25(?:[.\"+\-])',output):
             raise GraderError('The grader requires an actual JDK 25 runtime')
@@ -205,7 +207,7 @@ def _score(raw,counts,policy):
     raise GraderError('Unknown scoring policy')
 
 def validate_config(config):
-    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck','additionalJavaSources'}
+    allowed={'schemaVersion','sourceFiles','testFiles','mode','runtime','java','limits','scoring','discovery','variants','apiPrecheck','additionalJavaSources','publicCases','feedback'}
     if not isinstance(config,dict) or set(config)-allowed or config.get('schemaVersion')!=1:
         raise GraderError('Expected closed schemaVersion1 JUnit grading descriptor')
     if config.get('mode') not in ('implementation','student-tests'):raise GraderError('Invalid submission mode')
@@ -328,6 +330,7 @@ def _api_precheck(job,config,stage,student,files,runtime,limits,durations,diagno
     return value,compiled,containment
 
 def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=False):
+    if student_tests!=(config['mode']=='student-tests'):raise GraderError('Private execution mode differs from validated submission mode')
     limits=config['limits'];durations={};diagnostics={}
     with tempfile.TemporaryDirectory(prefix='java25-junit-') as tmp:
         stage=Path(tmp);student=stage/'student';trusted=stage/'trusted'
@@ -379,7 +382,7 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
         params=stage/'params';params.mkdir()
         rawfile=reports/(secrets.token_hex(32)+'.json');countfile=reports/(secrets.token_hex(32)+'.json');signature=secrets.token_hex(32)
         parameter_file=params/'params.json'
-        parameter_file.write_text(json.dumps({'results_file':str(rawfile),'counts_file':str(countfile),'signature':signature,'test_classes':_source_classes(sources if student_tests else tests)}))
+        parameter_file.write_text(json.dumps({'results_file':str(rawfile),'counts_file':str(countfile),'signature':signature,'test_classes':_source_classes(sources if student_tests else tests),'student_classes':sorted(_compiled_class_names(student)),'student_classes_root':str(student.resolve()),'submission_mode':config['mode'],'public_cases':config.get('publicCases',[]),**({'trusted_console_support_root':str(trusted.resolve())} if 'coursesupport.JavaProcess' in trusted_names else {})}))
         containment='host-diagnostic'
         prefix=[]
         if os.environ.get('PL_CONTAINMENT')=='official':
@@ -410,14 +413,19 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             raw=json.loads(rawfile.read_text());counts=json.loads(countfile.read_text())
             if raw.pop('signature')!=signature or counts.pop('signature')!=signature:raise ValueError('signature')
         except (KeyError,ValueError,OSError) as error:raise GraderError('Invalid JUnit report') from error
-        # The native pl-external-grader-results element reads these fields at
-        # the result root; retain the official raw result separately for audits.
-        base.update(rawResult=raw,counts=counts,maxPoints=raw['max_points'],tests=raw['tests'],message=raw.get('message',''))
+        # Internal observations remain available to private verification; main()
+        # applies the student boundary before writing native RESULTS.
+        if 'infrastructure' in counts.get('failureKinds',{}).values():raise GraderError('Trusted check raised an unexpected exception outside student code')
+        base.update(publicCaseObservations=counts.get('publicCaseObservations',[]),rawResult=raw,counts=counts,maxPoints=raw['max_points'],tests=raw['tests'],message=raw.get('message',''))
         incomplete=counts['executed']<config['discovery']['min-executed'] or counts['discovered']==0 or counts['aborted']>0 or counts['containerFailures']>0 or (counts['skipped']>0 and not config['discovery']['allow-skipped'])
         if incomplete or not raw.get('gradable'):
             if not student_tests:raise GraderError('Trusted JUnit discovery/execution is incomplete')
             base.update(score=0,classification='student-test-quality-failure');return base
-        base.update(score=_score(raw,counts,config['scoring']),classification='behavior-failure' if counts['failed'] else 'success')
+        kinds=set(counts.get('failureKinds',{}).values())
+        if counts['failed'] and ('timeout' in kinds or 'output-limit' in kinds):
+            timed_out='timeout' in kinds
+            base.update(score=0,classification='student-timeout' if timed_out else 'student-output-overflow',timed_out=timed_out,output_limited=not timed_out)
+        else:base.update(score=_score(raw,counts,config['scoring']),classification=('student-runtime-failure' if 'runtime' in kinds else 'behavior-failure') if counts['failed'] else 'success')
         return base
 
 def _path_collision(left,right):
@@ -496,7 +504,10 @@ def grade(job_dir):
     try:config=json.loads(_files_any(job,'tests/grading-job.json').read_text())
     except (OSError,ValueError) as error:raise GraderError('Missing or invalid grading configuration') from error
     validate_config(config);profile,bundle,toolchain=preflight(config['runtime'])
-    closure={**profile['files'],'runner/grade.py':profile['runnerSha256']}
+    import runpy
+    try:runpy.run_path(str(PLATFORM/'runtime/student_feedback.py'))['validate_public_cases'](config.get('publicCases',[]))
+    except ValueError as error:raise GraderError('Invalid public feedback policy') from error
+    closure={**profile['files'],**profile['sharedFiles'],'runner/grade.py':profile['runnerSha256']}
     evidence={'dependencyHashes':closure,'dependencyHash':hashlib.sha256(json.dumps(closure,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()}
     additional_evidence=None
     def finish(value):
@@ -545,10 +556,16 @@ def grade(job_dir):
         return finish({'message':message,'gradable':True,'score':float(correct and killed and not quality),'maxPoints':len(observations),'classification':'student-test-quality-failure' if quality else ('success' if correct and killed else 'behavior-failure'),'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','variants':observations,'scoring':config['scoring'],'output':''})
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--job-dir',type=Path,default=Path('/grade'));args=parser.parse_args();status=0
+    parser=argparse.ArgumentParser();parser.add_argument('--job-dir',type=Path,default=Path('/grade'));parser.add_argument('--verification',action='store_true',help='Private operator verification report; never native student feedback');args=parser.parse_args();status=0
     try:result=grade(args.job_dir)
     except GraderError as error:
-        print('Grader failure: '+str(error),file=sys.stderr);result={'gradable':False,'grading_error':True,'classification':'infrastructure-failure','infrastructure':'failure','message':str(error)};status=2
+        result={'gradable':False,'grading_error':True,'classification':'infrastructure-failure','infrastructure':'failure','message':str(error)};status=2
+    if not args.verification:
+        import runpy
+        boundary=runpy.run_path(str(PLATFORM/'runtime/student_feedback.py'))['student_result']
+        try:descriptor=json.loads(_files_any(args.job_dir,'tests/grading-job.json').read_text())
+        except (OSError,ValueError):descriptor={}
+        result=boundary(result,descriptor)
     path=args.job_dir/'results';path.mkdir(exist_ok=True);path.chmod(0o777);tmp=path/'results.json.tmp';tmp.write_text(json.dumps(result));tmp.replace(path/'results.json');return status
 
 if __name__=='__main__':raise SystemExit(main())

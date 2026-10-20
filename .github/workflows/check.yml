@@ -23,6 +23,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends fish
       - name: Проверить native bridge и fail-closed patches
         run: |
+          npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/bridge/*.test.mjs
           python3 tests/bridge/cookie-domain.test.py
           python3 tests/bridge/grader-patch.test.py

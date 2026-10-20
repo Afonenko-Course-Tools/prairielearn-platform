@@ -23,5 +23,5 @@ if __name__=='__main__':
     images={key:os.environ[key.upper()+'_DIGEST'] for key in REPOSITORIES}
     registry=assign_images(json.loads(Path('runtime-profiles.json').read_text()),images)
     Path('published-runtime-profiles.json').write_text(json.dumps(registry,indent=2)+'\n')
-    receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':2,'resultsSchemaVersion':2,'runtimeProfilesSha256':__import__('hashlib').sha256(Path('published-runtime-profiles.json').read_bytes()).hexdigest()}
+    receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':3,'resultsSchemaVersion':2,'runtimeProfilesSha256':__import__('hashlib').sha256(Path('published-runtime-profiles.json').read_bytes()).hexdigest()}
     Path('runtime-image.json').write_text(json.dumps(receipt,indent=2)+'\n')

@@ -283,6 +283,95 @@
         "maxArchiveBytes"
       ],
       "additionalProperties": false
+    },
+    "publicCases": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "test": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "input": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "state": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "action": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "id",
+          "test",
+          "expected",
+          "name"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "input"
+            ]
+          },
+          {
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "required": [
+              "action"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "properties": {
+        "requirement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "whatCheck": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "requirement",
+        "whatCheck"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

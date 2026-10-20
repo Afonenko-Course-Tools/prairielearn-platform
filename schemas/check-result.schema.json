@@ -94,7 +94,8 @@
         "student-output-overflow",
         "unsafe-submission",
         "infrastructure-failure",
-        "student-api-mismatch"
+        "student-api-mismatch",
+        "student-runtime-failure"
       ]
     },
     "counts": {
@@ -136,6 +137,45 @@
               "failed",
               "aborted",
               "skipped"
+            ]
+          }
+        },
+        "publicCaseObservations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "test": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "test",
+              "actual",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "failureKinds": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "wrong-answer",
+              "runtime",
+              "timeout",
+              "output-limit",
+              "infrastructure"
             ]
           }
         }
@@ -488,6 +528,33 @@
         "files"
       ],
       "additionalProperties": false
+    },
+    "publicCaseObservations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "test": {
+            "type": "string"
+          },
+          "actual": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "test",
+          "actual",
+          "status"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
@@ -545,7 +612,8 @@
             "student-output-overflow",
             "unsafe-submission",
             "infrastructure-failure",
-            "student-api-mismatch"
+            "student-api-mismatch",
+            "student-runtime-failure"
           ]
         },
         "counts": {
@@ -587,6 +655,45 @@
                   "failed",
                   "aborted",
                   "skipped"
+                ]
+              }
+            },
+            "publicCaseObservations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "test": {
+                    "type": "string"
+                  },
+                  "actual": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "test",
+                  "actual",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "failureKinds": {
+              "type": "object",
+              "additionalProperties": {
+                "enum": [
+                  "wrong-answer",
+                  "runtime",
+                  "timeout",
+                  "output-limit",
+                  "infrastructure"
                 ]
               }
             }
@@ -924,6 +1031,33 @@
             "files"
           ],
           "additionalProperties": false
+        },
+        "publicCaseObservations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "test": {
+                "type": "string"
+              },
+              "actual": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "test",
+              "actual",
+              "status"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false,
@@ -1248,7 +1382,10 @@
             {
               "properties": {
                 "classification": {
-                  "const": "behavior-failure"
+                  "enum": [
+                    "behavior-failure",
+                    "student-runtime-failure"
+                  ]
                 }
               }
             },
@@ -1725,30 +1862,79 @@
               ]
             },
             {
-              "not": {
-                "anyOf": [
-                  {
-                    "required": [
-                      "grading_error"
+              "oneOf": [
+                {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "grading_error"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
                     ]
-                  },
-                  {
-                    "required": [
-                      "rawResult"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "counts"
-                    ]
-                  },
-                  {
+                  }
+                },
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "maxPoints"
+                  ],
+                  "not": {
                     "required": [
                       "variants"
                     ]
+                  },
+                  "properties": {
+                    "counts": {
+                      "required": [
+                        "failureKinds"
+                      ],
+                      "properties": {
+                        "executed": {
+                          "minimum": 1
+                        },
+                        "failed": {
+                          "minimum": 1
+                        },
+                        "failureKinds": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "not": {
+                            "additionalProperties": {
+                              "not": {
+                                "const": "timeout"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "rawResult": {
+                      "properties": {
+                        "gradable": {
+                          "const": true
+                        }
+                      }
+                    }
                   }
-                ]
-              }
+                }
+              ]
             }
           ]
         },
@@ -1796,30 +1982,86 @@
               ]
             },
             {
-              "not": {
-                "anyOf": [
-                  {
-                    "required": [
-                      "grading_error"
+              "oneOf": [
+                {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "grading_error"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "rawResult"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "counts"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "variants"
+                        ]
+                      }
                     ]
-                  },
-                  {
-                    "required": [
-                      "rawResult"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "counts"
-                    ]
-                  },
-                  {
+                  }
+                },
+                {
+                  "required": [
+                    "counts",
+                    "rawResult",
+                    "maxPoints"
+                  ],
+                  "not": {
                     "required": [
                       "variants"
                     ]
+                  },
+                  "properties": {
+                    "counts": {
+                      "required": [
+                        "failureKinds"
+                      ],
+                      "properties": {
+                        "executed": {
+                          "minimum": 1
+                        },
+                        "failed": {
+                          "minimum": 1
+                        },
+                        "failureKinds": {
+                          "type": "object",
+                          "minProperties": 1,
+                          "not": {
+                            "additionalProperties": {
+                              "not": {
+                                "const": "output-limit"
+                              }
+                            }
+                          },
+                          "additionalProperties": {
+                            "enum": [
+                              "wrong-answer",
+                              "runtime",
+                              "output-limit"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "rawResult": {
+                      "properties": {
+                        "gradable": {
+                          "const": true
+                        }
+                      }
+                    }
                   }
-                ]
-              }
+                }
+              ]
             }
           ]
         },

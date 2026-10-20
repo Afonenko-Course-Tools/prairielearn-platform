@@ -92,7 +92,7 @@ class ApiContainerTests(ApiPrecheckTests):
  def run_job(self):
   import subprocess
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  p=subprocess.run(['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE']],capture_output=True,text=True,timeout=45)
+  p=subprocess.run(['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=45)
   r=json.loads((self.job/'results/results.json').read_text())
   if r.get('infrastructure')=='failure':raise grader.GraderError(r.get('message','container infrastructure failed'))
   self.assertEqual(p.returncode,0,p.stderr)
@@ -146,7 +146,7 @@ class ApiDeliveryTests(unittest.TestCase):
     shutil.copytree(job.root/'tests',question/'tests')
     shutil.copytree(job.root/'student',question/'serverFilesQuestion/starter')
     native_files={f.relative_to(native).as_posix():hashlib.sha256(f.read_bytes()).hexdigest() for f in native.rglob('*') if f.is_file()}
-    delivery={'schemaVersion':2,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['demo/exr-api'],'verificationInventoryHash':m.digest(m.scenario_inventory(manifest,snapshot)),'files':native_files}
+    delivery={'schemaVersion':3,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['demo/exr-api'],'verificationInventoryHash':m.digest(m.scenario_inventory(manifest,snapshot)),'files':native_files}
     delivery['deliveryHash']=m.digest(delivery);delivery['_root']=str(native)
     delivered=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery)
     try:self.assertEqual(delivered['grading']['apiPrecheck'],{'files':['ApiContract.java'],'entry':'ApiContract'})

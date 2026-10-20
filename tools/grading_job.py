@@ -31,7 +31,11 @@ def safe(root,name):
     return p
 
 def validate(name,value):
-    try:jsonschema.Draft202012Validator(json.loads((ROOT/'schemas'/f'{name}.schema.json').read_text())).validate(value)
+    try:
+        from referencing import Registry,Resource
+        automatic=json.loads((ROOT/'schemas/verification-receipt.schema.json').read_text())
+        registry=Registry().with_resource(automatic['$id'],Resource.from_contents(automatic))
+        jsonschema.Draft202012Validator(json.loads((ROOT/'schemas'/f'{name}.schema.json').read_text()),registry=registry).validate(value)
     except (jsonschema.ValidationError,OSError,ValueError) as error:raise JobError(f'Invalid {name}: {error}') from error
 
 def validate_profile(check):validate('project-check',check)
@@ -60,7 +64,9 @@ def runtime_evidence(runtime,registry=None):
         if hashlib.sha256(safe(bundle,name).read_bytes()).hexdigest()!=sha:raise JobError('Runtime dependency checksum changed')
     runner=hashlib.sha256(safe(ROOT,profile.get('runner','images/java25-grader/grade.py')).read_bytes()).hexdigest()
     if runner!=profile['runnerSha256']:raise JobError('Runtime runner checksum changed')
-    files={**profile['files'],'runner/grade.py':runner}
+    for name,sha in profile['sharedFiles'].items():
+        if hashlib.sha256(safe(ROOT,name).read_bytes()).hexdigest()!=sha:raise JobError('Shared runtime checksum changed')
+    files={**profile['files'],**profile['sharedFiles'],'runner/grade.py':runner}
     return {'dependencyHashes':files,'dependencyHash':digest(files)}
 
 def scenario_inventory(manifest,snapshot,ids=None):
@@ -175,6 +181,8 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     api=api_selection('apiPrecheck',tests);public_api=api_selection('verificationApiPrecheck',public)
     if api and public and not public_api:raise JobError('Public fixed-API verification requires an explicit API precheck')
     if bool(check.get('api-precheck'))!=bool(api) or bool(check.get('verification-api-precheck'))!=bool(public_api):raise JobError('API precheck selection missing or undeclared')
+    if 'feedback' in check:grading['feedback']={'requirement':check['feedback']['requirement'],'whatCheck':check['feedback']['what-check']}
+    if 'public-cases' in check:grading['publicCases']=check['public-cases']
     if api:grading['apiPrecheck']=api
     if extra_policy:
         grading['additionalJavaSources']={'archive':archive_name,**{new:extra_policy[old] for old,new in [('max-files','maxFiles'),('max-file-bytes','maxFileBytes'),('max-total-bytes','maxTotalBytes'),('max-archive-bytes','maxArchiveBytes')]}}
@@ -185,7 +193,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     job=GradingJob(schemaVersion=1,scope=scope,qualifiedId=id,scenario=scenario,sourceSnapshotHash=manifest['sourceSnapshotHash'],inventoryHash=manifest['inventoryHash'],runtime=check['runtime'],imageDigest=runtime['image'] or os.environ.get('PL_LOCAL_IMAGE_ID'),sources=selected,trustedTests=tests,verificationTests=public,grading=grading,expectations=expectations,sourceHashes={x['projectRelativePath']:x['sha256'] for x in selected},testsHashes={x['projectRelativePath']:x['sha256'] for x in [*tests,*public]})
     if generated_archive is not None:job['sourceHashes']['$generated/'+archive_name]=hashlib.sha256(generated_archive).hexdigest()
     if scope=='delivery':
-        if not delivery or delivery.get('schemaVersion')!=2 or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
+        if not delivery or delivery.get('schemaVersion')!=3 or id not in delivery.get('questions',[]):raise JobError('ID absent from delivery')
         job['deliveryHash']=delivery['deliveryHash']
         expected_scenarios=scenario_inventory(manifest,snapshot,set(delivery['questions']))
         if delivery.get('verificationInventoryHash')!=digest(expected_scenarios):raise JobError('Delivery scenario inventory does not match declared checks')
@@ -241,7 +249,7 @@ def run_job(job,backend='host',registry=None):
         elif backend=='container':
             if not job['imageDigest']:raise JobError('Runtime production image has not been built/published')
             job.containerName='plcheck-'+secrets.token_hex(12)
-            cmd=['docker','run','--rm','--name',job.containerName,'--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={job.root},dst=/grade',job['imageDigest']]
+            cmd=['docker','run','--rm','--name',job.containerName,'--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={job.root},dst=/grade',job['imageDigest'],'--verification']
             try:p=subprocess.run(cmd,capture_output=True,text=True,timeout=job['grading']['limits']['outer-seconds'])
             except subprocess.TimeoutExpired as error:
                 cleanup=subprocess.run(['docker','rm','--force',job.containerName],capture_output=True,text=True,timeout=10)
@@ -341,8 +349,8 @@ def validate_receipt_integrity(receipt):
     if set(used)!=set(receipt['runtimes']) or set(used)!=set(receipt['runtimeEvidence']):raise JobError('Receipt has unbound runtime evidence')
     if {rid+'/'+name:sha for rid,closure in used.items() for name,sha in closure['dependencyHashes'].items()}!=receipt['dependencyHashes']:raise JobError('Receipt flattened dependency closure is inconsistent')
 
-def validate_release_receipt(receipt,delivery,native,registry=None):
-    if delivery.get('schemaVersion')!=2:raise JobError('Unsupported native delivery; version2 required')
+def _validate_automatic_release_receipt(receipt,delivery,native,registry=None):
+    if delivery.get('schemaVersion')!=3:raise JobError('Unsupported native delivery; v3 required')
     validate_receipt_integrity(receipt)
     if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Receipt identity mismatch')
     for field in ('deliveryHash','sourceSnapshotHash','inventoryHash'):
@@ -357,7 +365,8 @@ def validate_release_receipt(receipt,delivery,native,registry=None):
     optional={(r['qualifiedId'],r['scenario']) for r in receipt['scenarioInventory'] if r['optional'] and r['scenario'].startswith('reference:')}
     if len(expected)!=len(receipt['scenarioInventory']) or len(observed)!=len(receipt['expectations']) or len(unavailable)!=len(receipt['unavailableReferences']):raise JobError('Duplicate scenario coverage observation')
     if not unavailable<=optional or observed&unavailable or observed|unavailable!=expected or any(not r['matched'] for r in receipt['expectations']):raise JobError('Required scenario coverage is incomplete')
-    ids=set(delivery['questions'])
+    from delivery_verification import classification
+    ids={q for q,method in classification(delivery).items() if method!='manual'}
     if set(receipt['checkedIds'])!=ids or {q for q,s in expected}!=ids:raise JobError('Question coverage differs from delivery')
     bindings={r['qualifiedId']:r for r in receipt['questionBindings']}
     if len(bindings)!=len(receipt['questionBindings']) or set(bindings)!=ids:raise JobError('Runtime binding coverage differs from delivery')
@@ -376,3 +385,19 @@ def validate_release_receipt(receipt,delivery,native,registry=None):
     if flattened!=receipt['dependencyHashes']:raise JobError('Receipt dependency hashes differ from runtime closure')
     for name,sha in delivery.get('files',{}).items():
         if hashlib.sha256(safe(Path(native),name).read_bytes()).hexdigest()!=sha:raise JobError('Native payload differs from canonical delivery')
+
+
+def validate_release_receipt(receipt,delivery,native,registry=None):
+    from delivery_verification import classification,package_integrity
+    validate('delivery-verification-receipt',receipt)
+    methods=classification(delivery)
+    if receipt['identityHash']!=digest({k:v for k,v in receipt.items() if k!='identityHash'}):raise JobError('Outer receipt identity mismatch')
+    if delivery.get('candidate') is True:raise JobError('Local image candidate cannot be staged')
+    for key in ('deliveryHash','sourceSnapshotHash','inventoryHash'):
+        if receipt[key]!=delivery.get(key):raise JobError('Outer receipt source/delivery identity differs')
+    if receipt['packageIntegrity']!=package_integrity(delivery,native):raise JobError('Actual package differs from receipt')
+    automatic={q for q,method in methods.items() if method!='manual'}
+    if automatic:
+        if receipt['automatic']['state']!='verified':raise JobError('Automatic questions require nonempty executed proof')
+        _validate_automatic_release_receipt(receipt['automatic']['receipt'],delivery,native,registry)
+    elif receipt['automatic']!={'state':'not-applicable','reason':'all-questions-manual'}:raise JobError('Wholly manual proof cannot fabricate automatic execution')

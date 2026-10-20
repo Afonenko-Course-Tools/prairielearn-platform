@@ -26,7 +26,7 @@ class ContainerParity(unittest.TestCase):
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg));host=grader.grade(self.job)
   values=[]
   for _ in range(2):
-   p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=30)
+   p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=30)
    self.assertEqual(p.returncode,0,p.stderr);r=json.loads((self.job/'results/results.json').read_text());values.append(r)
    self.assertEqual(r['score'],host['score']);self.assertEqual(r['counts'],host['counts']);self.assertEqual(r['rawResult'],host['rawResult'])
   for value in values:
@@ -64,7 +64,7 @@ class ContainerParity(unittest.TestCase):
    self.assertEqual(setup.returncode,0,setup.stderr)
   try:
    if input_uid is not None:input_owner({folder:input_uid for folder in owners})
-   p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--mount',mount,os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=30)
+   p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--mount',mount,os.environ['PL_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=30)
    expected_owner=owners if input_uid is None else {folder:input_uid for folder in owners}
    self.assertEqual({folder:(self.job/folder).stat().st_uid for folder in owners},expected_owner,'grader changed host input ownership')
   finally:
@@ -100,7 +100,7 @@ class MutationRuntimeContainment(unittest.TestCase):
    assertEquals(42,Student.answer());
   }}''')
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=30)
+  p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=30)
   self.assertEqual(p.returncode,0,p.stderr);r=json.loads((self.job/'results/results.json').read_text());self.assertEqual(r['score'],1,r)
   self.assertEqual(r['variants']['correct']['containment'],'official-landlock-sbuser')
   self.assertEqual(r['variants']['wrong']['durations']['runnerCompilation'],0)

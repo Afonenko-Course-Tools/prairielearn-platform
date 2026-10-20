@@ -4,6 +4,7 @@ ENV PL_CONTAINMENT=official PYTHONDONTWRITEBYTECODE=1
 WORKDIR /platform
 COPY runtime-profiles.json /platform/runtime-profiles.json
 COPY schemas /platform/schemas
+COPY runtime/student_feedback.py /platform/runtime/student_feedback.py
 COPY runtime/fish-git-v1 /platform/runtime/fish-git-v1
 COPY images/fish-git-grader/grade.py /platform/images/fish-git-grader/grade.py
 RUN chmod 700 /platform /javagrader

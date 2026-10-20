@@ -9,7 +9,7 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformJUnitAdapter.java": "46aedb58f27289db0424607104d27018daefb03b32759f2513487d33d8bf6bdd",
+        "PlatformJUnitAdapter.java": "ed96bd916c9ab12f24982b84a863848271b9d56e7910b8844a60ff5d671a90d0",
         "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
@@ -17,7 +17,10 @@
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
         "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
       },
-      "runnerSha256": "c270cac0932ecce0e01377cc8681a6cd7a6eb5b15f4e1acf9460b8c8c97eb92c"
+      "runnerSha256": "28c8c537307501428ce1193dc786172d93bbfa8972b872f45ac72914f51438af",
+      "sharedFiles": {
+        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4"
+      }
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
@@ -27,7 +30,7 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformJUnitAdapter.java": "46aedb58f27289db0424607104d27018daefb03b32759f2513487d33d8bf6bdd",
+        "PlatformJUnitAdapter.java": "226fd273a75dab8ac78686cc5dea771b319c32577667e5831fbfe585d7c8924d",
         "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
@@ -35,7 +38,10 @@
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
         "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
       },
-      "runnerSha256": "c270cac0932ecce0e01377cc8681a6cd7a6eb5b15f4e1acf9460b8c8c97eb92c"
+      "runnerSha256": "70b893e2b898d24833c6a1635f9d1960944bce3e64d7d99693cb6853ffe0d298",
+      "sharedFiles": {
+        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4"
+      }
     },
     "fish-git-v1": {
       "mode": "implementation",
@@ -46,9 +52,13 @@
       "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:021adbbb5bb413f39b3e5e6c575dd989509998d89a8fe0cf470217e311a0c3d4",
       "bundle": "runtime/fish-git-v1",
       "runner": "images/fish-git-grader/grade.py",
-      "runnerSha256": "afbc91c643306cef74c2fdbe8fadcc4de91b4177ff10a21a6e1fe427fc9396d3",
+      "runnerSha256": "cca63f44d1b50a9ef583fb9728203744869bb9db5c1c7cc555ce479e22c65d3e",
       "files": {
         "supervisor.py": "d7aa7ab5e721b4b55cb604d77a633c41fb294b540420dfc8230a47d52ccb2ee3"
+      },
+      "sharedFiles": {
+        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4",
+        "schemas/grading-descriptor.schema.json": "e0a5fda735739aef38de0c967107cd60b1d55ba5807fc388013eb5afb57f9423"
       }
     }
   }

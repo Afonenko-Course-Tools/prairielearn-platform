@@ -109,7 +109,8 @@ const resultRow = z.strictObject({
   points: z.number().nullable(),
   max_points: z.number().nullable(),
   score: z.number().nullable(),
-  native_status: z.string(),
+  native_status: z.enum(['complete','unanswered','saved','correct','incorrect','grading','invalid']).nullable(),
+  requires_manual_grading:z.boolean(),
   group_id: z.string(),
 });
 const workResultRow = resultRow.extend({
@@ -139,7 +140,7 @@ async function context(request, assignment = true) {
 }
 async function validateWork(binding, ci, workId) {
   const work = binding.delivery.works.find((w) => w.id === workId);
-  const groups = await db.queryRows(sql.validate_assessment,{course_instance_id:ci.id,work_id:workId},z.strictObject({group_id:z.string(),question_ids:z.array(z.string()),number_choose:z.number().int().nullable(),zone_number_choose:z.number().int().nullable()}));
+  const groups = await db.queryRows(sql.validate_assessment,{course_instance_id:ci.id,work_id:workId},z.strictObject({group_id:z.string(),question_ids:z.array(z.string()),number_choose:z.number().int().nullable(),zone_id:z.string(),zone_best_questions:z.number().int().nullable(),zone_number_choose:z.number().int().nullable()}));
   validateNativeGroups(work,groups);
   return {...work,nativeGroups:groups};
 }

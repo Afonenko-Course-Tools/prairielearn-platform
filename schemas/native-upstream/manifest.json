@@ -1,0 +1,13 @@
+{
+  "commit": "aac4ef06d70b3692fc4dcaa79ad9c525dc1bc461",
+  "files": {
+    "PRAIRIELEARN-LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
+    "infoAssessment.json": "e1dea2e09084c3d64217a8132c1aec21adccee1a2c98353b0b64e3c59bd3c282",
+    "infoCourse.json": "16387588b1f08321843e3acc38f59c4fbad38ddc0a0ca7558aa886b8f0d8c2cd",
+    "infoCourseInstance.json": "262b6f0b1605e07b6996111710512fbe2289e9fa019857317f272b708eb2e2d7",
+    "infoQuestion.json": "5558c38dde1dff059b3603891698da4f9dec2d88b1d9ebe10e825a817cffaf26",
+    "provenance.json": "a8890c2d4bb4320b0708aeda86139fca57b5845805decefaf8053182370ceb9d"
+  },
+  "path": "_extensions/course-prairielearn/spec/upstream",
+  "repository": "https://github.com/Afonenko-Course-Tools/quarto-course-prairielearn.git"
+}

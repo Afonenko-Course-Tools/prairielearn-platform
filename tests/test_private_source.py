@@ -34,7 +34,7 @@ out=pathlib.Path(sys.argv[4]);out.mkdir();checks=pathlib.Path(sys.argv[8])
 (out/'infoCourse.json').write_text(json.dumps({'name':'SYN'}))
 q=out/'questions/synthetic/exr-a';q.mkdir(parents=True)
 (q/'info.json').write_text(json.dumps({'uuid':'00000000-0000-4000-8000-000000000001'}))
-delivery={'schemaVersion':2,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
+delivery={'schemaVersion':3,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
 (out/'delivery.json').write_text(json.dumps(delivery));checks.write_text(json.dumps({'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64}))
 if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/EXTRA').write_text('POST_EXPORT_DRIFT')
 """);script.chmod(0o755)

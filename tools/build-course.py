@@ -149,12 +149,13 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
         command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
         if candidate_image:command+=['--candidate-image',candidate_image]
+        if staging:command+=['--staging-receipt',str(Path(staging_receipt).absolute())]
         try:subprocess.run(command,cwd=source,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
         files=tree(native)
         if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
         delivery=read_json(native/'delivery.json');manifest=read_json(checks)
-        if delivery.get('schemaVersion')!=2 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
+        if delivery.get('schemaVersion')!=3 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
         validate_uuids_and_assessments(native,delivery['questions'])
         provenance={'schema':'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':{'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
         if staging:
