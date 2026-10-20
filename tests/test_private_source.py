@@ -78,4 +78,3 @@ if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/E
    write(core/'materialization.json',json.dumps([{'name':'README.md','bytes':[1,2]}]))
    with self.assertRaisesRegex(stage.StageError,'artifact files'):stage.prepare(public,'tasks',core,root/'artifact-stage',root/'artifact-receipt.json')
    self.assertFalse((root/'artifact-stage').exists())
-
