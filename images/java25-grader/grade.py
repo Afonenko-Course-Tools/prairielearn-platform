@@ -564,6 +564,7 @@ def main():
     try:result=grade(args.job_dir)
     except GraderError as error:
         result={'gradable':False,'grading_error':True,'classification':'infrastructure-failure','infrastructure':'failure','message':str(error)};status=2
+    if result.get('classification')=='infrastructure-failure' or result.get('grading_error'):status=2
     if not args.verification:
         import runpy
         boundary=runpy.run_path(str(PLATFORM/'runtime/student_feedback.py'))['student_result']

@@ -61,7 +61,8 @@ class ApiPrecheckTests(unittest.TestCase):
   with self.assertRaisesRegex(grader.GraderError,'API precheck compilation failed'):self.run_job()
  def test_trusted_test_defect_after_precheck_stays_infrastructure(self):
   (self.job/'tests/AnswerTest.java').write_text('broken trusted Java')
-  with self.assertRaisesRegex(grader.GraderError,'Trusted suite compilation failed'):self.run_job()
+  result=self.run_job();self.assertEqual(result['classification'],'infrastructure-failure');self.assertFalse(result['gradable']);self.assertTrue(result['grading_error']);self.assertNotIn('score',result)
+  self.assertEqual((result['studentCompilation'],result['trustedCompilation'],result['dependentExecution']),('success','failure','not-run'));self.assertIn('apiExecution',result['durations'])
  def test_metadata_does_not_initialize_student(self):
   self.check(METHOD+'api.expect(System.getProperty("api.probe.initialized")==null,"без инициализации","инициализирован");')
   (self.job/'student/Student.java').write_text('public class Student {static {System.setProperty("api.probe.initialized","yes");}public static int answer(){return 42;}}')
@@ -94,7 +95,10 @@ class ApiContainerTests(ApiPrecheckTests):
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
   p=subprocess.run(['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=45)
   r=json.loads((self.job/'results/results.json').read_text())
-  if r.get('infrastructure')=='failure':raise grader.GraderError(r.get('message','container infrastructure failed'))
+  if r.get('infrastructure')=='failure':
+   self.assertEqual(p.returncode,2,p.stderr)
+   if (r.get('classification'),r.get('studentCompilation'),r.get('trustedCompilation'),r.get('dependentExecution'))==('infrastructure-failure','success','failure','not-run'):return r
+   raise grader.GraderError(r.get('message','container infrastructure failed'))
   self.assertEqual(p.returncode,0,p.stderr)
   return r
  def test_precheck_official_sandbox_cannot_read_proc_or_write_trusted(self):
