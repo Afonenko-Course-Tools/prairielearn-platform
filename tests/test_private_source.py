@@ -17,7 +17,7 @@ class PrivateSource(unittest.TestCase):
    core=root/'core';files=[]
    for name,data,origin in [('student/Main.java','PUBLIC_NEW','public'),('reference/Main.java','PRIVATE_CANARY','teacher'),('student/.git/HEAD','ref: refs/heads/main\n','public')]:
     target='projects/demo/'+name;write(core/target,data);files.append({'target':target,'source':str(public/'tasks'/target),'sha256':hashlib.sha256(data.encode()).hexdigest(),'origin':origin})
-   manifest={'schema':'course-project-materialization-v1','audience':'grading','sourceRoot':str(public/'tasks'),'exerciseIds':['exr-demo'],'projects':[{'exerciseId':'exr-demo','projectRoot':'projects/demo'}],'replacementRoots':['projects/demo/'+p for p in ['student','reference','tests','rubric.md','contract.md']],'files':files,'commonSources':{},'sourceDocuments':{'numbers.qmd':hashlib.sha256(b'PUBLIC_CONDITION').hexdigest()},'declarationsHash':'a'*64}
+   manifest={'schema':'course-project-materialization-v1','audience':'grading','sourceRoot':str(public/'tasks'),'sourceCommit':git(public,'rev-parse','HEAD'),'exerciseIds':['exr-demo'],'projects':[{'exerciseId':'exr-demo','projectRoot':'projects/demo'}],'replacementRoots':['projects/demo/'+p for p in ['student','reference','tests','rubric.md','contract.md']],'files':files,'commonSources':{},'sourceDocuments':{'numbers.qmd':hashlib.sha256(b'PUBLIC_CONDITION').hexdigest()},'declarationsHash':'a'*64}
    write(core/'materialization.json',json.dumps(manifest));output=root/'private';receipt=root/'receipt.json'
    for index,bad_receipt in enumerate([public/'new-receipt.json',core/'new-receipt.json']):
     before_public=stage.inventory(public);before_core=stage.inventory(core);bad_output=root/('bad-output-'+str(index))
@@ -59,6 +59,12 @@ if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/E
    original=output/'tasks/numbers.qmd';original.write_text('MUTATED_SOURCE')
    with self.assertRaises(stage.StageError):stage.validate(output,receipt,allow_runtime=True)
    original.write_text('PUBLIC_CONDITION')
+   original_manifest=(core/'materialization.json').read_bytes();missing_commit=dict(manifest);missing_commit.pop('sourceCommit');(core/'materialization.json').write_text(json.dumps(missing_commit))
+   with self.assertRaises(stage.StageError):stage.prepare(public,'tasks',core,root/'missing-commit-stage',root/'missing-commit-receipt.json')
+   self.assertFalse((root/'missing-commit-stage').exists());(core/'materialization.json').write_bytes(original_manifest)
+   config=public/'tasks/_quarto.yml';config.write_text(config.read_text()+'# CONFIG_ONLY_COMMIT\n');git(public,'add','tasks/_quarto.yml');git(public,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Config only')
+   with self.assertRaises(stage.StageError):stage.prepare(public,'tasks',core,root/'config-drift-stage',root/'config-drift-receipt.json')
+   self.assertFalse((root/'config-drift-stage').exists());self.assertFalse((root/'config-drift-receipt.json').exists())
    seed=output/'tasks/projects/demo/student/.git/HEAD';seed.write_text('DRIFT')
    with self.assertRaises(stage.StageError):stage.validate(output,receipt)
    seed.write_text('ref: refs/heads/main\n');write(seed.parent/'extra','ADDED')
@@ -66,6 +72,10 @@ if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/E
  def test_unrelated_replacement_rejected_without_output(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);public=root/'public';public.mkdir();git(public,'init','-q');git(public,'remote','add','origin','https://example.invalid/course.git');write(public/'tasks/x','x');git(public,'add','.');git(public,'-c','user.name=F','-c','user.email=f@example.invalid','commit','-qm','F')
-   core=root/'core';write(core/'materialization.json',json.dumps({'schema':'course-project-materialization-v1','audience':'grading','sourceRoot':str(public/'tasks'),'projects':[],'replacementRoots':['_quarto.yml'],'files':[]}))
+   core=root/'core';write(core/'materialization.json',json.dumps({'schema':'course-project-materialization-v1','audience':'grading','sourceRoot':str(public/'tasks'),'sourceCommit':git(public,'rev-parse','HEAD'),'projects':[{'exerciseId':'exr-demo','projectRoot':'projects/demo'}],'replacementRoots':['_quarto.yml'],'files':[]}))
    with self.assertRaises(stage.StageError):stage.prepare(public,'tasks',core,root/'out',root/'receipt.json')
    self.assertFalse((root/'out').exists())
+   write(core/'materialization.json',json.dumps([{'name':'README.md','bytes':[1,2]}]))
+   with self.assertRaisesRegex(stage.StageError,'artifact files'):stage.prepare(public,'tasks',core,root/'artifact-stage',root/'artifact-receipt.json')
+   self.assertFalse((root/'artifact-stage').exists())
+

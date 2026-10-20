@@ -26,6 +26,10 @@ class NativePrivateSource(unittest.TestCase):
    provenance=json.loads((candidate/'provenance.json').read_text())['source']
    self.assertEqual(provenance['mode'],'private-stage');self.assertTrue(provenance['runtimeInventory']);self.assertTrue((candidate/'questions/native-java-demo/exr-add/info.json').exists())
    self.assertFalse((public/'tasks/projects/add/reference').exists());stage.validate(private,receipt,allow_runtime=True)
+   config=public/'tasks/_quarto.yml';config.write_text(config.read_text()+'\n# CONFIG_ONLY_COMMIT\n')
+   run(['git','add','tasks/_quarto.yml']);run(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Config only after materialization'])
+   with self.assertRaisesRegex(stage.StageError,'sourceCommit'):stage.prepare(public,'tasks',materialized,root/'config-drift',root/'config-drift-receipt.json')
+   self.assertFalse((root/'config-drift').exists());self.assertFalse((root/'config-drift-receipt.json').exists())
    if os.environ.get('PRIVATE_SOURCE_EVIDENCE'):
     evidence=Path(os.environ['PRIVATE_SOURCE_EVIDENCE']);evidence.mkdir(parents=True,exist_ok=True)
     for name,path in [('staging-receipt.json',receipt),('materialization.json',materialized/'materialization.json'),('provenance.json',candidate/'provenance.json')]:shutil.copyfile(path,evidence/name)

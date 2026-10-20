@@ -22,6 +22,9 @@ Public origin должен быть credential-free HTTPS. Receipt связыв�
 public repository/commit, private stage commit/tree, Core declaration/common/
 teacher hashes и полный file inventory. Private commit не приписывается public
 origin. Приватный stage и receipt запрещено публиковать в публичном Git/ZIP/site.
+Core receipt обязан содержать внутренне полученный sourceCommit, совпадающий
+с public HEAD. Config-only commit после материализации требует новой сборки Core;
+отсутствующее поле также останавливает freeze до записи.
 
 Git не индексирует вложенную student/.git. Такие controlled seed файлы остаются
 в stage и хешируются receipt вне stage index. Проверка inventory до и после

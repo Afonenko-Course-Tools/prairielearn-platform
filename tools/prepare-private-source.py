@@ -14,7 +14,10 @@ class StageError(Exception):
 
 def digest(data):return hashlib.sha256(data).hexdigest()
 def read(path):
-    try:return json.loads(path.read_bytes())
+    try:
+        value=json.loads(path.read_bytes())
+        if not isinstance(value,dict):raise StageError('Требуется объект staging receipt, не artifact files')
+        return value
     except (OSError,ValueError) as error:raise StageError(f'Некорректный receipt: {path}') from error
 
 def git(root,*args,data=None,env=None):
@@ -79,6 +82,7 @@ def prepare(public,book,core,output,receipt):
     if not re.fullmatch(r'https://[^/@\s]+/[^\s]+',repository):raise StageError('Origin должен быть credential-free HTTPS')
     commit=git(public,'rev-parse','HEAD');manifest_path=core/'materialization.json';manifest_bytes=manifest_path.read_bytes();manifest=read(manifest_path)
     if manifest.get('schema')!='course-project-materialization-v1' or manifest.get('audience')!='grading' or manifest.get('sourceRoot')!=str(owner):raise StageError('Требуется grading Core receipt данного owner')
+    if manifest.get('sourceCommit')!=commit:raise StageError('Core sourceCommit не совпадает с public HEAD')
     projects=manifest.get('projects',[])
     if not projects or len({p['exerciseId'] for p in projects})!=len(projects):raise StageError('Требуются выбранные проекты')
     roots=[]
