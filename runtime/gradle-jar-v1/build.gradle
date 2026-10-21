@@ -1,0 +1,20 @@
+plugins { id 'java' }
+
+def nativeConfig = new groovy.json.JsonSlurper().parse(file('native-config.json'))
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+sourceSets {
+    main { java { setSrcDirs(['src']); include '**/*.java' } }
+    test { java { setSrcDirs([]) }; resources { setSrcDirs([]) } }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+    options.compilerArgs.addAll(['-proc:none', '-Xmaxerrs', '5'])
+}
+tasks.named('jar') {
+    archiveFileName = nativeConfig.artifact
+    manifest { attributes('Main-Class': nativeConfig.mainClass) }
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.named('test') { enabled = false }

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import shutil
 from delivery_verification import classification,package_integrity,delivery_receipt
-from grading_job import JobError,ProjectDefect,inventory,prepare_job,run_job,verify_results,safe,validate,scenario_inventory
+from grading_job import JobError,ProjectDefect,inventory,prepare_job,run_job,verify_results,safe,validate,scenario_inventory,preserve_build_logs
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',nargs='?',default='verify',choices=['inventory','verify']);p.add_argument('--inventory',dest='command',action='store_const',const='inventory');p.add_argument('--ready-only',action='store_true');p.add_argument('--manifest',required=True,type=Path);p.add_argument('--snapshot',type=Path);p.add_argument('--scope',choices=['declared','delivery'],default='declared');p.add_argument('--delivery',type=Path);p.add_argument('--backend',choices=['host','container'],default='container');p.add_argument('--id',action='append');p.add_argument('--scenario',action='append');p.add_argument('--output',required=True,type=Path);p.add_argument('--runtime-registry',type=Path);a=p.parse_args()
@@ -39,7 +39,9 @@ def main():
       if str(error).startswith('reference-unavailable:'):unavailable.append({'qualifiedId':project['qualifiedId'],'scenario':scenario,'status':'reference-unavailable'});continue
       raise
      try:results.append(run_job(job,a.backend,registry));expectations[project['qualifiedId']+':'+scenario]=job['expectations']
-     finally:shutil.rmtree(job.root)
+     finally:
+      try:preserve_build_logs(job,a.output)
+      finally:shutil.rmtree(job.root)
    if a.scope=='delivery' and not auto_ids:
     report.update(automatic={'state':'not-applicable','reason':'all-questions-manual'},results=[])
     if a.scenario or a.id and set(a.id)!=set(methods):report.update(coverage='partial');status=1
