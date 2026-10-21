@@ -266,11 +266,23 @@ def _prepared_build_input_hash(job):
 def _validate_build_observation(result,dependency_hash,input_hash=None,artifact=None):
     proof=result.get('buildEvidence')
     if not isinstance(proof,dict):raise JobError('Native build evidence is missing')
-    negative=result.get('studentCompilation')=='failure' or result.get('apiPrecheck') in ('failure','not-run') or (result.get('classification')=='unsafe-submission' and result.get('trustedCompilation')=='not-run')
+    classification=result.get('classification');student=result.get('studentCompilation');trusted=result.get('trustedCompilation');api=result.get('apiPrecheck');dependent=result.get('dependentExecution')
+    if student=='failure' and (classification not in ('student-compilation-failure','unsafe-submission') or trusted!='not-run' or api not in (None,'not-run') or dependent not in (None,'not-run')):raise JobError('Inconsistent native student compilation outcome')
+    if classification=='student-compilation-failure' and student!='failure':raise JobError('Native compilation failure is missing its stage fact')
+    if classification=='student-api-mismatch' and (student!='success' or trusted!='not-run' or api!='failure' or dependent!='not-run'):raise JobError('Inconsistent native API mismatch outcome')
+    if api=='failure' and classification!='student-api-mismatch':raise JobError('Native API failure cannot be a behavior outcome')
+    if api=='not-run' and (classification not in ('student-compilation-failure','unsafe-submission') or trusted!='not-run'):raise JobError('Inconsistent native API not-run outcome')
+    if api=='success' and student!='success':raise JobError('Successful native API check requires student compilation')
+    behavior=classification in ('success','behavior-failure','student-runtime-failure','student-timeout','student-output-overflow','student-test-quality-failure')
+    if behavior and (result.get('infrastructure')!='complete' or student!='success' or trusted!='success' or api in ('failure','not-run') or dependent=='not-run'):raise JobError('Native behavior outcome requires completed compilation/API stages')
+    if dependent=='complete' and (student!='success' or trusted!='success'):raise JobError('Native execution cannot precede compilation')
+    negative=classification in ('student-compilation-failure','student-api-mismatch') or (classification=='unsafe-submission' and trusted=='not-run')
+    if proof.get('status')=='not-run' and not negative:raise JobError('Native build not-run requires a compile/API negative outcome')
     if negative and proof.get('status')!='not-run':raise JobError('Compile/API negative cannot claim a build')
     if result.get('infrastructure')=='complete' and not negative and result.get('classification')!='unsafe-submission' and proof.get('status')!='success':raise JobError('Behavior observation requires successful native build')
     if proof.get('status')=='failure' and result.get('infrastructure')!='failure':raise JobError('Trusted build failure cannot be scored')
     if proof.get('status')=='success':
+        if result.get('studentCompilation')!='success':raise JobError('Successful native build requires successful student compilation')
         if proof.get('dependencyHash')!=dependency_hash:raise JobError('Build dependency closure differs from execution')
         if input_hash is not None and proof.get('inputHash')!=input_hash:raise JobError('Build input differs from selected scenario bytes')
         if artifact is not None and proof.get('artifact',{}).get('path')!='build/libs/'+artifact:raise JobError('Build artifact differs from descriptor')
@@ -304,14 +316,14 @@ def run_job(job,backend='host',registry=None):
         else:raise JobError('Unknown backend')
     except (JobError,OSError,ValueError,subprocess.TimeoutExpired) as error:result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':str(error)}
     if native:
-        if 'buildEvidence' not in result and result.get('infrastructure')=='failure':result['buildEvidence']={'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'configuration'}
+        if 'buildEvidence' not in result and result.get('infrastructure')=='failure':result['buildEvidence']={'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'configuration',**({'inputHash':selected_input} if selected_input is not None else {})}
         if selected_input!=_prepared_build_input_hash(job):raise JobError('Selected native scenario inputs changed during execution')
         _validate_build_observation(result,runtime_evidence(job['runtime'],registry)['dependencyHash'],selected_input,job['grading']['javaBuild']['artifact'])
     if (job.root/'public-verification').is_dir() and result.get('infrastructure')=='complete':
         publicjob=GradingJob(job);publicjob.root=job.root/'public-verification'
         publicresult=run_job(publicjob,backend,registry)
         result['publicResult']={k:v for k,v in publicresult.items() if k not in {'schemaVersion','scope','qualifiedId','scenario','sourceSnapshotHash','inventoryHash','deliveryHash','runtime','imageDigest','sourceHashes','testsHashes','backend'}}
-        if publicresult.get('infrastructure')!='complete':result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':'Public verification infrastructure failed','publicResult':result['publicResult'],**({'buildEvidence':result['buildEvidence']} if native else {})}
+        if publicresult.get('infrastructure')!='complete':result={'infrastructure':'failure','classification':'infrastructure-failure','gradable':False,'grading_error':True,'message':'Public verification infrastructure failed','publicResult':result['publicResult'],**({key:result[key] for key in ('buildEvidence','studentCompilation','trustedCompilation','apiPrecheck','dependentExecution','executionEvidence') if key in result} if native else {})}
     if result.get('infrastructure')=='complete' and result.get('executionEvidence')!=runtime_evidence(job['runtime'],registry):raise JobError('Executed image dependency closure differs from prepared runtime')
     value={'schemaVersion':1,'backend':backend,**common,**result}
     validate('check-result',value)
@@ -373,7 +385,14 @@ def verify_results(results,expectations,required_scenarios=None,unavailable=None
         expected_evidence=runtime_evidence(rid,registry)
         evidence=r.get('executionEvidence',expected_evidence)
         if evidence!=expected_evidence:raise JobError('Executed runtime dependency closure differs from registry')
-        if rid==NATIVE_RUNTIME:_validate_build_observation(r,evidence['dependencyHash'])
+        if rid==NATIVE_RUNTIME:
+            primary_build=_validate_build_observation(r,evidence['dependencyHash'])
+            if 'publicResult' in r:
+                public_evidence=r['publicResult'].get('executionEvidence')
+                if (r['publicResult'].get('infrastructure')=='complete' or public_evidence is not None) and public_evidence!=expected_evidence:raise JobError('Public execution dependency closure differs from registry')
+                public_build=_validate_build_observation(r['publicResult'],evidence['dependencyHash'])
+                if public_build.get('inputHash')!=primary_build.get('inputHash'):raise JobError('Public build input differs from primary scenario input')
+                if primary_build['status']=='success' and public_build['status']=='success' and public_build['artifact']['path']!=primary_build['artifact']['path']:raise JobError('Public build artifact differs from primary descriptor')
         binding={'qualifiedId':q,'runtime':rid,'imageDigest':image,'dependencyHash':evidence['dependencyHash']}
         if q in bindings and bindings[q]!=binding:raise JobError('Mixed runtime/image for one question')
         bindings[q]=binding;closures[rid]=evidence
@@ -396,7 +415,7 @@ def verify_results(results,expectations,required_scenarios=None,unavailable=None
     if required and observed-set(expected):raise JobError('Undeclared scenario result')
     complete=bool(required) and observed|absent==set(expected)
     receipt={'schemaVersion':1,'toolVersion':TOOL_VERSION,'backend':first['backend'],'scope':first['scope'],'sourceSnapshotHash':first['sourceSnapshotHash'],'inventoryHash':first['inventoryHash'],'status':['success','defect','infrastructure-failure'][status],'exitCode':status,'coverage':'complete' if complete else 'partial','scenarioInventory':required,'scenarioInventoryHash':digest(required),'unavailableReferences':unavailable,'checkedIds':sorted(bindings),'questionBindings':[bindings[q] for q in sorted(bindings)],'runtimes':runtimes,'runtimeEvidence':closures,'dependencyHashes':{rid+'/'+name:sha for rid,closure in closures.items() for name,sha in closure['dependencyHashes'].items()},'expectations':checks}
-    native_builds=[{'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],**r['buildEvidence']} for r in results if r['runtime']==NATIVE_RUNTIME]
+    native_builds=[{'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],**r['buildEvidence'],'outcome':{key:r[key] for key in ('classification','infrastructure','studentCompilation','trustedCompilation','apiPrecheck','dependentExecution') if key in r}} for r in results if r['runtime']==NATIVE_RUNTIME]
     if native_builds:receipt['buildEvidence']=sorted(native_builds,key=lambda r:(r['qualifiedId'],r['scenario']))
     if 'deliveryHash' in first:receipt['deliveryHash']=first['deliveryHash']
     receipt['identityHash']=digest(receipt);validate_receipt_integrity(receipt);return receipt
@@ -419,8 +438,13 @@ def validate_receipt_integrity(receipt):
     native_keys={(q,s) for q,s in observed if bindings[q]['runtime']==NATIVE_RUNTIME}
     if len(build_keys)!=len(builds) or build_keys!=native_keys:raise JobError('Native receipt build coverage differs from scenario observations')
     if not native_keys and 'buildEvidence' in receipt:raise JobError('Legacy receipt cannot contain native build evidence')
+    observations={(row['qualifiedId'],row['scenario']):row for row in receipt['expectations']}
     for proof in builds:
-        if proof['status']=='success' and proof['dependencyHash']!=bindings[proof['qualifiedId']]['dependencyHash']:raise JobError('Receipt build dependency closure differs from runtime')
+        inner={key:value for key,value in proof.items() if key not in ('qualifiedId','scenario','outcome')}
+        _validate_build_observation({**proof['outcome'],'buildEvidence':inner},bindings[proof['qualifiedId']]['dependencyHash'])
+        observation=observations[(proof['qualifiedId'],proof['scenario'])]
+        if observation['matched'] and proof['outcome']['infrastructure']!='complete':raise JobError('Matched native receipt cannot contain infrastructure failure')
+        if proof['scenario'].startswith('reference:') and observation['matched'] and proof['status']!='success':raise JobError('Matched reference requires successful native build evidence')
         if receipt['status']=='success' and proof['status']=='failure':raise JobError('Successful receipt cannot contain trusted build failure')
     used={}
     for binding in bindings.values():

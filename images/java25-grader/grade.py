@@ -150,6 +150,7 @@ def preflight(runtime,registry=None):
             files=_files_any(bundle,name)
             if hashlib.sha256(files.read_bytes()).hexdigest()!=digest:
                 raise GraderError('Runtime bundle checksum mismatch: '+name)
+        if runtime==NATIVE_RUNTIME and (not isinstance(profile.get('sharedFiles'),dict) or not set(NATIVE_RECIPE)<=set(profile['sharedFiles'])):raise GraderError('Native recipe dependency pins are missing')
         for name,sha in profile['sharedFiles'].items():
             if hashlib.sha256(_files_any(PLATFORM,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
         code,output,reason=_run(['java','-version'],PLATFORM,5)
@@ -585,7 +586,10 @@ def _native_build(job,config,sources,extra_names,stage,runtime,dependency_hash,d
         environment={'PATH':lock['jdk']['home']+'/bin:/usr/bin:/bin','JAVA_HOME':lock['jdk']['home'],'HOME':str(work/'home'),'GRADLE_USER_HOME':str(work/'user-cache'),'TMPDIR':str(work/'tmp'),'LANG':'C.UTF-8','LC_ALL':'C.UTF-8'}
         properties='org.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths='+lock['jdk']['home']+'\norg.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData\n'
         (work/'gradle.properties').write_text(properties);(work/'gradle.properties').chmod(0o444)
-        copied={p.relative_to(work).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in work.rglob('*') if p.is_file()}
+        if any(p.is_symlink() for p in work.rglob('*')):raise GraderError('Symlink copied native input')
+        copied={p.relative_to(work).as_posix():hashlib.sha256(_files_any(work,p.relative_to(work).as_posix()).read_bytes()).hexdigest() for p in work.rglob('*') if p.is_file()}
+        admitted_copies={**{'src/'+name:sha for name,sha in inputs.items()},**{Path(name).name:recipe[name] for name in NATIVE_RECIPE[:2]},'native-config.json':hashlib.sha256(json.dumps(build,sort_keys=True).encode()).hexdigest(),'gradle.properties':hashlib.sha256(properties.encode()).hexdigest()}
+        if copied!=admitted_copies:raise GraderError('Copied native inputs differ from admitted source/recipe bytes')
         intact()
         # Verify executable identities with the same UID/env/isolation as build.
         code,text,reason=_run([*prefix,lock['gradle']['home']+'/bin/gradle','--version'],work,limits.get('compile-seconds',15),int(limits['max-output-bytes']),env=environment)
@@ -730,6 +734,7 @@ def grade(job_dir,registry=None):
                 target.chmod(0o600);output.write(data)
             sources.append(str(target));extra_names[str(target)]=name
         runtime=_JobRuntime(Path(runtime_dir),bundle)
+        if native_context is not None:native_context['proof']={'schemaVersion':1,'kind':'gradle-jar-v1','status':'not-run','inputHash':_java_build_input(job,config['javaBuild'],sources,extra_names),'dependencyHash':evidence['dependencyHash']}
         if config['mode']=='implementation':
             if native_context is not None:
                 native_context['build']=lambda stage,durations,diagnostics:_native_build(job,config,sources,extra_names,stage,runtime,evidence['dependencyHash'],durations,diagnostics)
@@ -737,7 +742,7 @@ def grade(job_dir,registry=None):
             except (OSError,ValueError,KeyError,GraderError) as error:
                 if native_context is None:raise
                 native_context.pop('verify',None)
-                native_context['proof']={'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'build'}
+                native_context['proof']={'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'build',**{key:native_context['proof'][key] for key in ('inputHash','dependencyHash') if key in native_context.get('proof',{})}}
                 stages={'studentCompilation':'success','trustedCompilation':'not-run','dependentExecution':'not-run','durations':native_context.get('durations',{}),'diagnostics':native_context.get('diagnostics',{})} if native_context.get('studentCompiled') else {}
                 return finish({'gradable':False,'grading_error':True,'classification':'infrastructure-failure','infrastructure':'failure','message':str(error),**stages})
         variants=config.get('variants')

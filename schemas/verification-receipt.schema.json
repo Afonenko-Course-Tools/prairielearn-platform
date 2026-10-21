@@ -313,6 +313,80 @@
           "scenario": {
             "type": "string",
             "minLength": 1
+          },
+          "outcome": {
+            "type": "object",
+            "properties": {
+              "classification": {
+                "enum": [
+                  "success",
+                  "behavior-failure",
+                  "student-compilation-failure",
+                  "student-test-quality-failure",
+                  "student-timeout",
+                  "student-output-overflow",
+                  "unsafe-submission",
+                  "infrastructure-failure",
+                  "student-api-mismatch",
+                  "student-runtime-failure"
+                ]
+              },
+              "infrastructure": {
+                "enum": [
+                  "complete",
+                  "failure"
+                ]
+              },
+              "studentCompilation": {
+                "enum": [
+                  "success",
+                  "failure",
+                  "not-run"
+                ]
+              },
+              "trustedCompilation": {
+                "enum": [
+                  "success",
+                  "failure",
+                  "not-run"
+                ]
+              },
+              "apiPrecheck": {
+                "enum": [
+                  "success",
+                  "failure",
+                  "not-run"
+                ]
+              },
+              "dependentExecution": {
+                "enum": [
+                  "complete",
+                  "not-run"
+                ]
+              }
+            },
+            "required": [
+              "classification",
+              "infrastructure"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "infrastructure": {
+                      "const": "complete"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "studentCompilation",
+                    "trustedCompilation"
+                  ]
+                }
+              }
+            ]
           }
         },
         "required": [
@@ -320,7 +394,8 @@
           "kind",
           "status",
           "qualifiedId",
-          "scenario"
+          "scenario",
+          "outcome"
         ],
         "additionalProperties": false,
         "allOf": [

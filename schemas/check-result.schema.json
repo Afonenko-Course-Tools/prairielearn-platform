@@ -2642,7 +2642,14 @@
       "then": {
         "required": [
           "buildEvidence"
-        ]
+        ],
+        "properties": {
+          "publicResult": {
+            "required": [
+              "buildEvidence"
+            ]
+          }
+        }
       },
       "else": {
         "not": {

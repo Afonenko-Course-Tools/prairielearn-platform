@@ -108,7 +108,7 @@ class BuildEvidenceTests(unittest.TestCase):
   from gradle_unit_fixtures import registry
   jobs=self.jobs();r=self.observation();required=[{'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],'optional':False}]
   receipt=jobs.verify_results([r],{},required,registry=registry())
-  self.assertEqual(receipt['buildEvidence'],[{'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],**r['buildEvidence']}])
+  self.assertEqual(receipt['buildEvidence'],[{'qualifiedId':r['qualifiedId'],'scenario':r['scenario'],**r['buildEvidence'],'outcome':{key:r[key] for key in ('classification','infrastructure','studentCompilation','trustedCompilation','apiPrecheck','dependentExecution') if key in r}}])
   for mutate in ['missing','duplicate','extra','dependency']:
    bad=copy.deepcopy(receipt)
    if mutate=='missing':bad.pop('buildEvidence')
@@ -160,7 +160,7 @@ class PreparedNativeTests(unittest.TestCase):
      with self.assertRaises(jobs.JobError):jobs._prepared_build_input_hash(job)
      (job.root/'student/Student.java').write_bytes(original)
      proof={'schemaVersion':1,'kind':'gradle-jar-v1','status':'success','inputHash':actual,'dependencyHash':'2'*64,'artifact':{'path':'build/libs/gradeapp.jar','sha256':'3'*64,'bytes':1}}
-     result={'studentCompilation':'success','infrastructure':'complete','classification':'success','buildEvidence':proof}
+     result={'studentCompilation':'success','trustedCompilation':'success','infrastructure':'complete','classification':'success','buildEvidence':proof}
      jobs._validate_build_observation(result,'2'*64,actual,'gradeapp.jar')
      proof['inputHash']='4'*64
      with self.assertRaises(jobs.JobError):jobs._validate_build_observation(result,'2'*64,actual,'gradeapp.jar')
