@@ -16,8 +16,9 @@ class SandboxIdentityPreflight(unittest.TestCase):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp)
    for folder in ('student','tests'):(root/folder).mkdir()
-   accounts={name:SimpleNamespace(pw_uid=uid,pw_gid=uid,pw_shell='/usr/sbin/nologin') for name,uid in [('sbuser',1001),('nativebuild',60002)]}
-   with patch('pwd.getpwnam',side_effect=accounts.__getitem__),patch('grp.getgrnam',return_value=SimpleNamespace(gr_gid=60002,gr_mem=[])),patch('os.getgrouplist',side_effect=lambda name,gid:[gid]),patch.object(Path,'stat',return_value=SimpleNamespace(st_uid=1001,st_gid=1001)),patch.object(Path,'is_file',return_value=False),patch.object(grader,'_run',side_effect=AssertionError('host account remap attempted')):
+   ids=[uid for uid in range(60000,60100) if uid not in {os.geteuid(),os.getegid()}][:2]
+   accounts={name:SimpleNamespace(pw_uid=uid,pw_gid=uid,pw_shell='/usr/sbin/nologin') for name,uid in zip(('sbuser','nativebuild'),ids)}
+   with patch('pwd.getpwnam',side_effect=accounts.__getitem__),patch('grp.getgrnam',return_value=SimpleNamespace(gr_gid=ids[1],gr_mem=[])),patch('os.getgrouplist',side_effect=lambda name,gid:[gid]),patch.object(Path,'stat',return_value=SimpleNamespace(st_uid=ids[0],st_gid=ids[0])),patch.object(Path,'is_file',return_value=False),patch.object(grader,'_run',side_effect=AssertionError('host account remap attempted')):
     with self.assertRaisesRegex(grader.GraderError,'supported container'):grader._protect_input_identity(root)
 
 @unittest.skipUnless(os.environ.get('PL_TEST_IMAGE'),'Set PL_TEST_IMAGE to an actual built image ID')

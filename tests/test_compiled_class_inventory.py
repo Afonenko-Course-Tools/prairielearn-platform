@@ -1,6 +1,7 @@
 """Настоящие binary inventories вместо догадок по Java source: JDK25 и canaries."""
 from pathlib import Path
 import hashlib,json,subprocess,sys,tempfile,unittest
+from gradle_unit_fixtures import unit_platform
 ROOT=Path(__file__).resolve().parents[1]
 CASES=[]
 def case(name,**kw):CASES.append(dict(name=name,expected='success',api=True,**kw))
@@ -78,7 +79,7 @@ class CompiledClassInventoryTests(unittest.TestCase):
 
 def install_case(case):
  def check(self):
-  result=execute(case,ROOT,self.output)
+  result=execute(case,unit_platform(self),self.output)
   self.assertTrue(result['passed'],json.dumps(result,ensure_ascii=False,indent=2))
  check.__doc__=case['name']
  setattr(CompiledClassInventoryTests,'test_'+case['name'].replace('-','_'),check)

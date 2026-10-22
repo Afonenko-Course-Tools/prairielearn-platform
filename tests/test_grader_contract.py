@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import unittest
 import test_grading_job as fixtures
+from gradle_unit_fixtures import unit_platform
 grader=fixtures.grader
 ROOT=fixtures.ROOT
 class EntrypointTests(unittest.TestCase):
@@ -20,9 +21,9 @@ class EntrypointTests(unittest.TestCase):
   p=self.job/'student/Student.java';p.unlink();p.symlink_to('/etc/hosts');self.assertFalse(self.run_job()['gradable'])
  def test_cli_writes_standard_pl_results(self):
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  p=subprocess.run([os.sys.executable,str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(self.job)],capture_output=True,text=True)
+  p=subprocess.run([os.sys.executable,str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(self.job)],capture_output=True,text=True)
   self.assertEqual(p.returncode,0,p.stderr);r=json.loads((self.job/'results/results.json').read_text());self.assertEqual(r['score'],1)
  def test_cli_infrastructure_failure_has_no_score(self):
   (self.job/'tests/AnswerTest.java').unlink();(self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  p=subprocess.run([os.sys.executable,str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(self.job)],capture_output=True,text=True)
+  p=subprocess.run([os.sys.executable,str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(self.job)],capture_output=True,text=True)
   self.assertEqual(p.returncode,2);r=json.loads((self.job/'results/results.json').read_text());self.assertTrue(r['grading_error']);self.assertNotIn('score',r)
