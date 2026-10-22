@@ -262,6 +262,6 @@ class NativeContainmentExecutableTests(unittest.TestCase):
     return real_run(command,cwd,*args,**kwargs)
    def directories(path):
     return iter([Path('/sys/class/net/lo')]) if path==Path('/sys/class/net') else real_iterdir(path)
-   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',return_value=True),patch.object(Path,'iterdir',directories),patch.object(grader.shutil,'which',return_value=str(selected)),patch.object(grader,'_protect_input_identity'),patch('pwd.getpwnam',return_value=SimpleNamespace(pw_uid=1001)),patch.object(grader,'_run',side_effect=launch):
+   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',return_value=True),patch.object(Path,'iterdir',directories),patch.object(grader.shutil,'which',return_value=str(selected)),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_verify_landlock_helper'),patch('pwd.getpwnam',return_value=SimpleNamespace(pw_uid=1001)),patch.object(grader,'_run',side_effect=launch):
     uid,prefix=grader._native_containment(job,[])
    self.assertEqual(uid,1001);self.assertEqual(prefix[0],str(selected))

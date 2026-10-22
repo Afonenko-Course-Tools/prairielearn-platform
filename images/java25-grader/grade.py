@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
 import argparse
+import errno
 import hashlib
 import stat
 import zipfile
@@ -137,6 +138,7 @@ def _files(root, names):
 
 
 PLATFORM=Path(__file__).resolve().parents[2]
+LANDLOCK_HELPER_SHA256='81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef'
 
 def preflight(runtime,registry=None):
     try:
@@ -153,6 +155,7 @@ def preflight(runtime,registry=None):
         if runtime==NATIVE_RUNTIME and (not isinstance(profile.get('sharedFiles'),dict) or not set(NATIVE_RECIPE)<=set(profile['sharedFiles'])):raise GraderError('Native recipe dependency pins are missing')
         for name,sha in profile['sharedFiles'].items():
             if hashlib.sha256(_files_any(PLATFORM,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
+        if os.environ.get('PL_CONTAINMENT')=='official':_verify_landlock_helper()
         code,output,reason=_run(['java','-version'],PLATFORM,5)
         if code or reason or not re.search(r'version "25(?:[.\"+\-])',output):
             raise GraderError('The grader requires an actual JDK 25 runtime')
@@ -527,11 +530,37 @@ def _verify_native_toolchain():
     if (Path(jdk['home'])/'release').read_text()!=jdk['release'] or not re.search(r'JAVA_VERSION="25(?:[.\"+\-])',jdk['release']):raise GraderError('Native build requires pinned JDK25')
     return lock
 
+def _verify_landlock_helper():
+    path=Path('/usr/local/bin/landlock_sandbox')
+    def identity(s):return (s.st_dev,s.st_ino,s.st_uid,s.st_gid,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    try:
+        if path.resolve(strict=True)!=path:raise GraderError('Unsafe installed Landlock helper path')
+        for parent in path.parents:
+            s=parent.lstat()
+            if not stat.S_ISDIR(s.st_mode) or s.st_uid!=0 or s.st_gid!=0 or s.st_mode&0o7022:raise GraderError('Unsafe installed Landlock helper parent')
+        before=path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_uid!=0 or before.st_gid!=0 or before.st_nlink!=1 or stat.S_IMODE(before.st_mode)!=0o755:raise GraderError('Unsafe installed Landlock helper identity')
+        try:
+            os.getxattr(path,'security.capability',follow_symlinks=False)
+        except OSError as error:
+            if error.errno not in (errno.ENODATA,errno.ENOTSUP):raise
+        else:raise GraderError('File capabilities on installed Landlock helper')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+        try:
+            if identity(os.fstat(fd))!=identity(before):raise GraderError('Installed Landlock helper changed')
+            digest=hashlib.sha256()
+            while data:=os.read(fd,65536):digest.update(data)
+            if identity(os.fstat(fd))!=identity(before) or identity(path.lstat())!=identity(before):raise GraderError('Installed Landlock helper changed')
+        finally:os.close(fd)
+        if digest.hexdigest()!=LANDLOCK_HELPER_SHA256:raise GraderError('Installed Landlock helper checksum mismatch')
+    except OSError as error:raise GraderError('Installed Landlock helper is unavailable') from error
+
 def _native_containment(job,private_paths):
     import pwd
     runuser=shutil.which('runuser')
     if os.environ.get('PL_CONTAINMENT')!='official' or os.geteuid()!=0 or not Path('/.dockerenv').is_file() or not Path('/usr/local/bin/landlock_sandbox').is_file() or not runuser:
         raise GraderError('Gradle build requires official isolated containment')
+    _verify_landlock_helper()
     if {p.name for p in Path('/sys/class/net').iterdir()}!={'lo'}:raise GraderError('Gradle build requires actual network isolation')
     _protect_input_identity(job)
     uid=pwd.getpwnam('sbuser').pw_uid
