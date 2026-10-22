@@ -151,3 +151,66 @@ class NativeJdkPreparation(unittest.TestCase):
   self.destination.unlink();self.root.chmod(0o777)
   with self.assertRaises(self.tool.PreparationError):self.prepare()
   self.root.chmod(0o700)
+
+
+class CompletedTreeTests(unittest.TestCase):
+ setUp=NativeJdkPreparation.setUp
+ fixture_admission=NativeJdkPreparation.fixture_admission
+ prepare=NativeJdkPreparation.prepare
+ def test_complete_tree_preserves_hardened_bytes_and_limits_root_to_private_group(self):
+  self.prepare();self.assertTrue(callable(getattr(self.tool,'_complete_tree',None)),'Missing protected completion operation')
+  staging=self.root/'staging';staging.mkdir(mode=0o700)
+  components={}
+  for name in ['lib/libmanagement.so','lib/libmanagement_ext.so','lib/libmanagement_agent.so']:
+   data=('SYNTHETIC '+name).encode();p=staging/Path(name).name;p.write_bytes(data);p.chmod(0o644);components[name]={'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data),'mode':'0o644'}
+  before={n:(self.destination/n).read_bytes() for n in self.admission['expectedNormalizedJdk']['files']}
+  receipt=self.tool._complete_tree(self.source,self.destination,staging,self.admission['expectedNormalizedJdk']['files'],components,os.getgid(),self.policy)
+  self.assertEqual(len(receipt['completedAfter']['files']),10);self.assertEqual(stat.S_IMODE(self.destination.stat().st_mode),0o750)
+  self.assertEqual(receipt['sourceBefore'],receipt['sourceAfter']);self.assertEqual(receipt['completedBefore'],receipt['completedAfter'])
+  self.assertTrue(all((self.destination/n).read_bytes()==b for n,b in before.items()))
+  self.assertFalse(any(os.path.lexists(self.source/n) for n in components))
+ def test_extra_or_changed_completion_staging_does_not_add_jni(self):
+  self.prepare();self.assertTrue(callable(getattr(self.tool,'_complete_tree',None)),'Missing closed completion operation')
+  staging=self.root/'staging';staging.mkdir(mode=0o700);(staging/'unexpected').write_bytes(b'extra')
+  with self.assertRaises(self.tool.PreparationError):self.tool._complete_tree(self.source,self.destination,staging,self.admission['expectedNormalizedJdk']['files'],{'lib/libmanagement.so':{'sha256':'0'*64,'bytes':4,'mode':'0o644'}},os.getgid(),self.policy)
+  self.assertFalse(os.path.lexists(self.destination/'lib/libmanagement.so'))
+
+
+class CompletionPackageTests(unittest.TestCase):
+ """Synthetic tar fixtures test closed extraction, not signed package/native proof."""
+ def setUp(self):
+  import io,tarfile
+  spec=importlib.util.spec_from_file_location('completion_tool',ROOT/'tools/prepare_native_jdk.py');self.t=importlib.util.module_from_spec(spec);sys.modules[spec.name]=self.t;spec.loader.exec_module(self.t)
+  self.assertTrue(callable(getattr(self.t,'_read_completion_members',None)),'Missing closed same-build completion parser')
+  self.io=io;self.tarfile=tarfile
+  self.components={n:{'sha256':hashlib.sha256(n.encode()).hexdigest(),'bytes':len(n),'mode':'0o644'} for n in ['lib/libmanagement.so','lib/libmanagement_ext.so','lib/libmanagement_agent.so']}
+  self.source={'release':{'sha256':hashlib.sha256(b'fixture-release').hexdigest(),'bytes':15,'mode':'0o644'}}
+ def archive(self,mutation=None):
+  b=self.io.BytesIO()
+  with self.tarfile.open(fileobj=b,mode='w') as t:
+   records=[('release',b'fixture-release'),*[(n,n.encode()) for n in self.components]]
+   if mutation=='missing':records.pop()
+   if mutation=='duplicate':records.append(records[-1])
+   if mutation=='extra':records.append(('lib/other/libmanagement.so',b'extra'))
+   if mutation=='traversal':records.append(('../escape',b'extra'))
+   if mutation=='unrelated-link':
+    m=self.tarfile.TarInfo('./usr/lib/debug/unrelated');m.type=self.tarfile.SYMTYPE;m.mode=0o777;m.linkname='same-build-target';t.addfile(m)
+   for n,data in records:
+    m=self.tarfile.TarInfo('./usr/lib/jvm/java-25-openjdk-amd64/'+n);m.size=len(data);m.mode=0o644;m.uid=m.gid=0
+    if mutation=='overlap' and n=='release':data=b'changed-release';m.size=len(data)
+    if mutation=='hash' and n.endswith('libmanagement.so'):data=b'changed';m.size=len(data)
+    if mutation=='symlink' and n.endswith('libmanagement.so'):m.type=self.tarfile.SYMTYPE;m.linkname='/elsewhere';m.size=0
+    t.addfile(m,self.io.BytesIO(data) if m.isfile() else None)
+  b.seek(0);return b
+ def test_extracts_only_three_and_compares_regular_overlap(self):
+  r=self.t._read_completion_members(self.archive(),self.source,self.components)
+  self.assertEqual(set(r['components']),{'lib/libmanagement.so','lib/libmanagement_ext.so','lib/libmanagement_agent.so'})
+  self.assertEqual(r['overlap'],['release'])
+  self.assertEqual(r['components']['lib/libmanagement.so'],b'lib/libmanagement.so')
+ def test_unextracted_unrelated_package_link_does_not_become_a_filesystem_member(self):
+  r=self.t._read_completion_members(self.archive('unrelated-link'),self.source,self.components)
+  self.assertEqual(set(r['components']),set(self.components))
+ def test_missing_duplicate_alternate_link_hash_overlap_and_traversal_refuse(self):
+  for mutation in ['missing','duplicate','extra','traversal','symlink','hash','overlap']:
+   with self.subTest(mutation=mutation):
+    with self.assertRaises(self.t.PreparationError):self.t._read_completion_members(self.archive(mutation),self.source,self.components)

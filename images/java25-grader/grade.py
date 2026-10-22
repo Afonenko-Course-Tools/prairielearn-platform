@@ -27,21 +27,162 @@ class GraderError(Exception):
     """An operator/configuration failure, never a wrong student answer."""
 
 
+HARDENED_JDK=Path('/usr/lib/jvm/java-25-openjdk-amd64')
+BUILD_JDK=Path('/opt/native-jdk')
+MANAGEMENT_MEMBERS=('lib/libmanagement.so','lib/libmanagement_ext.so','lib/libmanagement_agent.so')
+
+def _validate_role_records(roles,owner_uids,owner_gids):
+    if set(roles)!={'sbuser','nativebuild'}:raise GraderError('Both fixed Java access roles are required')
+    uids=set();gids=set()
+    for role in roles.values():
+        uid=role['uid'];gid=role['gid']
+        if uid in {0,os.geteuid(),*owner_uids} or gid in {0,os.getegid(),*owner_gids} or uid in uids or gid in gids or role['groups']!=[gid]:raise GraderError('Java roles are not isolated from owners/private groups')
+        uids.add(uid);gids.add(gid)
+
+def _role_records():
+    import pwd,grp
+    try:
+        roles={name:{'uid':p.pw_uid,'gid':p.pw_gid,'groups':sorted(set(os.getgrouplist(name,p.pw_gid)))} for name in ('sbuser','nativebuild') for p in [pwd.getpwnam(name)]}
+        build=pwd.getpwnam('nativebuild');group=grp.getgrnam('nativebuild')
+        if group.gr_gid!=build.pw_gid or build.pw_shell not in ('/usr/sbin/nologin','/sbin/nologin') or set(group.gr_mem)-{'nativebuild'}:raise GraderError('Invalid private nativebuild account/group')
+        _validate_role_records(roles,set(),set());return roles
+    except (KeyError,OSError) as error:raise GraderError('Missing fixed Java access role') from error
+
 def _protect_input_identity(job):
-    # Bind mounts retain host owners. chmod(0700) alone is ineffective when a
-    # host owner has the same numeric UID as the official container's sbuser.
-    # Remap only the container account; never chown the caller's mounted tree.
-    import pwd
-    owners={path.stat().st_uid for path in (job,job/'student',job/'tests')}
-    if pwd.getpwnam('sbuser').pw_uid not in owners:return
-    if not Path('/.dockerenv').is_file():
-        raise GraderError('Sandbox UID remapping requires the supported Docker container')
-    allocated={entry.pw_uid for entry in pwd.getpwall()}
-    candidate=next((uid for uid in range(60000,60100) if uid not in owners|allocated),None)
-    if candidate is None:raise GraderError('No isolated sandbox UID is available')
-    code,text,reason=_run(['usermod','--uid',str(candidate),'sbuser'],job,5)
-    if code or reason or pwd.getpwnam('sbuser').pw_uid in owners:
-        raise GraderError('Cannot isolate sandbox UID from mounted input owners')
+    import pwd,grp
+    owners={p.stat().st_uid for p in (job,job/'student',job/'tests')}
+    groups={p.stat().st_gid for p in (job,job/'student',job/'tests')}
+    roles=_role_records()
+    if not any(r['uid'] in owners or r['gid'] in groups for r in roles.values()):return
+    if not Path('/.dockerenv').is_file():raise GraderError('Sandbox remapping requires supported container')
+    for name in ('sbuser','nativebuild'):
+        role=roles[name]
+        if role['gid'] in groups:
+            allocated={g.gr_gid for g in grp.getgrall()}|groups|{0,os.getegid()}
+            gid=next((i for i in range(60000,60100) if i not in allocated),None)
+            group=grp.getgrgid(role['gid'])
+            if gid is None or group.gr_name!=name:raise GraderError('Cannot remap fixed private group')
+            code,_,reason=_run(['/usr/sbin/groupmod','--gid',str(gid),name],job,5)
+            if code or reason:raise GraderError('Private group remap failed')
+            code,_,reason=_run(['/usr/sbin/usermod','--gid',str(gid),name],job,5)
+            if code or reason:raise GraderError('Role group remap failed')
+            if name=='nativebuild':
+                for path in [BUILD_JDK,*BUILD_JDK.rglob('*')]:
+                    info=path.lstat()
+                    if info.st_uid!=0 or info.st_gid!=role['gid'] or stat.S_ISLNK(info.st_mode):raise GraderError('Unsafe build tree during private group remap')
+                    os.chown(path,0,gid,follow_symlinks=False)
+        if role['uid'] in owners:
+            allocated={entry.pw_uid for entry in pwd.getpwall()}|owners|{0,os.geteuid()}
+            uid=next((i for i in range(60000,60100) if i not in allocated),None)
+            if uid is None:raise GraderError('No isolated Java role UID')
+            code,_,reason=_run(['/usr/sbin/usermod','--uid',str(uid),name],job,5)
+            if code or reason:raise GraderError('Java role UID remap failed')
+        roles=_role_records()
+    _validate_role_records(roles,owners,groups)
+
+def _grading_environment():
+    home=str(HARDENED_JDK) if os.environ.get('PL_CONTAINMENT')=='official' else str(Path(shutil.which('java') or '/missing/java').resolve().parent.parent)
+    return {'PATH':home+'/bin:/usr/bin:/bin','JAVA_HOME':home,'HOME':'/nonexistent','TMPDIR':'/tmp','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'}
+
+def _grading_java():
+    return str(HARDENED_JDK/'bin/java') if os.environ.get('PL_CONTAINMENT')=='official' else 'java'
+
+def _validate_build_root_record(record,gid):
+    if record!={'uid':0,'gid':gid,'mode':0o750,'directory':True}:raise GraderError('Complete build JDK root is not private to nativebuild')
+
+def _build_tree_state(roles):
+    root=BUILD_JDK.lstat()
+    _validate_build_root_record(dict(uid=root.st_uid,gid=root.st_gid,mode=stat.S_IMODE(root.st_mode),directory=stat.S_ISDIR(root.st_mode)),roles['nativebuild']['gid'])
+    state={}
+    for path in [BUILD_JDK,*BUILD_JDK.rglob('*')]:
+        info=path.lstat()
+        if info.st_uid!=0 or info.st_gid!=roles['nativebuild']['gid'] or info.st_mode&0o7022 or stat.S_ISLNK(info.st_mode):raise GraderError('Complete JDK role/group/mode drift')
+        if stat.S_ISDIR(info.st_mode):state[str(path)]=(info.st_dev,info.st_ino,info.st_uid,info.st_gid,info.st_mode,info.st_mtime_ns,info.st_ctime_ns)
+    for path in BUILD_JDK.parents:
+        info=path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or info.st_mode&0o7022:raise GraderError('Unsafe complete JDK parent')
+    return state
+
+def _build_process_records(proc,uid):
+    records={}
+    for path in proc.iterdir():
+        if not path.name.isdigit():continue
+        try:
+            fields={line.split(':',1)[0]:line.split(':',1)[1].strip() for line in (path/'status').read_text().splitlines() if ':' in line}
+            ids=list(map(int,fields['Uid'].split()))
+            if uid not in ids:continue
+            if ids!=[uid]*4:raise GraderError('Unexpected build process UID transition')
+            tail=(path/'stat').read_text().rsplit(')',1)[1].split()
+            records[int(path.name)]={'uid':uid,'starttime':tail[19],'state':tail[0]}
+        except FileNotFoundError:continue
+    return records
+
+def _enable_build_reaper():
+    import ctypes
+    if not Path('/.dockerenv').is_file() or os.geteuid()!=0:raise GraderError('Build cleanup requires supported namespace supervisor')
+    libc=ctypes.CDLL(None,use_errno=True)
+    if libc.prctl(36,1,0,0,0)!=0:raise GraderError('Cannot establish build descendant reaping')
+
+def _finish_build_role(uid):
+    if not Path('/.dockerenv').is_file() or os.geteuid()!=0:raise GraderError('Build cleanup requires container namespace supervisor')
+    deadline=time.monotonic()+3;terminated=[];reaped=[]
+    while True:
+        records=_build_process_records(Path('/proc'),uid)
+        if not records:return {'uid':uid,'remaining':[],'terminated':sorted(set(terminated)),'reaped':sorted(set(reaped))}
+        for pid,record in records.items():
+            if pid<=1 or pid==os.getpid():raise GraderError('Unsafe build cleanup PID')
+            if _build_process_records(Path('/proc'),uid).get(pid)!=record:continue
+            try:os.kill(pid,signal.SIGKILL);terminated.append(pid)
+            except ProcessLookupError:pass
+        while True:
+            try:
+                pid,_=os.waitpid(-1,os.WNOHANG)
+                if not pid:break
+                reaped.append(pid)
+            except ChildProcessError:break
+        if time.monotonic()>=deadline:raise GraderError('Build-role process remains before private grading')
+        time.sleep(0.02)
+
+def _hardened_tool_state():
+    lock=json.loads(_files_any(PLATFORM,NATIVE_RECIPE[2]).read_text());files=lock['jdk']['files'];state={}
+    for parent in [HARDENED_JDK,*HARDENED_JDK.parents]:
+        info=parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=0 or info.st_mode&0o7022:raise GraderError('Unsafe hardened JDK path')
+    for name in MANAGEMENT_MEMBERS:
+        if os.path.lexists(HARDENED_JDK/name):raise GraderError('Management restored to private grading JDK')
+    for name in ('release','bin/java','bin/javac','lib/modules','lib/server/libjvm.so'):
+        path=HARDENED_JDK/name;info=path.lstat();expected=files[name]
+        for parent in path.parents:
+            if parent==HARDENED_JDK:break
+            p=parent.lstat()
+            if not stat.S_ISDIR(p.st_mode) or p.st_uid!=0 or p.st_mode&0o7022:raise GraderError('Unsafe hardened tool parent')
+        if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_nlink!=1 or info.st_mode&0o7022:raise GraderError('Unsafe hardened tool')
+        fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+        try:
+            identity=lambda s:(s.st_dev,s.st_ino,s.st_uid,s.st_gid,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+            if identity(os.fstat(fd))!=identity(info):raise GraderError('Hardened path/FD drift')
+            h=hashlib.sha256()
+            while data:=os.read(fd,1048576):h.update(data)
+            if identity(os.fstat(fd))!=identity(info) or identity(path.lstat())!=identity(info):raise GraderError('Hardened live drift')
+            if {'sha256':h.hexdigest(),'bytes':info.st_size,'mode':oct(stat.S_IMODE(info.st_mode))}!=expected:raise GraderError('Hardened core differs from admitted original')
+            state[name]=identity(info)
+        finally:os.close(fd)
+    return state
+
+def _grading_boundary_unchecked():
+    if not Path('/.dockerenv').is_file() or os.geteuid()!=0:raise GraderError('Java role boundary requires container namespace supervisor')
+    roles=_role_records();tree=_build_tree_state(roles);hardened=_hardened_tool_state()
+    if _build_process_records(Path('/proc'),roles['nativebuild']['uid']):raise GraderError('Live build role at private grading boundary')
+    prefix=['/usr/sbin/runuser','--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
+    for flag,path in [('-r',BUILD_JDK/'bin/java'),('-x',BUILD_JDK/'bin/java'),*[('-r',BUILD_JDK/n) for n in MANAGEMENT_MEMBERS]]:
+        code,_,reason=_run_unchecked([*prefix,'/usr/bin/test',flag,str(path)],Path('/tmp'),5,1024,env=_grading_environment())
+        if code!=1 or reason:raise GraderError('Grading role can access complete build JDK')
+    return {'roles':roles,'buildDirectories':tree,'hardened':hardened}
+
+
+def _grading_boundary():
+    try:return _grading_boundary_unchecked()
+    except (OSError,KeyError,ValueError,TypeError) as error:raise GraderError('Missing or invalid Java role/toolchain boundary') from error
 
 
 def _child_file_limit():
@@ -54,7 +195,7 @@ def _child_file_limit():
     resource.setrlimit(resource.RLIMIT_NOFILE,(soft,hard))
 
 
-def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None):
+def _run_unchecked(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None):
     try:
         process = subprocess.Popen(
             command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -102,6 +243,15 @@ def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None):
     text = bytes(output).decode("utf-8", errors="replace")
     text = text.encode("utf-8")[:output_limit].decode("utf-8", errors="ignore")
     return process.returncode, text, reason
+
+
+def _run(command,cwd,timeout,output_limit=OUTPUT_LIMIT,*,env=None):
+    official=os.environ.get('PL_CONTAINMENT')=='official'
+    grading=official and str(HARDENED_JDK/'bin/java') in command
+    before=_grading_boundary() if grading else None
+    try:return _run_unchecked(command,cwd,timeout,output_limit,env=(_grading_environment() if official and env is None else env))
+    finally:
+        if grading and _grading_boundary()!=before:raise GraderError('Java role/toolchain boundary changed during private phase')
 
 
 def _names(config, key):
@@ -156,10 +306,10 @@ def preflight(runtime,registry=None):
         for name,sha in profile['sharedFiles'].items():
             if hashlib.sha256(_files_any(PLATFORM,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
         if os.environ.get('PL_CONTAINMENT')=='official':_verify_landlock_helper()
-        code,output,reason=_run(['java','-version'],PLATFORM,5)
+        code,output,reason=_run([_grading_java(),'-version'],PLATFORM,5)
         if code or reason or not re.search(r'version "25(?:[.\"+\-])',output):
             raise GraderError('The grader requires an actual JDK 25 runtime')
-        compiler_code,compiler_output,compiler_reason=_run(['java','-XX:TieredStopAtLevel=1','com.sun.tools.javac.Main','-version'],PLATFORM,5)
+        compiler_code,compiler_output,compiler_reason=_run([_grading_java(),'-XX:TieredStopAtLevel=1','com.sun.tools.javac.Main','-version'],PLATFORM,5)
         if compiler_code or compiler_reason or not re.search(r'javac 25(?:[.\s+\-]|$)',compiler_output):
             raise GraderError('The grader requires the actual JDK25 compiler')
         return profile,bundle,output.strip()
@@ -282,7 +432,7 @@ class _JobRuntime:
         # executed (-proc:none). Generate cold within this job, never import an
         # author archive or reuse it across jobs/Java versions.
         option='SharedArchiveFile' if self.compiler_archive.is_file() else 'ArchiveClassesAtExit'
-        return [*COMPILER_JVM,'-XX:'+option+'='+str(self.compiler_archive),*COMPILER]
+        return [_grading_java(),*COMPILER_JVM[1:],'-XX:'+option+'='+str(self.compiler_archive),*COMPILER]
     def protect_archive(self):
         if self.compiler_archive.is_file():self.compiler_archive.chmod(0o600)
     def ensure_adapter(self,job,limits,durations,diagnostics):
@@ -327,10 +477,10 @@ def _api_precheck(job,config,stage,student,files,runtime,limits,durations,diagno
         for directory in (output,scratch,params):directory.chmod(0o777)
         parameter_file.chmod(0o644);job.chmod(0o711)
         for folder in ('student','tests'):(job/folder).chmod(0o700)
-        prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox'];containment='official-landlock-sbuser'
+        prefix=['/usr/sbin/runuser','--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox'];containment='official-landlock-sbuser'
     classpath=os.pathsep.join([str(runtime.adapter),runtime.libs,str(compiled)])
     start=time.monotonic()
-    code,text,reason=_run([*prefix,'java','--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'org.prairielearn.api.PlatformApiPrecheck',str(parameter_file)],scratch,limits.get('run-seconds',10),int(limits['max-output-bytes']))
+    code,text,reason=_run([*prefix,_grading_java(),'--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'org.prairielearn.api.PlatformApiPrecheck',str(parameter_file)],scratch,limits.get('run-seconds',10),int(limits['max-output-bytes']))
     durations['apiExecution']=time.monotonic()-start;diagnostics['apiExecution']=text.replace(str(stage),'/scratch')
     if code or reason:raise GraderError('API precheck execution failed: '+(reason or str(code)))
     try:
@@ -417,10 +567,10 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             parameter_file.chmod(0o644)
             job.chmod(0o711)
             for folder in ('student','tests'):(job/folder).chmod(0o700)
-            prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
+            prefix=['/usr/sbin/runuser','--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
             containment='official-landlock-sbuser'
         classpath=os.pathsep.join([str(adapter),libs,str(trusted),*([str(api_classes)] if api_classes else []),str(student)])
-        command=[*prefix,'java','-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'PlatformJUnitAdapter',str(parameter_file)]
+        command=[*prefix,_grading_java(),'-Xmx128m','-XX:TieredStopAtLevel=1','-XX:ActiveProcessorCount=2','-XX:-UsePerfData','-XX:+DisableAttachMechanism','--illegal-native-access=deny','-cp',classpath,'PlatformJUnitAdapter',str(parameter_file)]
         if native_context is not None:native_context['verify']()
         start=time.monotonic();code,text,reason=_run(command,job,limits.get('run-seconds',10),int(limits['max-output-bytes']));durations['execution']=time.monotonic()-start
         if native_context is not None:native_context['verify']()
@@ -525,6 +675,8 @@ def _verify_native_toolchain():
     gradle=lock['gradle'];jdk=lock['jdk']
     if gradle['version']!='9.8.0' or gradle['home']!='/opt/gradle/gradle-9.8.0' or not re.fullmatch(r'[a-f0-9]{64}',gradle['archiveSha256']):raise GraderError('Invalid admitted Gradle distribution')
     if set(jdk)!={'home','release','files'} or jdk['home']!='/opt/native-jdk' or not isinstance(jdk['release'],str):raise GraderError('Invalid admitted JDK25 installation')
+    roles=_role_records();_build_tree_state(roles)
+    if len(jdk['files'])!=319 or not set(MANAGEMENT_MEMBERS)<=set(jdk['files']):raise GraderError('Complete319 build JDK required')
     for tool in (gradle,jdk):
         if _installation_inventory(Path(tool['home']))!=tool['files']:raise GraderError('Native toolchain installation drift')
     if (Path(jdk['home'])/'release').read_text()!=jdk['release'] or not re.search(r'JAVA_VERSION="25(?:[.\"+\-])',jdk['release']):raise GraderError('Native build requires pinned JDK25')
@@ -563,11 +715,11 @@ def _native_containment(job,private_paths):
     _verify_landlock_helper()
     if {p.name for p in Path('/sys/class/net').iterdir()}!={'lo'}:raise GraderError('Gradle build requires actual network isolation')
     _protect_input_identity(job)
-    uid=pwd.getpwnam('sbuser').pw_uid
+    roles=_role_records();uid=roles['nativebuild']['uid']
     if uid==0:raise GraderError('Privileged Gradle build is forbidden')
     job.chmod(0o711)
     for folder in ('student','tests'):(job/folder).chmod(0o700)
-    prefix=[runuser,'--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
+    prefix=[runuser,'--preserve-environment','-u','nativebuild','--','/usr/local/bin/landlock_sandbox']
     # These are actual UID/readability checks, before the first Gradle child.
     code,text,reason=_run([*prefix,'/usr/bin/id','-u'],Path('/tmp'),5,1024,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'})
     if code or reason or text.strip()!=str(uid):raise GraderError('Gradle child UID was not verified')
@@ -582,7 +734,8 @@ def _native_build(job,config,sources,extra_names,stage,runtime,dependency_hash,d
     stage.chmod(0o700);runtime.root.chmod(0o700)
     canary=stage/'private-build-canary';canary.write_bytes(secrets.token_bytes(32));canary.chmod(0o600)
     uid,prefix=_native_containment(job,[canary,job/'tests/grading-job.json',*map(Path,_files(job/'tests',config['testFiles']))])
-    lock=_verify_native_toolchain()
+    lock=_verify_native_toolchain();boundary=_grading_boundary();_enable_build_reaper()
+    if _build_process_records(Path('/proc'),uid):raise GraderError('Native build role is not fresh')
     inputs=_source_inventory(job,sources,extra_names)
     original_names=['tests/grading-job.json',*['tests/'+name for name in config['testFiles']],*['student/'+name for name in config['sourceFiles']]]
     if 'additionalJavaSources' in config and (job/'student'/config['additionalJavaSources']['archive']).exists():original_names.append('student/'+config['additionalJavaSources']['archive'])
@@ -591,10 +744,13 @@ def _native_build(job,config,sources,extra_names,stage,runtime,dependency_hash,d
     input_hash=_hash_value({'sources':inputs,'javaBuild':build})
     def intact():
         if _source_inventory(job,sources,extra_names)!=inputs or any(hashlib.sha256(_files_any(job,p).read_bytes()).hexdigest()!=h for p,h in original.items()) or any(hashlib.sha256(_files_any(PLATFORM,p).read_bytes()).hexdigest()!=h for p,h in recipe.items()):raise GraderError('Native source/configuration integrity drift')
-        if _verify_native_toolchain()!=lock:raise GraderError('Native toolchain identity drift')
+        if _verify_native_toolchain()!=lock or _grading_boundary()!=boundary:raise GraderError('Native toolchain/role identity drift')
     private=job/'.native-build-private';private.mkdir(mode=0o700);os.chown(private,job.stat().st_uid,-1)
-    private_manifest={'buildEvidence':{'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'build','inputHash':input_hash,'dependencyHash':dependency_hash},'sourceInventory':inputs,'recipeHashes':recipe,'gradleUid':uid,'supervisorUid':os.geteuid(),'canaryDenied':True}
+    private_manifest={'buildEvidence':{'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'build','inputHash':input_hash,'dependencyHash':dependency_hash},'sourceInventory':inputs,'recipeHashes':recipe,'gradleUid':uid,'accessRoles':boundary['roles'],'buildRoleTransitions':[],'supervisorUid':os.geteuid(),'canaryDenied':True}
     (private/'manifest.json').write_text(json.dumps(private_manifest,sort_keys=True));(private/'manifest.json').chmod(0o600);os.chown(private/'manifest.json',job.stat().st_uid,-1)
+    def finish_role(phase):
+        private_manifest['buildRoleTransitions'].append({'phase':phase,**_finish_build_role(uid)})
+        file=private/'manifest.json';file.write_text(json.dumps(private_manifest,sort_keys=True));file.chmod(0o600);os.chown(file,job.stat().st_uid,-1)
     with tempfile.TemporaryDirectory(prefix='native-gradle-build-') as temporary:
         work=Path(temporary);work.chmod(0o1777)
         for name in ('home','user-cache','project-cache','tmp'):
@@ -622,11 +778,13 @@ def _native_build(job,config,sources,extra_names,stage,runtime,dependency_hash,d
         if copied!=admitted_copies:raise GraderError('Copied native inputs differ from admitted source/recipe bytes')
         intact()
         # Verify executable identities with the same UID/env/isolation as build.
-        code,text,reason=_run([*prefix,lock['gradle']['home']+'/bin/gradle','--version'],work,limits.get('compile-seconds',15),int(limits['max-output-bytes']),env=environment)
+        try:code,text,reason=_run([*prefix,lock['gradle']['home']+'/bin/gradle','--version'],work,limits.get('compile-seconds',15),int(limits['max-output-bytes']),env=environment)
+        finally:finish_role('gradle-version')
         (private/'gradle-version.log').write_text(text);(private/'gradle-version.log').chmod(0o600);os.chown(private/'gradle-version.log',job.stat().st_uid,-1)
         if code or reason or not re.search(r'^Gradle 9\.8(?:\.0)?$',text,re.M):raise GraderError('Admitted Gradle executable version check failed')
         command=[*prefix,lock['gradle']['home']+'/bin/gradle','--offline','--no-daemon','--no-build-cache','--console=plain','--project-cache-dir',str(work/'project-cache'),'clean','jar']
-        code,text,reason=_run(command,work,limits.get('compile-seconds',15),int(limits['max-output-bytes']),env=environment)
+        try:code,text,reason=_run(command,work,limits.get('compile-seconds',15),int(limits['max-output-bytes']),env=environment)
+        finally:finish_role('gradle-build')
         durations['gradleBuild']=time.monotonic()-start;diagnostics['gradleBuild']=text.replace(str(work),'/build')
         # Private raw log remains private after temporary workspace cleanup.
         (private/'gradle.log').write_text(text);(private/'gradle.log').chmod(0o600);os.chown(private/'gradle.log',job.stat().st_uid,-1)

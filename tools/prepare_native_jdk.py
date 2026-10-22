@@ -182,6 +182,105 @@ def _validate_production_admission(data):
     _require(value['sourceHome']==str(SOURCE_HOME) and value['counts']=={'directories':88,'logical':405,'regularPayload':316,'symlinks':97,'unresolvedNonPayload':1},'Wrong production source membership')
     return value
 
+
+COMPLETION_PACKAGE_SHA256='6c964acad9b3c929edb97eba9acc799907a68c89011336e813c88ee26fb00e9c'
+COMPLETION_PACKAGE_BYTES=58945368
+COMPLETION_FILES={
+ 'lib/libmanagement.so':{'sha256':'5ec5217ca219a177c034e5c83c450bb9ecd7480db6226f5c693565b0bd2f1b62','bytes':29352,'mode':'0o644'},
+ 'lib/libmanagement_ext.so':{'sha256':'b248a402d1ea88ca4c99a21c4caf79d88afc29053efb7681046a903b18b796a0','bytes':41192,'mode':'0o644'},
+ 'lib/libmanagement_agent.so':{'sha256':'f244819f8d4b00c4afe20f01e48862fd3e34808e11f9cc9b8b52dab506e78083','bytes':15648,'mode':'0o644'},
+}
+
+def _read_completion_members(stream,source_files,expected):
+    # Trusted initial preparation only: no tar filesystem extraction or scripts.
+    import tarfile
+    prefix='usr/lib/jvm/java-25-openjdk-amd64/'
+    seen=set();components={};overlap=[];types={};total=0
+    with tarfile.open(fileobj=stream,mode='r:*') as archive:
+        for member in archive:
+            raw=member.name
+            name=raw[2:] if raw.startswith('./') else raw
+            if name in ('','.'):continue
+            _name(name);_require(name not in seen,'Duplicate package member');seen.add(name)
+            _require(member.uid==member.gid==0 and (member.issym() or not member.mode&0o7022),'Unsafe package member owner/mode')
+            types[name]=member.type
+            _require(len(seen)<=10000 and member.size<=256*1024*1024,'Package member limit')
+            total+=member.size;_require(total<=512*1024*1024,'Package payload limit')
+            if not name.startswith(prefix):continue
+            relative=name[len(prefix):]
+            if Path(relative).name in {Path(x).name for x in expected}:
+                _require(relative in expected,'Alternate component member path')
+            if relative not in expected and relative not in source_files:continue
+            if not member.isfile():
+                _require(relative not in expected,'Component is not regular single member')
+                continue
+            _require(not member.islnk() and not member.issym(),'Linked component')
+            data=archive.extractfile(member).read()
+            observed={'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data),'mode':oct(member.mode)}
+            if relative in expected:
+                _require(observed==expected[relative],'Component bytes/mode mismatch');components[relative]=data
+            else:
+                _require(observed==source_files[relative],'Same-build package overlap mismatch '+relative);overlap.append(relative)
+    _require(set(components)==set(expected),'Missing completion member')
+    for relative in expected:
+        path=Path(prefix+relative)
+        for parent in path.parents:
+            if str(parent)=='.':break
+            _require(str(parent) not in types or types[str(parent)]==tarfile.DIRTYPE,'Unsafe component parent')
+    _require(all(n in overlap for n in ('release',)),'Missing same-build release overlap')
+    return {'components':components,'overlap':sorted(overlap)}
+
+def _validate_completion_package(package,source_files):
+    # Python3.14 operator host supports zstd tar. Runtime uses only pinned3 staging.
+    import io,tarfile
+    data=Path(package).read_bytes()
+    _require(len(data)==COMPLETION_PACKAGE_BYTES and hashlib.sha256(data).hexdigest()==COMPLETION_PACKAGE_SHA256,'Wrong same-build package bytes')
+    _require(data[:8]==b'!<arch>\n','Invalid Debian archive');parts={};offset=8
+    while offset<len(data):
+        header=data[offset:offset+60];_require(len(header)==60 and header[58:]==b'`\n','Invalid ar header')
+        name=header[:16].decode('ascii').strip().rstrip('/');size=int(header[48:58]);offset+=60
+        _require(name not in parts and size>=0 and offset+size<=len(data),'Duplicate/truncated ar member')
+        parts[name]=data[offset:offset+size];offset+=size+size%2
+    _require(offset==len(data) and set(parts)=={'debian-binary','control.tar.zst','data.tar.zst'} and parts['debian-binary']==b'2.0\n','Unexpected Debian member set')
+    with tarfile.open(fileobj=io.BytesIO(parts['control.tar.zst']),mode='r:*') as control:
+        members=[m for m in control if m.name in ('control','./control')]
+        _require(len(members)==1 and members[0].isfile(),'Invalid package control')
+        fields={line.split(': ',1)[0]:line.split(': ',1)[1] for line in control.extractfile(members[0]).read().decode().splitlines() if ': ' in line and not line.startswith(' ')}
+        _require(all(fields.get(k)==v for k,v in {'Package':'openjdk-25-jre-headless','Version':'25.0.4+7-1~24.04','Architecture':'amd64'}.items()),'Wrong package control identity')
+    result=_read_completion_members(io.BytesIO(parts['data.tar.zst']),source_files,COMPLETION_FILES)
+    _require({'release','bin/java','lib/modules','lib/server/libjvm.so'}<=set(result['overlap']),'Missing mandatory same-build overlaps')
+    result['packageSha256']=COMPLETION_PACKAGE_SHA256
+    return result
+
+
+def _complete_tree(source,destination,staging,expected_hardened,components,build_gid,policy):
+    _require(os.geteuid()==policy.owner_uid and type(build_gid) is int and build_gid>0,'Invalid completion supervisor/private group')
+    before=_normalized(destination,policy)
+    _require(before['files']==expected_hardened,'Hardened copy changed before completion')
+    source_before=_snapshot(source,policy)
+    _require(set(p.name for p in staging.iterdir())=={Path(n).name for n in components},'Extra/missing component staging')
+    info=staging.lstat()
+    _require(stat.S_ISDIR(info.st_mode) and info.st_uid==policy.owner_uid and stat.S_IMODE(info.st_mode)==0o700,'Unsafe private staging')
+    for name,record in components.items():
+        _name(name);_require(name.startswith('lib/') and name.count('/')==1,'Wrong component path')
+        actual,_=_regular(staging/Path(name).name,policy,single=True)
+        _require(actual==record and not os.path.lexists(destination/name),'Completion staging drift/collision')
+    destination.chmod(0o700)
+    for name,record in components.items():_copy_regular(staging/Path(name).name,destination/name,record,policy)
+    for path in [destination,*destination.rglob('*')]:os.chown(path,policy.owner_uid,build_gid,follow_symlinks=False)
+    destination.chmod(0o750)
+    after=_normalized(destination,policy)
+    _require(after['files']=={**expected_hardened,**components},'Completed inventory mismatch')
+    _require(_snapshot(source,policy)==source_before,'Hardened source changed during completion')
+    _require(after==_normalized(destination,policy),'Completed JDK live pair drift')
+    return {'kind':'same-build-jdk-completion-v1','sourceBefore':source_before,'sourceAfter':source_before,'hardenedBefore':before,'completedBefore':after,'completedAfter':after,'buildGid':build_gid,'nativeImageProof':False}
+
+def _complete_build_jdk(staging,expected_hardened,build_gid):
+    _require(len(expected_hardened)==316,'Exact hardened316 required')
+    result=_complete_tree(SOURCE_HOME,DESTINATION,staging,expected_hardened,COMPLETION_FILES,build_gid,_Policy())
+    result.update(packageSha256=COMPLETION_PACKAGE_SHA256,components=COMPLETION_FILES)
+    return result
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--admission',required=True,type=Path);parser.add_argument('--receipt',required=True,type=Path);args=parser.parse_args(argv)
     try:

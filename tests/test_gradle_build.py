@@ -262,6 +262,88 @@ class NativeContainmentExecutableTests(unittest.TestCase):
     return real_run(command,cwd,*args,**kwargs)
    def directories(path):
     return iter([Path('/sys/class/net/lo')]) if path==Path('/sys/class/net') else real_iterdir(path)
-   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',return_value=True),patch.object(Path,'iterdir',directories),patch.object(grader.shutil,'which',return_value=str(selected)),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_verify_landlock_helper'),patch('pwd.getpwnam',return_value=SimpleNamespace(pw_uid=1001)),patch.object(grader,'_run',side_effect=launch):
+   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',return_value=True),patch.object(Path,'iterdir',directories),patch.object(grader.shutil,'which',return_value=str(selected)),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_verify_landlock_helper'),patch.object(grader,'_role_records',return_value={'nativebuild':{'uid':1001,'gid':1001,'groups':[1001]},'sbuser':{'uid':1002,'gid':1002,'groups':[1002]}}),patch.object(grader,'_run',side_effect=launch):
     uid,prefix=grader._native_containment(job,[])
-   self.assertEqual(uid,1001);self.assertEqual(prefix[0],str(selected))
+   self.assertEqual(uid,1001);self.assertEqual(prefix[0],str(selected));self.assertEqual(prefix[3],'nativebuild')
+
+
+class SeparateNativeRolesTests(unittest.TestCase):
+ """Synthetic role records/env; actual kernel gates remain separate."""
+ def setUp(self):
+  self.assertTrue(callable(getattr(grader,'_validate_role_records',None)),'Missing two-role isolation guard')
+  self.roles={'sbuser':{'uid':1101,'gid':1101,'groups':[1101]},'nativebuild':{'uid':1102,'gid':1102,'groups':[1102]}}
+ def test_distinct_private_groups_pass_and_collisions_or_extra_groups_refuse(self):
+  import copy
+  grader._validate_role_records(self.roles,{1000},{1000})
+  for mutation in ['root','same-uid','same-gid','extra-group','build-group','mounted-uid','mounted-gid']:
+   r=copy.deepcopy(self.roles)
+   if mutation=='root':r['nativebuild']['uid']=0
+   elif mutation=='same-uid':r['nativebuild']['uid']=1101
+   elif mutation=='same-gid':r['nativebuild']['gid']=1101;r['nativebuild']['groups']=[1101]
+   elif mutation=='extra-group':r['sbuser']['groups'].append(27)
+   elif mutation=='build-group':r['sbuser']['groups'].append(1102)
+   elif mutation=='mounted-uid':r['nativebuild']['uid']=1000
+   else:r['nativebuild']['gid']=1000;r['nativebuild']['groups']=[1000]
+   with self.subTest(mutation=mutation):
+    with self.assertRaises(grader.GraderError):grader._validate_role_records(r,{1000},{1000})
+  with self.assertRaises(grader.GraderError):grader._validate_role_records({'sbuser':self.roles['sbuser']},set(),set())
+ def test_grade_environment_discards_inherited_native_and_jvm_options(self):
+  with patch.dict(os.environ,{'PL_CONTAINMENT':'official','JAVA_HOME':'/opt/native-jdk','PATH':'/hostile','LD_PRELOAD':'/evil','JAVA_TOOL_OPTIONS':'-javaagent:/evil','_JAVA_OPTIONS':'-Dsecret=x','JDK_JAVA_OPTIONS':'-javaagent:/evil','JDK_JAVAC_OPTIONS':'-processor Evil','CLASSPATH':'/evil','HOME':'/tmp/build-home','GRADLE_USER_HOME':'/tmp/build-cache'}):
+   env=grader._grading_environment()
+  self.assertEqual(env,{'PATH':'/usr/lib/jvm/java-25-openjdk-amd64/bin:/usr/bin:/bin','JAVA_HOME':'/usr/lib/jvm/java-25-openjdk-amd64','HOME':'/nonexistent','TMPDIR':'/tmp','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'})
+ def test_private_build_root_rejects_world_search_group_or_identity_drift(self):
+  good={'uid':0,'gid':1102,'mode':0o750,'directory':True}
+  grader._validate_build_root_record(good,1102)
+  for key,value in [('mode',0o755),('mode',0o770),('gid',1101),('uid',1102),('directory',False)]:
+   with self.subTest(key=key,value=value):
+    with self.assertRaises(grader.GraderError):grader._validate_build_root_record(dict(good,**{key:value}),1102)
+ def test_process_membership_uses_actual_uid_not_process_name(self):
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary)
+   for pid,uid in [(71,1102),(72,1101)]:
+    p=root/str(pid);p.mkdir();(p/'status').write_text(f'Name: java\nUid: {uid} {uid} {uid} {uid}\nState: S (sleeping)\n');(p/'stat').write_text(str(pid)+' (java) S '+ ' '.join(['0']*18+['314159']+['0']*5))
+   self.assertEqual(grader._build_process_records(root,1102),{71:{'uid':1102,'starttime':'314159','state':'S'}})
+
+
+class HardenedCoreSelectionTests(unittest.TestCase):
+ """Actual fixture bytes/FDs; only root ownership/outer parents are synthetic."""
+ def test_changed_core_hash_missing_tool_or_restored_management_refuses(self):
+  from types import SimpleNamespace
+  import stat
+  with tempfile.TemporaryDirectory() as temporary:
+   home=Path(temporary)/'jdk';home.mkdir();files={}
+   for name in ['release','bin/java','bin/javac','lib/modules','lib/server/libjvm.so']:
+    p=home/name;p.parent.mkdir(parents=True,exist_ok=True);data=('UNIT '+name).encode();p.write_bytes(data);p.chmod(0o755 if name.startswith('bin/') else 0o644);files[name]={'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data),'mode':oct(stat.S_IMODE(p.stat().st_mode))}
+   lock=home.parent/'lock.json';lock.write_text(json.dumps({'jdk':{'files':files}}));real_lstat=Path.lstat;real_fstat=os.fstat
+   def synthetic_root(s,outer=False):
+    d={n:getattr(s,n) for n in dir(s) if n.startswith('st_')};d['st_uid']=0
+    if outer:d['st_mode']=stat.S_IFDIR|0o755
+    return SimpleNamespace(**d)
+   def observed(path):return synthetic_root(real_lstat(path),path not in [home,*home.rglob('*')])
+   with patch.object(grader,'HARDENED_JDK',home),patch.object(grader,'_files_any',return_value=lock),patch.object(Path,'lstat',observed),patch.object(os,'fstat',side_effect=lambda fd:synthetic_root(real_fstat(fd))):
+    self.assertEqual(set(grader._hardened_tool_state()),set(files))
+    library=home/'lib/modules';original=library.read_bytes();library.write_bytes(b'changed')
+    with self.assertRaises(grader.GraderError):grader._hardened_tool_state()
+    library.write_bytes(original);tool=home/'bin/javac';tool.unlink()
+    with self.assertRaises((grader.GraderError,OSError)):grader._hardened_tool_state()
+    tool.write_bytes(b'UNIT bin/javac');tool.chmod(0o755)
+    (home/'lib/libmanagement.so').write_bytes(b'forbidden restored JNI')
+    with self.assertRaises(grader.GraderError):grader._hardened_tool_state()
+
+
+class NamespaceBoundaryTests(unittest.TestCase):
+ def test_host_scope_cannot_reach_role_or_process_inventory(self):
+  with patch.object(Path,'is_file',return_value=False),patch.object(os,'geteuid',return_value=0),patch.object(grader,'_role_records',side_effect=AssertionError('Unscoped role/process access')):
+   with self.assertRaises(grader.GraderError):grader._grading_boundary()
+
+
+class BuildTransitionCleanupTests(unittest.TestCase):
+ def test_cleanup_binds_pid_identity_and_records_empty_remaining_set(self):
+  first={71:{'uid':1102,'starttime':'15','state':'S'}}
+  changed={71:{'uid':1102,'starttime':'16','state':'S'}}
+  for rescan,expected in [(first,[71]),(changed,[])]:
+   killed=[]
+   with patch.object(Path,'is_file',return_value=True),patch.object(os,'geteuid',return_value=0),patch.object(grader,'_build_process_records',side_effect=[first,rescan,{}]),patch.object(os,'kill',side_effect=lambda pid,sig:killed.append(pid)),patch.object(os,'waitpid',side_effect=ChildProcessError):
+    receipt=grader._finish_build_role(1102)
+   self.assertEqual(killed,expected)
+   self.assertEqual(receipt,{'uid':1102,'remaining':[],'terminated':expected,'reaped':[]})
