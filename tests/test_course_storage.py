@@ -1,4 +1,5 @@
 """Exercise exact Git transport and checkout over a temporary verified HTTPS server."""
+from gradle_unit_fixtures import registry as unit_registry
 import functools
 import hashlib
 import http.server
@@ -25,7 +26,7 @@ class CourseStorageTests(unittest.TestCase):
         self.git=git;git('init','-q');git('config','user.name','Synthetic');git('config','user.email','synthetic@example.test')
         (self.repo/'infoCourse.json').write_text(json.dumps({'uuid':'4174cd08-ddff-4006-81cc-d7a6b67d3ee0','name':'SYN','title':'Synthetic','timezone':'Europe/Minsk','topics':[{'name':'fixture','color':'gray1','description':'Synthetic'}]}))
         from grading_job import load_runtime_registry
-        self.registry=load_runtime_registry()
+        self.registry=unit_registry()
         for profile in self.registry['profiles'].values():profile['image']='synthetic@sha256:'+'a'*64
         registry_patch=patch.object(self.module,'load_runtime_registry',return_value=self.registry);registry_patch.start();self.addCleanup(registry_patch.stop)
         self.update_provenance()
@@ -65,7 +66,7 @@ class CourseStorageTests(unittest.TestCase):
         results=[]
         for entry in scenarios:
             r=review.result(entry['scenario'],image);r.update(qualifiedId=qid,deliveryHash=delivery['deliveryHash']);results.append(r)
-        automatic=verify_results(results,{},scenarios)
+        automatic=verify_results(results,{},scenarios,registry=self.registry)
         from delivery_verification import delivery_receipt
         checks={'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[{'qualifiedId':qid,'projectRoot':'projects/one','check':{'runtime':'java25-junit-v1','profile':'junit'},'sources':binding['sources']}]}
         receipt=delivery_receipt(delivery,self.repo,checks,automatic,self.registry)

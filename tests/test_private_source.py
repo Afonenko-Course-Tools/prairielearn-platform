@@ -1,4 +1,5 @@
 """Точный Core inventory становится чистым приватным snapshot без remote."""
+from gradle_unit_fixtures import write_registry as unit_registry_file
 import hashlib,importlib.util,json,os,subprocess,tempfile,unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -39,11 +40,11 @@ delivery={'schemaVersion':3,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'i
 if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/EXTRA').write_text('POST_EXPORT_DRIFT')
 """);script.chmod(0o755)
    with patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}):
-    builder.build_course(output,'tasks','pilot',root/'candidate',staging_receipt=receipt)
+    builder.build_course(output,'tasks','pilot',root/'candidate',staging_receipt=receipt,runtime_registry=unit_registry_file(root))
     provenance=json.loads((root/'candidate/provenance.json').read_text())['source']
     self.assertEqual(provenance['mode'],'private-stage');self.assertNotIn('commit',provenance);self.assertEqual(provenance['publicBase']['commit'],git(public,'rev-parse','HEAD'))
     with patch.dict(os.environ,{'ALTER_SEED':'1'}):
-     with self.assertRaises(builder.BuildError):builder.build_course(output,'tasks','pilot',root/'bad-candidate',staging_receipt=receipt)
+     with self.assertRaises(builder.BuildError):builder.build_course(output,'tasks','pilot',root/'bad-candidate',staging_receipt=receipt,runtime_registry=unit_registry_file(root))
     self.assertFalse((root/'bad-candidate').exists());self.assertFalse((root/'bad-candidate-checks.json').exists())
    (output/'tasks/projects/demo/student/.git/EXTRA').unlink()
    runtime=output/'tasks/_generated/result.json';write(runtime,'RUNTIME')

@@ -37,12 +37,7 @@ def release_registry(root,images,source_commit,version):
     preparation.require(set(registry['profiles'])==set(PROFILE_IMAGES)-{'fish-git-v1'},'Exactly three prepared Java profiles required')
     historical=json.loads(preparation.read_regular(root/'runtime-profiles.json'))
     preparation.require(set(historical['profiles'])=={'java25-junit-v1','java25-mutation-v1','fish-git-v1'},'Unexpected historical profile set')
-    fish=copy.deepcopy(historical['profiles']['fish-git-v1'])
-    bundle=root/fish['bundle']
-    preparation.require({p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}==set(fish['files']),'Fish dependency closure changed')
-    fish['runnerSha256']=preparation.digest_bytes(preparation.read_regular(root/fish['runner']))
-    fish['files']={name:preparation.digest_bytes(preparation.read_regular(bundle/name)) for name in fish['files']}
-    fish['sharedFiles']={name:preparation.digest_bytes(preparation.read_regular(root/name)) for name in fish['sharedFiles']}
+    fish=json.loads(preparation.read_regular(prepared/'fish-runtime-profiles.json'))['profiles']['fish-git-v1']
     registry['profiles']['fish-git-v1']=fish
     registry=assign_images(registry,images)
     lock=preparation.read_regular(prepared/'operator/expected-toolchain-lock.json')

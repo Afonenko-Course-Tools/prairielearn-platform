@@ -1,4 +1,6 @@
 """Student boundary rejects private canaries, including failed runner reports."""
+from gradle_unit_fixtures import image_evidence
+from gradle_unit_fixtures import unit_platform
 import importlib.util,json,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -42,7 +44,7 @@ public class AnswerTest {
  @Test void closed(){System.out.print("CLOSED_INPUT_CANARY");assertEquals("CLOSED_EXPECTED_CANARY","CLOSED_ACTUAL_CANARY","CLOSED_TRACE_CANARY");}
 }''')
   (fixture.job/'tests/grading-job.json').write_text(json.dumps(fixture.cfg))
-  run=subprocess.run(['python3',str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
+  run=subprocess.run(['python3',str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
   self.assertEqual(run.returncode,0,run.stderr);result=json.loads((fixture.job/'results/results.json').read_text());self.assertNotIn('CLOSED_',json.dumps(result)+run.stdout+run.stderr)
   self.assertEqual(result['classification'],'behavior-failure');self.assertEqual(result['score'],2/3)
   self.assertEqual([(c['actual'],c['status']) for c in result['feedback']['publicCases']],[('5','passed'),('0','passed')])
@@ -51,7 +53,7 @@ public class AnswerTest {
   fixture=fixtures.JUnitJob();fixture.setUp();self.addCleanup(fixture.doCleanups)
   (fixture.job/'student/Student.java').write_text('public class Student {public static int answer(){throw new IllegalStateException("CLOSED_RUNTIME_CANARY");}}')
   (fixture.job/'tests/grading-job.json').write_text(json.dumps(fixture.cfg))
-  run=subprocess.run(['python3',str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
+  run=subprocess.run(['python3',str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
   self.assertEqual(run.returncode,0,run.stderr);result=json.loads((fixture.job/'results/results.json').read_text());self.assertEqual(result['feedback']['kind'],'runtime');self.assertNotIn('CLOSED_',json.dumps(result)+run.stdout+run.stderr)
 
 class ActualFailureBoundary(unittest.TestCase):
@@ -66,7 +68,7 @@ class ActualFailureBoundary(unittest.TestCase):
     fixture=fixtures.JUnitJob();fixture.setUp()
     try:
      (fixture.job/'student/Student.java').write_text(student);(fixture.job/'tests/AnswerTest.java').write_text(tests);(fixture.job/'tests/grading-job.json').write_text(json.dumps(fixture.cfg))
-     run=subprocess.run(['python3',str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
+     run=subprocess.run(['python3',str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)],text=True,capture_output=True,env=os.environ)
      self.assertEqual(run.returncode,exit_code,run.stderr);result=json.loads((fixture.job/'results/results.json').read_text());self.assertEqual(result['feedback']['kind'],kind);self.assertNotIn('CLOSED_',json.dumps(result)+run.stdout+run.stderr)
     finally:fixture.doCleanups()
  def test_only_operator_cli_enables_raw_verification(self):
@@ -75,7 +77,7 @@ class ActualFailureBoundary(unittest.TestCase):
   try:
    (fixture.job/'student/Student.java').write_text('public class Student {public static int answer(){System.out.print("CLOSED_OPERATOR_CANARY");return 41;}}')
    config=fixture.job/'tests/grading-job.json';config.write_text(json.dumps(fixture.cfg))
-   command=['python3',str(ROOT/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)]
+   command=['python3',str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(fixture.job)]
    def execute(extra=[]):
     run=subprocess.run(command+extra,text=True,capture_output=True,env=os.environ);return run,json.loads((fixture.job/'results/results.json').read_text())
    run,native=execute();self.assertEqual(run.returncode,0);self.assertNotIn('CLOSED_',json.dumps(native)+run.stderr);self.assertNotIn('rawResult',native)
@@ -94,7 +96,7 @@ class ActualFailureBoundary(unittest.TestCase):
 class ActualFishFeedback(unittest.TestCase):
  def test_public_observation_and_runtime_class(self):
   import tempfile
-  spec=importlib.util.spec_from_file_location('feedback_fish',ROOT/'images/fish-git-grader/grade.py');grader=importlib.util.module_from_spec(spec);spec.loader.exec_module(grader)
+  spec=importlib.util.spec_from_file_location('feedback_fish',unit_platform(self)/'images/fish-git-grader/grade.py');grader=importlib.util.module_from_spec(spec);spec.loader.exec_module(grader)
   with tempfile.TemporaryDirectory() as tmp:
    job=Path(tmp);(job/'student').mkdir();(job/'tests').mkdir()
    cfg={'schemaVersion':1,'runtime':'fish-git-v1','mode':'implementation','sourceFiles':['answer.fish'],'testFiles':['checks.py'],'limits':{'outer-seconds':30,'run-seconds':1,'compile-seconds':5,'networking':False,'max-output-bytes':65536},'scoring':{'mode':'weighted'},'discovery':{'min-executed':1,'allow-skipped':False},'publicCases':[{'id':'normal','name':'Обычный результат операции','test':'0: copy','input':'A','expected':'A'},{'id':'boundary','name':'Граничный случай операции','test':'1: copy','input':'','expected':''}]}
@@ -115,7 +117,7 @@ class NativeContainerFeedback(unittest.TestCase):
     run=subprocess.run(command+args,capture_output=True,text=True,timeout=60);self.assertEqual(run.returncode,0,run.stderr);result=json.loads((fixture.job/'results/results.json').read_text())
     if private:
      import test_review_receipts as receipts
-     self.assertEqual(result['executionEvidence'],receipts.g.runtime_evidence('java25-junit-v1'));self.assertIn('CLOSED_CONTAINER_CANARY',json.dumps(result));self.assertIn('executionEvidence',result);self.assertEqual(result['containment'],'official-landlock-sbuser')
+     self.assertEqual(result['executionEvidence'],image_evidence('java25-junit-v1',os.environ['PL_TEST_IMAGE']));self.assertIn('CLOSED_CONTAINER_CANARY',json.dumps(result));self.assertIn('executionEvidence',result);self.assertEqual(result['containment'],'official-landlock-sbuser')
     else:self.assertNotIn('CLOSED_',json.dumps(result)+run.stderr);self.assertNotIn('rawResult',result);self.assertEqual(result['feedback']['kind'],'wrong-answer')
   finally:fixture.doCleanups()
 
@@ -132,7 +134,7 @@ class NativeFishContainerFeedback(unittest.TestCase):
     run=subprocess.run(command+args,capture_output=True,text=True,timeout=60);self.assertEqual(run.returncode,0,run.stderr);result=json.loads((job/'results/results.json').read_text())
     if private:
      import test_review_receipts as receipts
-     self.assertEqual(result['executionEvidence'],receipts.g.runtime_evidence('fish-git-v1'));self.assertIn('CLOSED_FISH_CONTAINER',json.dumps(result));self.assertIn('executionEvidence',result);self.assertEqual(result['containment'],'official-landlock-sbuser')
+     self.assertEqual(result['executionEvidence'],image_evidence('fish-git-v1',os.environ['PL_FISH_TEST_IMAGE']));self.assertIn('CLOSED_FISH_CONTAINER',json.dumps(result));self.assertIn('executionEvidence',result);self.assertEqual(result['containment'],'official-landlock-sbuser')
     else:self.assertNotIn('CLOSED_',json.dumps(result)+run.stderr);self.assertEqual([c['actual'] for c in result['feedback']['publicCases']],['A',''])
 
 class DirectStudentAssertion(unittest.TestCase):

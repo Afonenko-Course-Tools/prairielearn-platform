@@ -1,4 +1,5 @@
 """Compiler rejection and runner limits preserve distinct private phase evidence."""
+from gradle_unit_fixtures import unit_platform
 import json,unittest
 from unittest.mock import patch
 import jsonschema
@@ -32,7 +33,7 @@ class BindingStages(unittest.TestCase):
   import os,subprocess,sys
   (self.job/'tests/AnswerTest.java').write_text('class AnswerTest { CLOSED_CLI_BINDING_CANARY value; }')
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  commands=[('host',[sys.executable,str(fixtures.ROOT/'images/java25-grader/grade.py'),'--job-dir',str(self.job)])]
+  commands=[('host',[sys.executable,str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(self.job)])]
   if os.environ.get('PL_API_TEST_IMAGE'):
    commands.append(('container',['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE']]))
   for backend,command in commands:

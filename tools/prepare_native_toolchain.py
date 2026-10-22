@@ -121,6 +121,16 @@ def baked_view(root,expected):
  require(digest_bytes(read_regular(root/'images/java25-grader/grade.py'))==RUNNER,'Runner drift')
  return {'schemaVersion':1,'profiles':profiles}
 
+def _fish_view(root):
+ source=json.loads(read_regular(root/'runtime-profiles.json'))
+ fish=copy.deepcopy(source['profiles']['fish-git-v1']);fish.pop('image')
+ bundle=root/fish['bundle']
+ require({p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}==set(fish['files']),'Fish dependency closure changed')
+ fish['runnerSha256']=digest_bytes(read_regular(root/fish['runner']))
+ fish['files']={name:digest_bytes(read_regular(bundle/name)) for name in fish['files']}
+ fish['sharedFiles']={name:digest_bytes(read_regular(root/name)) for name in fish['sharedFiles']}
+ return {'schemaVersion':1,'profiles':{'fish-git-v1':fish}}
+
 def package_stanza(text,expected):
  selected=[]
  for paragraph in text.strip().split('\n\n'):
@@ -192,13 +202,14 @@ def fetch_missing(cache,lock):
 
 def public_sources(root):
  paths=[Path(x) for x in subprocess.check_output(['git','-C',str(root),'ls-files','-z']).decode().split('\0') if x]
- selected=[p for p in paths if p.parts[0]=='runtime' or p.as_posix() in {'images/java25-grader/Dockerfile','images/java25-grader/grade.py','tools/prepare_native_jdk.py'} or p.as_posix().startswith(TOOLCHAIN+'/') or p.as_posix().startswith('images/java25-grader/landlock/') or p.as_posix()=='tools/prepare_native_toolchain.py' or p.as_posix()=='VERSION' or p.as_posix()=='runtime-profiles.json' or p.as_posix()=='images/java25-grader/Dockerfile.dockerignore']
+ selected=[p for p in paths if p.parts[0]=='runtime' or p.as_posix() in {'images/java25-grader/Dockerfile','images/java25-grader/grade.py','tools/prepare_native_jdk.py','images/fish-git-grader/grade.py','images/fish-git-grader/Dockerfile','schemas/grading-descriptor.schema.json'} or p.as_posix().startswith(TOOLCHAIN+'/') or p.as_posix().startswith('images/java25-grader/landlock/') or p.as_posix()=='tools/prepare_native_toolchain.py' or p.as_posix()=='VERSION' or p.as_posix()=='runtime-profiles.json' or p.as_posix()=='images/java25-grader/Dockerfile.dockerignore']
  return {p.as_posix():file_record(root/p) for p in selected}
 
 def expected_payload_records(root):
  lock=json.loads(read_regular(root/TOOLCHAIN/'inputs.lock.json'));normalizer=load_normalizer(root)
  expected,hardened=generated_locks(json.loads(read_regular(root/'runtime/gradle-jar-v1/toolchain-lock.json')))
  values={'runtime-profiles.json':(encode(baked_view(root,expected)),0o644),'operator/hardened-toolchain-lock.json':(hardened,0o600),'operator/expected-toolchain-lock.json':(expected,0o600),'operator/completion-authority.json':(encode({'packageSHA256':normalizer.COMPLETION_PACKAGE_SHA256,'components':normalizer.COMPLETION_FILES}),0o600)}
+ values['fish-runtime-profiles.json']=(encode(_fish_view(root)),0o644)
  for name in ('install-native.py','complete-native.py','source-inventory.json'):values['operator/'+name]=(read_regular(root/TOOLCHAIN/name),0o600)
  records={name:dict(bytes=len(data),sha256=digest_bytes(data),mode=oct(mode)) for name,(data,mode) in values.items()}
  records['gradle-9.8.0-bin.zip']={k:v for k,v in lock['inputs']['gradle-9.8.0-bin.zip'].items() if k in ('bytes','sha256')};records['gradle-9.8.0-bin.zip']['mode']='0o600'
@@ -228,9 +239,10 @@ def prepare(root,cache,fetch=False):
  helper=read_regular(root/'images/java25-grader/landlock/landlock_sandbox.amd64',{'bytes':lock['helperBytes'],'sha256':lock['helperSha256']})
  require(digest_bytes(read_regular(root/'images/java25-grader/landlock/sandbox.c'))==lock['helperSourceSha256'],'Helper C drift')
  payloads={'runtime-profiles.json':(encode(baked_view(root,expected)),0o644),'gradle-9.8.0-bin.zip':(data['gradle-9.8.0-bin.zip'],0o600),'landlock_sandbox':(helper,0o755),'operator/source-inventory.json':(admission,0o600),'operator/hardened-toolchain-lock.json':(hardened,0o600),'operator/expected-toolchain-lock.json':(expected,0o600),'operator/completion-authority.json':(encode({'packageSHA256':normalizer.COMPLETION_PACKAGE_SHA256,'components':normalizer.COMPLETION_FILES}),0o600)}
+ payloads['fish-runtime-profiles.json']=(encode(_fish_view(root)),0o644)
  for name in ('install-native.py','complete-native.py'):payloads['operator/'+name]=(read_regular(root/TOOLCHAIN/name),0o600)
  for name,value in parsed['components'].items():payloads['operator/components/'+Path(name).name]=(value,0o644)
- require(len(payloads)==12,'Exact generated payload count required')
+ require(len(payloads)==13,'Exact generated payload count required')
  stage=Path(tempfile.mkdtemp(prefix='.native-toolchain-preparing-',dir=root))
  try:
   for name,(value,mode) in payloads.items():
@@ -254,7 +266,7 @@ def verify_context(root):
  require(manifest['source']==identity and manifest['sourceFiles']==public_sources(root),'Prepared context/source mismatch')
  validate_declared_payloads(root,manifest['files'])
  files=dict(manifest['files']);files['context-manifest.json']=file_record(out/'context-manifest.json');verify_files(out,files)
- require(set(manifest['files'])=={'runtime-profiles.json','gradle-9.8.0-bin.zip','landlock_sandbox','operator/source-inventory.json','operator/hardened-toolchain-lock.json','operator/expected-toolchain-lock.json','operator/completion-authority.json','operator/install-native.py','operator/complete-native.py',*[('operator/components/'+Path(n).name) for n in COMPONENTS]},'Unexpected prepared payload')
+ require(set(manifest['files'])=={'runtime-profiles.json','fish-runtime-profiles.json','gradle-9.8.0-bin.zip','landlock_sandbox','operator/source-inventory.json','operator/hardened-toolchain-lock.json','operator/expected-toolchain-lock.json','operator/completion-authority.json','operator/install-native.py','operator/complete-native.py',*[('operator/components/'+Path(n).name) for n in COMPONENTS]},'Unexpected prepared payload')
  expected,hardened=generated_locks(json.loads(read_regular(root/'runtime/gradle-jar-v1/toolchain-lock.json')))
  require(read_regular(out/'runtime-profiles.json')==encode(baked_view(root,expected)),'Baked dependency drift')
  require(read_regular(out/'operator/expected-toolchain-lock.json')==expected and read_regular(out/'operator/hardened-toolchain-lock.json')==hardened,'Prepared lock drift')

@@ -1,4 +1,5 @@
 """Real JUnit jobs expose discovery, isolation and policy mistakes."""
+from gradle_unit_fixtures import registry as unit_registry
 import importlib.util
 import json
 import os
@@ -21,7 +22,7 @@ class JUnitJob(unittest.TestCase):
   (self.job/'tests/AnswerTest.java').write_text(TEST)
   self.cfg={'schemaVersion':1,'sourceFiles':['Student.java'],'testFiles':['AnswerTest.java'],'mode':'implementation','runtime':'java25-junit-v1','java':{'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']},'limits':{'outer-seconds':30,'compile-seconds':15,'run-seconds':3,'max-output-bytes':65536,'networking':False},'scoring':{'mode':'weighted'},'discovery':{'min-executed':1,'allow-skipped':False}}
  def run_job(self):
-  (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg));return grader.grade(self.job)
+  (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg));return grader.grade(self.job,registry=unit_registry())
  def test_existing_junit_suite_runs_without_course_main(self):
   r=self.run_job();self.assertEqual(r['score'],1);self.assertEqual(r['counts']['executed'],1)
  def test_trusted_zero_tests_is_infrastructure(self):
@@ -102,7 +103,7 @@ class RuntimeBundleTests(unittest.TestCase):
    shutil.copyfile(bundle/'json-simple-1.1.1.jar',bundle/'unregistered.jar')
    original=grader.PLATFORM;grader.PLATFORM=root
    try:
-    with self.assertRaises(grader.GraderError):grader.preflight('java25-junit-v1')
+    with self.assertRaises(grader.GraderError):grader.preflight('java25-junit-v1',registry=unit_registry())
    finally:grader.PLATFORM=original
 
 class AdditionalSourceDeliveryTests(unittest.TestCase):
@@ -129,17 +130,17 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
    manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
    archives=[]
    for scenario in ['reference:correct','reference:correct','contract:extra']:
-    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra',scenario)
+    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra',scenario,registry=unit_registry())
     try:
      self.assertEqual(job['grading']['sourceFiles'],['Student.java']);self.assertEqual(job['grading']['additionalJavaSources']['maxFiles'],128)
      raw=(job.root/'student/additional-sources.zip').read_bytes();self.assertEqual(raw,(job.root/'public-verification/student/additional-sources.zip').read_bytes())
      if scenario.startswith('reference'):archives.append(raw);self.assertIn('reference/Base.java',job['sourceHashes'])
-     result=jobs.run_job(job,'host');self.assertEqual(result['classification'],'success',result);self.assertEqual(result['publicResult']['classification'],'success');self.assertEqual(result['additionalSources']['files'][0]['path'],'Base.java')
+     result=jobs.run_job(job,'host',registry=unit_registry());self.assertEqual(result['classification'],'success',result);self.assertEqual(result['publicResult']['classification'],'success');self.assertEqual(result['additionalSources']['files'][0]['path'],'Base.java')
     finally:shutil.rmtree(job.root)
    self.assertEqual(archives[0],archives[1])
    saved=fact['check'].pop('additional-java-sources')
    with self.assertRaisesRegex(jobs.JobError,'mapping|Unauthorized'):
-    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra','reference:correct');shutil.rmtree(job.root)
+    job=jobs.prepare_job(manifest,snapshot,'demo/exr-extra','reference:correct',registry=unit_registry());shutil.rmtree(job.root)
    fact['check']['additional-java-sources']=saved
    (project/'tests/fixtures/extra.zip').write_bytes(b'tampered')
-   with self.assertRaisesRegex(jobs.JobError,'snapshot changed'):jobs.prepare_job(manifest,snapshot,'demo/exr-extra','contract:extra')
+   with self.assertRaisesRegex(jobs.JobError,'snapshot changed'):jobs.prepare_job(manifest,snapshot,'demo/exr-extra','contract:extra',registry=unit_registry())

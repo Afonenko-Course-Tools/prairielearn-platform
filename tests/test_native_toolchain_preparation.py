@@ -76,11 +76,19 @@ class PreparationBoundaries(unittest.TestCase):
    self.assertNotIn('image',profile);self.assertEqual(profile['runnerSha256'],'05aa5dfe0889c48b57eacf665c4274ac18d9ac3b1a0f18f4a948cc09fba7a737')
   changed=json.loads(expected);changed['jdk']['files'].pop('lib/libmanagement.so')
   with self.assertRaises(ValueError):self.p.generated_locks(changed)
+ def test_fish_view_is_source_current_dependency_only_and_in_closed_payload(self):
+  view=self.p._fish_view(ROOT)
+  self.assertEqual(set(view['profiles']),{'fish-git-v1'})
+  row=view['profiles']['fish-git-v1'];self.assertNotIn('image',row)
+  self.assertEqual(row['runnerSha256'],self.p.digest_bytes((ROOT/row['runner']).read_bytes()))
+  self.assertEqual(row['sharedFiles']['schemas/grading-descriptor.schema.json'],self.p.digest_bytes((ROOT/'schemas/grading-descriptor.schema.json').read_bytes()))
+  records=self.p.expected_payload_records(ROOT)
+  self.assertIn('fish-runtime-profiles.json',records);self.assertEqual(len(records),13)
  def test_declared_manifest_cannot_reauthorize_tampered_installer_or_helper(self):
   declared=self.p.expected_payload_records(ROOT)
   self.assertEqual(declared['landlock_sandbox']['sha256'],'81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef')
   self.p.validate_declared_payloads(ROOT,declared)
-  for name in ['operator/install-native.py','landlock_sandbox','operator/components/libmanagement.so','gradle-9.8.0-bin.zip']:
+  for name in ['operator/install-native.py','landlock_sandbox','operator/components/libmanagement.so','gradle-9.8.0-bin.zip','fish-runtime-profiles.json']:
    bad=json.loads(json.dumps(declared));bad[name]['sha256']='0'*64
    with self.subTest(name=name),self.assertRaises(ValueError):self.p.validate_declared_payloads(ROOT,bad)
  def test_closed_tar_has_only_selected_files_and_deterministic_root_metadata(self):

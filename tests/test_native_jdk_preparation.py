@@ -45,6 +45,46 @@ class NativeJdkPreparation(unittest.TestCase):
   snapshot={'logical':logical,'files':files,'directories':directories,'links':links,'omissions':omissions};expected={'home':str(self.destination),'release':(self.source/'release').read_text(),'files':copy.deepcopy(files)}
   return {'sourceHome':str(self.source),'sourceBefore':snapshot,'sourceAfter':copy.deepcopy(snapshot),'sourceBeforeSha256':digest(snapshot),'sourceAfterSha256':digest(snapshot),'expectedNormalizedJdk':expected,'expectedNormalizedDirectories':directories,'expectedNormalizedJdkSha256':digest(expected),'actualNormalizedCopyCreated':False,'normalizedInstallationAdmission':False}
  def prepare(self,admission=None):return self.tool._prepare(self.source,self.destination,admission or self.admission,self.policy)
+ def test_cross_filesystem_directory_allocation_is_not_payload(self):
+  admitted=copy.deepcopy(self.admission)
+  for row in admitted['sourceBefore']['logical'].values():
+   if row['type']=='directory':row['lstat'].update(bytes=4096,nlink=29)
+   if 'members' in row:row['targetStat'].update(bytes=4096,nlink=29)
+  admitted['sourceAfter']=copy.deepcopy(admitted['sourceBefore'])
+  admitted['sourceBeforeSha256']=admitted['sourceAfterSha256']=digest(admitted['sourceBefore'])
+  receipt=self.prepare(admitted)
+  self.assertEqual(receipt['sourceBefore'],receipt['sourceAfter'])
+  self.assertEqual(receipt['normalizedFiles'],self.admission['expectedNormalizedJdk']['files'])
+ def test_projection_preserves_link_and_semantic_metadata(self):
+  original=self.admission['sourceBefore']
+  for name,field,key,value in [('legal','lstat','bytes',999),('legal','lstat','nlink',2),('bin/java','targetStat','bytes',999),('bin/java','targetStat','nlink',2),('bin','lstat','mode','0o700'),('bin','targetStat','uid',999),('bin','targetStat','gid',999),('bin','targetStat','mtimeNs',1),('bin','row','members',[]),('bin','row','resolvedTarget','/different'),('bin/java','row','sha256','0'*64),('legal','row','type','regular')]:
+   changed=copy.deepcopy(original);row=changed['logical'][name]
+   (row if field=='row' else row[field])[key]=value
+   with self.subTest(name=name,field=field,key=key):self.assertNotEqual(self.tool._portable(original),self.tool._portable(changed))
+ def test_raw_mid_copy_directory_allocation_drift_still_refuses(self):
+  for field in ('bytes','nlink','inode'):
+   with self.subTest(field=field):
+    fixture=NativeJdkPreparation();fixture.setUp();snapshot=fixture.tool._snapshot;calls=0
+    def changed(*args):
+     nonlocal calls
+     value=snapshot(*args);calls+=1
+     if calls==2:value['logical']['bin']['lstat'][field]+=1
+     return value
+    try:
+     with patch.object(fixture.tool,'_snapshot',side_effect=changed),self.assertRaisesRegex(fixture.tool.PreparationError,'changed during preparation'):fixture.prepare()
+    finally:fixture.doCleanups()
+ def test_precopy_diagnostic_is_bounded_and_contains_no_arbitrary_string(self):
+  admitted=copy.deepcopy(self.admission)
+  for row in admitted['sourceBefore']['logical'].values():
+   if 'targetStat' in row:row['targetStat']['mtimeNs']+=1
+   row['resolvedTarget']='PRIVATE_ARBITRARY_STRING'*1000
+  admitted['sourceAfter']=copy.deepcopy(admitted['sourceBefore'])
+  admitted['sourceBeforeSha256']=admitted['sourceAfterSha256']=digest(admitted['sourceBefore'])
+  with self.assertRaises(self.tool.PreparationError) as failure:self.prepare(admitted)
+  message=str(failure.exception)
+  self.assertLessEqual(len(message.encode()),4096)
+  self.assertIn('mismatchCount',message);self.assertIn('mtimeNs',message)
+  self.assertNotIn('PRIVATE_ARBITRARY_STRING',message);self.assertFalse(self.destination.exists())
  def test_complete_fixture_copies_links_to_independent_regular_files_and_omits_exact_leaf(self):
   receipt=self.prepare();self.assertEqual(receipt['proofScope'],'synthetic-unit-fixture');self.assertFalse(receipt['normalizedInstallationAdmission'])
   self.assertEqual(set(receipt['normalizedFiles']),{'bin/java','bin/javac','lib/modules','release','conf/config.properties','legal/NOTICE','legal/sub/LICENSE'})

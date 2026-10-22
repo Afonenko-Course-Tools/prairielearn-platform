@@ -101,13 +101,52 @@ def _portable(snapshot):
     # Сохраняем все live metadata в receipt и сравниваем их до/после операции.
     # dev/inode/ctime создаются filesystem/container; не portable source pins.
     value=json.loads(json.dumps(snapshot))
-    for item in value['logical'].values():
+    for path,item in value['logical'].items():
         for field in ('lstat','targetStat'):
             for name in ('dev','inode','ctimeNs'):item.get(field,{}).pop(name,None)
+        # Directory allocation/link accounting belongs to the backing FS.
+        # Its actual membership and all raw same-instance identities remain.
+        target=item.get('targetStat',{})
+        directory=(item.get('type') in ('directory','symlink') and isinstance(item.get('members'),list)
+                   and snapshot['directories'].get(path)=={'mode':oct(int(target.get('mode','0'),8)&0o755),'uid':target.get('uid')})
+        if directory:
+            for name in ('bytes','nlink'):
+                target.pop(name,None)
+                if item['type']=='directory':item['lstat'].pop(name,None)
     # links/omissions дублируют logical rows в JSON, поэтому derive их заново.
     value['links']={name:value['logical'][name] for name in snapshot['links']}
     value['omissions']={name:value['logical'][name] for name in snapshot['omissions']}
     return value
+
+def _source_mismatch(expected,actual):
+    """Bounded public field diagnostic; arbitrary strings are represented by hash."""
+    rows=[];count=0
+    def safe(value):
+        if value is None or type(value) in (int,bool):return value
+        if isinstance(value,str) and (len(value)==64 and all(c in '0123456789abcdef' for c in value) or value in ('directory','regular','symlink','special') or value.startswith('0o') and len(value)<=6 and all(c in '01234567' for c in value[2:])):return value
+        encoded=json.dumps(value,sort_keys=True,separators=(',',':')).encode()
+        return {'sha256':hashlib.sha256(encoded).hexdigest(),'bytes':len(encoded)}
+    def compare(left,right,parts):
+        nonlocal count
+        if type(left)==type(right) and isinstance(left,dict):
+            for key in sorted(set(left)|set(right)):
+                if key in left and key in right:compare(left[key],right[key],parts+[key])
+                else:record(left.get(key),right.get(key),parts+[key])
+        elif left!=right:
+            record(left,right,parts)
+    def record(left,right,parts):
+        nonlocal count
+        count+=1
+        if len(rows)<16:
+            path=parts[1] if len(parts)>1 and parts[1] in expected['logical'] else None
+            field='.'.join(parts[2:]) if path is not None else 'structural'
+            if field not in {'lstat.'+k for k in ('uid','gid','mode','bytes','nlink','mtimeNs')}|{'targetStat.'+k for k in ('uid','gid','mode','bytes','nlink','mtimeNs')}|{'type','members','sha256','resolvedTarget','readlink','readlink.text','readlink.hex','readlink.sha256'}:field='structural'
+            rows.append({'path':path if path is not None else safe(parts),'field':field,'expected':safe(left),'actual':safe(right)})
+    compare(expected,actual,[])
+    result={'mismatchCount':count,'differences':rows}
+    while len(json.dumps(result,separators=(',',':')).encode())>3800:rows.pop()
+    result['omitted']=count-len(rows)
+    return json.dumps(result,separators=(',',':'))
 
 def _admission(admitted,source,destination,policy):
     expected=admitted['expectedNormalizedJdk'];before=admitted['sourceBefore']
@@ -157,7 +196,8 @@ def _prepare(source,destination,admitted,policy=_Policy()):
         _require(not destination.is_relative_to(source) and not source.is_relative_to(destination),'Source/destination overlap')
         _parents(destination,policy);_require(not os.path.lexists(destination),'Destination must be fresh')
         expected,accepted_source=_admission(admitted,source,destination,policy)
-        before=_snapshot(source,policy);_require(_portable(before)==_portable(accepted_source),'Source differs from admitted logical paths/links/bytes/metadata')
+        before=_snapshot(source,policy);accepted_portable=_portable(accepted_source);actual_portable=_portable(before)
+        if actual_portable!=accepted_portable:raise PreparationError('Source differs from admitted logical paths/links/bytes/metadata: '+_source_mismatch(accepted_portable,actual_portable))
         destination.mkdir(mode=0o700)
         for name in sorted((name for name in before['directories'] if name),key=lambda name:(len(name.split('/')),name)):
             _name(name);(destination/name).mkdir(mode=0o700)

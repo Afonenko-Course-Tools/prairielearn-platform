@@ -1,4 +1,5 @@
 """Реальный Quarto owner export из synthetic private stage; без запуска grader."""
+from gradle_unit_fixtures import write_registry as unit_registry_file
 import importlib.util,json,os,shutil,subprocess,tempfile,unittest,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -30,7 +31,7 @@ class NativePrivateSource(unittest.TestCase):
    materialized=root/'materialized'
    run(['quarto','run',str(public/'tasks/_extensions/course-core/entrypoints/materialize-projects.ts'),'--','--root',str(public/'tasks'),'--model',str(public/'tasks/_generated/course-spec/native-run.json'),'--output-root',str(materialized),'--audience','grading','--teacher-root',str(teacher),'--task','exr-add','--write'])
    private=root/'private';receipt=root/'receipt.json';stage.prepare(public,'tasks',materialized,private,receipt)
-   candidate=root/'native';builder.build_course(private,'tasks','pilot',candidate,staging_receipt=receipt)
+   candidate=root/'native';builder.build_course(private,'tasks','pilot',candidate,staging_receipt=receipt,runtime_registry=unit_registry_file(root))
    provenance=json.loads((candidate/'provenance.json').read_text())['source']
    self.assertEqual(provenance['mode'],'private-stage');self.assertTrue(provenance['runtimeInventory']);self.assertTrue((candidate/'questions/native-java-demo/exr-add/info.json').exists())
    question=candidate/'questions/native-java-demo/exr-add'

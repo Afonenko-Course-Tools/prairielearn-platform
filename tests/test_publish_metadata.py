@@ -145,6 +145,16 @@ class PublishedMetadata(unittest.TestCase):
     def test_missing_baked_view_is_refused(self):
         self.changed_context('runtime-profiles.json', None)
 
+    def test_missing_fish_view_is_refused(self):
+        self.changed_context('fish-runtime-profiles.json', None)
+
+    def test_stale_fish_shared_schema_is_refused(self):
+        def stale(data):
+            value = json.loads(data)
+            value['profiles']['fish-git-v1']['sharedFiles']['schemas/grading-descriptor.schema.json'] = '0' * 64
+            return json.dumps(value).encode()
+        self.changed_context('fish-runtime-profiles.json', stale)
+
     def test_stale_baked_runner_is_refused(self):
         self.changed_context('runtime-profiles.json', lambda b: b.replace(b'05aa5dfe', b'00000000'))
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import unittest
 import test_grading_job as fixtures
+from gradle_unit_fixtures import registry as unit_registry, platform_tree
 grader=fixtures.grader
 class SandboxIdentityPreflight(unittest.TestCase):
  @unittest.skipUnless(os.name=='posix','Official container identity is Unix-only')
@@ -15,15 +16,21 @@ class SandboxIdentityPreflight(unittest.TestCase):
   with tempfile.TemporaryDirectory() as temp:
    root=Path(temp)
    for folder in ('student','tests'):(root/folder).mkdir()
-   account=SimpleNamespace(pw_uid=root.stat().st_uid)
-   with patch('pwd.getpwnam',return_value=account),patch.object(Path,'is_file',return_value=False),patch.object(grader,'_run',side_effect=AssertionError('host account remap attempted')):
-    with self.assertRaisesRegex(grader.GraderError,'Docker container'):grader._protect_input_identity(root)
+   accounts={name:SimpleNamespace(pw_uid=uid,pw_gid=uid,pw_shell='/usr/sbin/nologin') for name,uid in [('sbuser',1001),('nativebuild',60002)]}
+   with patch('pwd.getpwnam',side_effect=accounts.__getitem__),patch('grp.getgrnam',return_value=SimpleNamespace(gr_gid=60002,gr_mem=[])),patch('os.getgrouplist',side_effect=lambda name,gid:[gid]),patch.object(Path,'stat',return_value=SimpleNamespace(st_uid=1001,st_gid=1001)),patch.object(Path,'is_file',return_value=False),patch.object(grader,'_run',side_effect=AssertionError('host account remap attempted')):
+    with self.assertRaisesRegex(grader.GraderError,'supported container'):grader._protect_input_identity(root)
 
 @unittest.skipUnless(os.environ.get('PL_TEST_IMAGE'),'Set PL_TEST_IMAGE to an actual built image ID')
 class ContainerParity(unittest.TestCase):
- setUp=fixtures.JUnitJob.setUp
+ def setUp(self):
+  from unittest.mock import patch
+  import grading_job
+  fixtures.JUnitJob.setUp(self)
+  root=self.enterContext(platform_tree(java_image=os.environ['PL_TEST_IMAGE']))
+  self.runtime_registry=json.loads((root/'runtime-profiles.json').read_text())
+  self.enterContext(patch.object(grading_job,'ROOT',root))
  def test_same_payload_two_cold_jobs_match_host(self):
-  (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg));host=grader.grade(self.job)
+  (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg));host=grader.grade(self.job,registry=unit_registry())
   values=[]
   for _ in range(2):
    p=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=30)
@@ -36,7 +43,7 @@ class ContainerParity(unittest.TestCase):
   import sys
   sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'));from grading_job import GradingJob,run_job
   job=GradingJob(schemaVersion=1,scope='declared',qualifiedId='synthetic/exr-test',scenario='starter',sourceSnapshotHash='a'*64,inventoryHash='b'*64,runtime='java25-junit-v1',imageDigest='sha256:'+'0'*64,sources=[{'projectRelativePath':'Student.java','submissionRelativePath':'Student.java','sha256':'a'*64}],trustedTests=[{'projectRelativePath':'AnswerTest.java','submissionRelativePath':'AnswerTest.java','sha256':'b'*64}],grading=self.cfg,sourceHashes={},testsHashes={});job.root=self.job
-  r=run_job(job,'container');self.assertEqual(r['classification'],'infrastructure-failure');self.assertNotIn('score',r)
+  r=run_job(job,'container',registry=self.runtime_registry);self.assertEqual(r['classification'],'infrastructure-failure');self.assertNotIn('score',r)
  def test_official_sandbox_denies_proc_trusted_write_and_root_exec(self):
   self._assert_official_sandbox()
  def test_official_sandbox_denies_trusted_write_when_host_uid_matches_sbuser(self):
@@ -76,7 +83,7 @@ class ContainerParity(unittest.TestCase):
   cfg=json.loads(json.dumps(self.cfg));cfg['limits']['outer-seconds']=1.0
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
   job=GradingJob(schemaVersion=1,scope='declared',qualifiedId='synthetic/exr-timeout',scenario='starter',sourceSnapshotHash='a'*64,inventoryHash='b'*64,runtime='java25-junit-v1',imageDigest=os.environ['PL_TEST_IMAGE'],sources=[{'projectRelativePath':'Student.java','submissionRelativePath':'Student.java','sha256':'a'*64}],trustedTests=[{'projectRelativePath':'AnswerTest.java','submissionRelativePath':'AnswerTest.java','sha256':'b'*64}],grading=cfg,sourceHashes={},testsHashes={});job.root=self.job
-  result=run_job(job,'container');self.assertEqual(result['classification'],'infrastructure-failure');self.assertNotIn('score',result)
+  result=run_job(job,'container',registry=self.runtime_registry);self.assertEqual(result['classification'],'infrastructure-failure');self.assertNotIn('score',result)
   inspection=subprocess.run(['docker','inspect',job.containerName],capture_output=True)
   subprocess.run(['docker','rm','--force',job.containerName],capture_output=True)
   self.assertNotEqual(inspection.returncode,0)

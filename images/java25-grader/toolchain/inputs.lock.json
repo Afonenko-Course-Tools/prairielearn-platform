@@ -10,7 +10,7 @@
   "helperBytes": 16760,
   "helperSourceSha256": "488b4f7b0872afa8b9e4944da7fdd179ba5e72b20b7eb1aa575cf1ad5fdefb1f",
   "runnerSha256": "05aa5dfe0889c48b57eacf665c4274ac18d9ac3b1a0f18f4a948cc09fba7a737",
-  "normalizerSha256": "7302d885662fad0783979391ad2befe91b8da4e2f03e2373c2d9ea60abbebc44",
+  "normalizerSha256": "730711b77cf1d8c75efa3d521c79271d58266ec4a1ad8ceb2fc36eb8d6f7c565",
   "expectedLockSha256": "c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca",
   "hardenedLockSha256": "bcde4c1c54c4c11cc6e55381a6bbf53df97968e644c986d3aa32676c552f231f",
   "package": {

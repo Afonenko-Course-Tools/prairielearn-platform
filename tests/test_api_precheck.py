@@ -1,4 +1,5 @@
 """Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
+from gradle_unit_fixtures import registry as unit_registry
 import json
 import os
 from pathlib import Path
@@ -129,7 +130,7 @@ class ApiDeliveryTests(unittest.TestCase):
    def s(name,target):return {'projectRelativePath':name,'submissionRelativePath':target,'sha256':hashlib.sha256((p/name).read_bytes()).hexdigest()}
    fact={'qualifiedId':'demo/exr-api','projectRoot':'p','check':{'runtime':'java25-junit-v1','api-precheck':{'files':['tests/ApiContract.java'],'entry':'ApiContract'},'verification-api-precheck':{'files':['student/public/PublicApi.java'],'entry':'PublicApi'}},'sources':[s('student/Student.java','Student.java')],'trustedTests':[s('tests/ApiContract.java','ApiContract.java'),s('tests/AnswerTest.java','AnswerTest.java')],'verificationTests':[s('student/public/PublicApi.java','public/PublicApi.java'),s('student/public/PublicTest.java','public/PublicTest.java')],'apiPrecheck':{'files':['ApiContract.java'],'entry':'ApiContract'},'verificationApiPrecheck':{'files':['public/PublicApi.java'],'entry':'PublicApi'}}
    manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
-   job=m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   job=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())
    try:
     self.assertEqual(job['grading']['apiPrecheck'],{'files':['ApiContract.java'],'entry':'ApiContract'})
     public=json.loads((job.root/'public-verification/tests/grading-job.json').read_text())
@@ -137,28 +138,28 @@ class ApiDeliveryTests(unittest.TestCase):
     saved_public=fact.pop('verificationApiPrecheck');saved_declaration=fact['check'].pop('verification-api-precheck')
     try:
      with self.assertRaises(m.JobError):
-      omitted=m.prepare_job(manifest,snapshot,'demo/exr-api','starter');shutil.rmtree(omitted.root)
+      omitted=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry());shutil.rmtree(omitted.root)
     finally:fact['verificationApiPrecheck']=saved_public;fact['check']['verification-api-precheck']=saved_declaration
-    result=m.run_job(job,'host');self.assertEqual(result['classification'],'student-api-mismatch');m.validate('check-result',result)
+    result=m.run_job(job,'host',registry=unit_registry());self.assertEqual(result['classification'],'student-api-mismatch');m.validate('check-result',result)
     self.assertEqual(result['publicResult']['classification'],'student-api-mismatch')
     wrong={**result,'score':0}
     with self.assertRaises(m.JobError):m.validate('check-result',wrong)
     # Native delivery binds API descriptor and source bytes exactly like JUnit.
     native=snapshot/'native';question=native/'questions/demo/exr-api';question.mkdir(parents=True)
-    image=m.load_runtime_registry()['profiles']['java25-junit-v1']['image']
+    image=unit_registry()['profiles']['java25-junit-v1']['image']
     (question/'info.json').write_text(json.dumps({'externalGradingOptions':{'image':image}}))
     shutil.copytree(job.root/'tests',question/'tests')
     shutil.copytree(job.root/'student',question/'serverFilesQuestion/starter')
     native_files={f.relative_to(native).as_posix():hashlib.sha256(f.read_bytes()).hexdigest() for f in native.rglob('*') if f.is_file()}
     delivery={'schemaVersion':3,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['demo/exr-api'],'verificationInventoryHash':m.digest(m.scenario_inventory(manifest,snapshot)),'files':native_files}
     delivery['deliveryHash']=m.digest(delivery);delivery['_root']=str(native)
-    delivered=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery)
+    delivered=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery,registry=unit_registry())
     try:self.assertEqual(delivered['grading']['apiPrecheck'],{'files':['ApiContract.java'],'entry':'ApiContract'})
     finally:shutil.rmtree(delivered.root)
     cfg=question/'tests/grading-job.json';bad=json.loads(cfg.read_text());bad['apiPrecheck']['entry']='Wrong';cfg.write_text(json.dumps(bad))
-    with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery)
+    with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery,registry=unit_registry())
    finally:shutil.rmtree(job.root)
    fact['apiPrecheck']['files']=['public/PublicApi.java']
-   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())
    fact['apiPrecheck']['files']=['ApiContract.java'];(p/'tests/ApiContract.java').write_text('tampered')
-   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())

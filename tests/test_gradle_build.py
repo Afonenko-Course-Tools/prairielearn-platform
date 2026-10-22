@@ -176,6 +176,13 @@ class NativeArtifactUnitTests(unittest.TestCase):
   stage=self.job/'private-stage';stage.mkdir();runtime_root=self.job/'private-runtime';runtime_root.mkdir()
   config=dict(self.cfg,javaBuild={'kind':'gradle-jar-v1','mainClass':'grade.Main','artifact':'gradeapp.jar'})
   lock={'jdk':{'home':'/unit-only-jdk'},'gradle':{'home':'/unit-only-gradle'}}
+  boundary={'roles':{'sbuser':{'uid':60001,'gid':60001,'groups':[60001]},'nativebuild':{'uid':os.geteuid(),'gid':os.getegid(),'groups':[os.getegid()]}},'buildDirectories':{'unit':'not a live toolchain'},'hardened':{'unit':'not a live toolchain'}}
+  # These are process doubles, including returned verify() lifetime. No host
+  # namespace/reaper/process scan is claimed or performed by this UNIT case.
+  self.enterContext(patch.object(grader,'_grading_boundary',return_value=boundary))
+  self.enterContext(patch.object(grader,'_enable_build_reaper'))
+  self.enterContext(patch.object(grader,'_build_process_records',return_value={}))
+  self.enterContext(patch.object(grader,'_finish_build_role',return_value={'uid':os.geteuid(),'remaining':[],'terminated':[],'reaped':[]}))
   def process(command,cwd,*args,**kwargs):
    if '--version' in command:return 0,'Gradle 9.8.0\n',None
    # The exact fixed offline argv is required at the process boundary.

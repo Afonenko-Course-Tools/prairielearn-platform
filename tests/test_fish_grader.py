@@ -1,3 +1,4 @@
+from gradle_unit_fixtures import unit_platform
 import importlib.util
 import json
 from pathlib import Path
@@ -8,7 +9,7 @@ import unittest
 ROOT=Path(__file__).parents[1]
 class FishGraderTests(unittest.TestCase):
     def test_all_cases_share_outer_deadline_as_student_timeout(self):
-        path=ROOT/'images/fish-git-grader/grade.py'
+        path=unit_platform(self)/'images/fish-git-grader/grade.py'
         spec=importlib.util.spec_from_file_location('fishdeadline',path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
         with tempfile.TemporaryDirectory() as tmp:
             job=Path(tmp);(job/'student').mkdir();(job/'tests').mkdir()
@@ -21,7 +22,7 @@ class FishGraderTests(unittest.TestCase):
             self.assertEqual(result['infrastructure'],'complete')
 
     def test_reference_and_wrong_answer_use_trusted_result_checks(self):
-        path=ROOT/'images/fish-git-grader/grade.py'
+        path=unit_platform(self)/'images/fish-git-grader/grade.py'
         self.assertTrue(path.is_file(),'fish runtime is absent')
         spec=importlib.util.spec_from_file_location('fishgrader',path);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
         with tempfile.TemporaryDirectory() as tmp:
