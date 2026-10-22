@@ -529,7 +529,8 @@ def _verify_native_toolchain():
 
 def _native_containment(job,private_paths):
     import pwd
-    if os.environ.get('PL_CONTAINMENT')!='official' or os.geteuid()!=0 or not Path('/.dockerenv').is_file() or not Path('/usr/local/bin/landlock_sandbox').is_file() or not shutil.which('runuser'):
+    runuser=shutil.which('runuser')
+    if os.environ.get('PL_CONTAINMENT')!='official' or os.geteuid()!=0 or not Path('/.dockerenv').is_file() or not Path('/usr/local/bin/landlock_sandbox').is_file() or not runuser:
         raise GraderError('Gradle build requires official isolated containment')
     if {p.name for p in Path('/sys/class/net').iterdir()}!={'lo'}:raise GraderError('Gradle build requires actual network isolation')
     _protect_input_identity(job)
@@ -537,7 +538,7 @@ def _native_containment(job,private_paths):
     if uid==0:raise GraderError('Privileged Gradle build is forbidden')
     job.chmod(0o711)
     for folder in ('student','tests'):(job/folder).chmod(0o700)
-    prefix=['runuser','--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
+    prefix=[runuser,'--preserve-environment','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
     # These are actual UID/readability checks, before the first Gradle child.
     code,text,reason=_run([*prefix,'/usr/bin/id','-u'],Path('/tmp'),5,1024,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8'})
     if code or reason or text.strip()!=str(uid):raise GraderError('Gradle child UID was not verified')

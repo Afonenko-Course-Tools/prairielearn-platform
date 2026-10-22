@@ -245,3 +245,23 @@ class NativeClosureTests(unittest.TestCase):
  def test_historical_default_and_unadmitted_toolchain_refuse_execution(self):
   with self.assertRaisesRegex(grader.GraderError,'runner checksum'):grader.preflight('java25-junit-v1')
   with self.assertRaisesRegex(grader.GraderError,'admission is incomplete'):grader._verify_native_toolchain()
+
+class NativeContainmentExecutableTests(unittest.TestCase):
+ def test_resolved_supervisor_executable_survives_minimal_child_path(self):
+  """Real process lookup only; mocked container facts are not sandbox proof."""
+  from types import SimpleNamespace
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);job=root/'job';job.mkdir()
+   for name in ('student','tests'):(job/name).mkdir()
+   selected=root/'sbin/runuser-selected';selected.parent.mkdir()
+   selected.write_text('#!/usr/bin/python3\nprint(1001)\n');selected.chmod(0o755)
+   real_run=grader._run;real_iterdir=Path.iterdir
+   def launch(command,cwd,*args,**kwargs):
+    self.assertEqual(kwargs['env']['PATH'],'/usr/bin:/bin')
+    self.assertEqual(command[0],str(selected),'Use the admitted absolute executable, not a second PATH lookup')
+    return real_run(command,cwd,*args,**kwargs)
+   def directories(path):
+    return iter([Path('/sys/class/net/lo')]) if path==Path('/sys/class/net') else real_iterdir(path)
+   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',return_value=True),patch.object(Path,'iterdir',directories),patch.object(grader.shutil,'which',return_value=str(selected)),patch.object(grader,'_protect_input_identity'),patch('pwd.getpwnam',return_value=SimpleNamespace(pw_uid=1001)),patch.object(grader,'_run',side_effect=launch):
+    uid,prefix=grader._native_containment(job,[])
+   self.assertEqual(uid,1001);self.assertEqual(prefix[0],str(selected))
