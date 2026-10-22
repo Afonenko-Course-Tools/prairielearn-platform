@@ -97,4 +97,5 @@ jobs:
           path: |
             runtime-image.json
             published-runtime-profiles.json
+            published-toolchain-lock.json
           if-no-files-found: error

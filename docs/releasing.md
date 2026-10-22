@@ -86,9 +86,23 @@ Candidate не допускается к staging независимо от ус�
    repository@sha256 digests; каждый digest проверяется docker pull.
 4. Receipt schemaVersion2 содержит sourceCommit/version, три images,
    delivery/results2 и runtimeProfilesSha256. published-runtime-profiles.json
-   связывает оба Java профиля с java25-grader, fish с fish-git-grader. Скачать artifact
+   связывает три Java профиля с java25-grader, fish с fish-git-grader. Producer проверяет
+   clean source HEAD/version и весь prepared context; Java pins берёт из его
+   проверенного baked view, fish pins — из фактических файлов того же source HEAD.
+   Скачать artifact
    platform-runtime-digests-VERSION, проверить sourceCommit и сохранить receipt и
-   registry как release assets. Metadata commit обновляет checked-in pins по этим
+   registry как release assets. `published-toolchain-lock.json` из того же artifact
+   содержит generated lock с SHA `c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca`.
+   В отдельной release assembly он занимает существующий путь
+   `runtime/gradle-jar-v1/toolchain-lock.json`, а registry — `runtime-profiles.json`;
+   остальные dependency files и оба runner берутся побайтово из указанного source commit.
+   Существующий `grading_job.runtime_evidence` должен проверить полную closure каждого
+   из четырёх профилей в этой assembly до её использования. Исходный checkout с
+   canonical prepared-status lock SHA `6c847e7b52f9280f7666bb7e78b781f761160c0323f34eb4832336f2938f7ca6`
+   сам по себе не соответствует published lock pin; canonical lock не переписывается,
+   иначе перестанет работать воспроизводимая подготовка. Эта assembly не является новым
+   runtime API или свидетельством выполненной публикации.
+   Metadata commit обновляет checked-in pins по этим
    фактическим digests; runner/library hashes сохраняются.
 5. Проверить pull/package access с целевого узла, выполнить native/container/Moodle
    acceptance на опубликованных pins. Локальный image config ID и опубликованный

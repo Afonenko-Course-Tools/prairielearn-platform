@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Проверенные registry digests и соответствие runtime-профилей образам."""
 import copy
+import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import sys
 
-PROFILE_IMAGES={'java25-junit-v1':'java','java25-mutation-v1':'java','fish-git-v1':'fish'}
+_spec=importlib.util.spec_from_file_location('publication_preparation',Path(__file__).with_name('prepare_native_toolchain.py'))
+preparation=importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(preparation)
+
+ROOT=Path(__file__).resolve().parents[1]
+PROFILE_IMAGES={'java25-junit-v1':'java','java25-mutation-v1':'java','java25-gradle-junit-v1':'java','fish-git-v1':'fish'}
 REPOSITORIES={'java':'java25-grader','fish':'fish-git-grader','community':'prairielearn-community-gateway'}
 
 def assign_images(registry,images):
@@ -19,9 +26,45 @@ def assign_images(registry,images):
         profile['image']=images[PROFILE_IMAGES[name]]
     return result
 
-if __name__=='__main__':
-    images={key:os.environ[key.upper()+'_DIGEST'] for key in REPOSITORIES}
-    registry=assign_images(json.loads(Path('runtime-profiles.json').read_text()),images)
-    Path('published-runtime-profiles.json').write_text(json.dumps(registry,indent=2)+'\n')
-    receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':3,'resultsSchemaVersion':2,'runtimeProfilesSha256':__import__('hashlib').sha256(Path('published-runtime-profiles.json').read_bytes()).hexdigest()}
-    Path('runtime-image.json').write_text(json.dumps(receipt,indent=2)+'\n')
+def release_registry(root,images,source_commit,version):
+    # The preparer is the single authority for generated Java profiles/locks.
+    # It checks the full closed context, clean HEAD, actual source pins and modes.
+    manifest=preparation.verify_context(root)
+    preparation.require(manifest['source']['commit']==source_commit,'Published source must equal prepared clean HEAD')
+    preparation.require(manifest['version']==version,'Published version must equal prepared VERSION')
+    prepared=root/'.native-toolchain'
+    registry=json.loads(preparation.read_regular(prepared/'runtime-profiles.json'))
+    preparation.require(set(registry['profiles'])==set(PROFILE_IMAGES)-{'fish-git-v1'},'Exactly three prepared Java profiles required')
+    historical=json.loads(preparation.read_regular(root/'runtime-profiles.json'))
+    preparation.require(set(historical['profiles'])=={'java25-junit-v1','java25-mutation-v1','fish-git-v1'},'Unexpected historical profile set')
+    fish=copy.deepcopy(historical['profiles']['fish-git-v1'])
+    bundle=root/fish['bundle']
+    preparation.require({p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}==set(fish['files']),'Fish dependency closure changed')
+    fish['runnerSha256']=preparation.digest_bytes(preparation.read_regular(root/fish['runner']))
+    fish['files']={name:preparation.digest_bytes(preparation.read_regular(bundle/name)) for name in fish['files']}
+    fish['sharedFiles']={name:preparation.digest_bytes(preparation.read_regular(root/name)) for name in fish['sharedFiles']}
+    registry['profiles']['fish-git-v1']=fish
+    registry=assign_images(registry,images)
+    lock=preparation.read_regular(prepared/'operator/expected-toolchain-lock.json')
+    preparation.require(preparation.digest_bytes(lock)==preparation.EXPECTED_LOCK,'Published generated lock mismatch')
+    # Recheck source/context after deriving fish hashes, before any output.
+    preparation.require(preparation.verify_context(root)==manifest,'Prepared inputs changed during publication metadata generation')
+    return registry,lock
+
+def main():
+    try:
+        images={key:os.environ[key.upper()+'_DIGEST'] for key in REPOSITORIES}
+        registry,lock=release_registry(ROOT,images,os.environ['GITHUB_SHA'],os.environ['VERSION'])
+        data=preparation.encode(registry)
+        receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':2,'resultsSchemaVersion':2,'runtimeProfilesSha256':preparation.digest_bytes(data)}
+        # Release assembly supplies this generated lock at the existing runtime
+        # path. The canonical prepared-status source lock remains unchanged.
+        Path('published-runtime-profiles.json').write_bytes(data)
+        Path('published-toolchain-lock.json').write_bytes(lock)
+        Path('runtime-image.json').write_bytes(preparation.encode(receipt))
+        return 0
+    except (ValueError,OSError,KeyError) as error:
+        print('Publication metadata refused: '+str(error),file=sys.stderr)
+        return 1
+
+if __name__=='__main__':raise SystemExit(main())
