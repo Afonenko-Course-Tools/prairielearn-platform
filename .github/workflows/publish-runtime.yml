@@ -50,11 +50,20 @@ jobs:
       - name: Подтвердить отсутствие всех трёх registry tags
         run: |
           for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE" "$FISH_IMAGE"; do bash tools/require-absent-image.sh "$IMAGE"; done
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - name: Подготовить тот же замкнутый Java toolchain context
+        run: |
+          python3 tools/prepare_native_toolchain.py --fetch
+          python3 tools/prepare_native_toolchain.py --verify-context
+          python3 tools/prepare_native_toolchain.py --write-build-context "$RUNNER_TEMP/native-build-context.tar"
+          docker pull ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17
       - name: Собрать и проверить Java
         run: |
           python3 -m pip install --requirement requirements.txt
           sudo apt-get update && sudo apt-get install -y --no-install-recommends fish
-          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
+          DOCKER_BUILDKIT=0 timeout --signal=TERM --kill-after=5s 360s docker build --pull=false --network=none --no-cache --rm=true --force-rm --memory=2g --memory-swap=2g --cpu-period=100000 --cpu-quota=200000 --ulimit=nofile=4096:4096 --ulimit=core=0:0 --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" - < "$RUNNER_TEMP/native-build-context.tar"
           TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
           PL_TEST_IMAGE="$TEST_IMAGE_ID" PL_API_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -v
       - name: Собрать и проверить Community

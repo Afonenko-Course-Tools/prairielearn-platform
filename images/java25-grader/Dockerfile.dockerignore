@@ -1,0 +1,12 @@
+# Только публичный runtime и замкнутый prepared context.
+**
+!runtime/
+!runtime/**
+!tools/
+!tools/prepare_native_jdk.py
+!images/
+!images/java25-grader/
+!images/java25-grader/Dockerfile
+!images/java25-grader/grade.py
+!.native-toolchain/
+!.native-toolchain/**

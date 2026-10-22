@@ -1,6 +1,8 @@
 # Версии Platform и публикация образов
 
-Образы **2.2.0** (`VERSION`) опубликованы из commit
+`VERSION` содержит **2.3.0** — локальную кандидатуру с новым opt-in Gradle JAR profile и совместимыми классическими JUnit-профилями. Публикация2.3.0 не выполнена; новые OCI digests отсутствуют.
+
+Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
 проверки metadata commit с фактическими pins.
 Интерфейс Tool2.1.0 и delivery/results2 сохраняются. Body/delivery/results используют
@@ -17,7 +19,8 @@
 | Enrollment, assignment и work launch | Закрытые named schemas; assignment.version — ревизия предоставления доступа |
 | Native course registry / image lock | pl-courses-v2 с institution key; legacy v1 только staging / pl-images-v1 |
 | Каталог учреждений | pl-institutions-v1; config/institutions.json; numeric ID разрешается native model |
-| Профили Java | java25-junit-v1 и java25-mutation-v1, образ java25-grader |
+| Опубликованные профили Java2.2.0 | java25-junit-v1 и java25-mutation-v1, образ java25-grader |
+| Кандидат Java2.3.0 | прежние два профиля и opt-in java25-gradle-junit-v1; отдельная локальная приёмка, без нового published pin |
 | Текстовый профиль | fish-git-v1, собственный образ fish-git-grader |
 | Java/JUnit | Java25, JUnit console1.14.1, JSON simple1.1.1 |
 
@@ -51,6 +54,16 @@ config ID образа. Экспортёр проверяет этот ID чер
 Candidate не допускается к staging независимо от успешного diagnostic receipt.
 Опубликованный repository@sha256 digest нужен для authoritative release проверки.
 
+## Подготовка кандидата2.3.0
+
+Из clean checkout Python3.14+ запускает `tools/prepare_native_toolchain.py --fetch`: фиксированные HTTPS inputs проверяются по size/SHA, public keyring → gpgv → InRelease → Packages → exact package stanza, затем извлекаются только три regular JNI-компонента. Для уже имеющегося owner-controlled cache команда без `--fetch` повторяет все проверки без сети. Installer работает только внутри trusted Dockerfile build; host не исполняет JDK/Gradle/installer и не устанавливает package.
+
+Команда `--write-build-context /private/fresh.tar` создаёт новый детерминированный allowlisted TAR; genuine Dockerfile build получает его через stdin. Поэтому содержимое checkout/cache за пределами COPY closure не передаётся builder даже в legacy режиме. Generated `.native-toolchain` содержит закрытый manifest,3 dependency-only Java profiles без image, generated316/319 locks, exact helper81cd и inputs одного source HEAD. `--verify-context` запрещает dirty/source drift, extra/missing/modified files и подменённый baked view. Прежние runtime receipts не копируются. Старые опубликованные registry/images.lock остаются действующими pins2.2.0.
+
+Новый отдельный CI job выполняет preparation, genuine clean Dockerfile build и конечный synthetic image smoke; старый contracts job15min сохранён. Python action закреплён точным [upstream commit](https://github.com/actions/setup-python/commit/83679a892e2d95755f2dac6acb0bfd1e9ac5d548). Initial fixed input/base fetch отделён от offline RUN. Выбран legacy builder `DOCKER_BUILDKIT=0`; если он недоступен либо фактическая resolver/offline граница не доказана, build gate открыт и fallback не допускается. Одних `--pull=false --network=none` недостаточно для приёмки. Конфигурация workflow сама по себе не является результатом CI.
+
+Перед разрешённой публикацией нужны независимый source/context review, actual clean build/readback319+316/716 и конечный runtime/privacy smoke. Прежняя локальная phase18 с восемью outcomes сохраняется только для своего exact source/image snapshot. После одобренной публикации нужны настоящий OCI digest, независимый pull/readback, coherent external registry и последующая course/Moodle приёмка. Локальный image ID или новый VERSION этого не заменяют.
+
 ## Проверенная последовательность публикации
 
 1. Независимо проверить точную вершину PR, три Dockerfile и publisher workflow;
@@ -59,7 +72,7 @@ Candidate не допускается к staging независимо от ус�
 2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=2.2.0 \
+   gh workflow run publish-runtime.yml --ref main -f version=2.3.0 \
      -f reviewed_commit=ACTUAL_MERGED_SHA
    ```
 

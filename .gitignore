@@ -11,3 +11,6 @@ __pycache__/
 private/
 jobs/
 node_modules/
+.native-toolchain/
+.native-toolchain-cache/
+.native-toolchain-preparing-*/

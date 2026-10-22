@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "baseImage": "ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17",
+  "platform": "linux/amd64",
+  "snapshot": "https://snapshot.ubuntu.com/ubuntu/20260916T161054Z/",
+  "signingFingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+  "keyringSha256": "80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31",
+  "sourceInventorySha256": "8338212fa46a417a14b4849b9f0d64c0cb8ad5785dfd5b48045b7e33457c20d3",
+  "helperSha256": "81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef",
+  "helperBytes": 16760,
+  "helperSourceSha256": "488b4f7b0872afa8b9e4944da7fdd179ba5e72b20b7eb1aa575cf1ad5fdefb1f",
+  "runnerSha256": "05aa5dfe0889c48b57eacf665c4274ac18d9ac3b1a0f18f4a948cc09fba7a737",
+  "normalizerSha256": "7302d885662fad0783979391ad2befe91b8da4e2f03e2373c2d9ea60abbebc44",
+  "expectedLockSha256": "c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca",
+  "hardenedLockSha256": "bcde4c1c54c4c11cc6e55381a6bbf53df97968e644c986d3aa32676c552f231f",
+  "package": {
+    "Package": "openjdk-25-jre-headless",
+    "Version": "25.0.4+7-1~24.04",
+    "Architecture": "amd64",
+    "Filename": "pool/universe/o/openjdk-25/openjdk-25-jre-headless_25.0.4+7-1~24.04_amd64.deb",
+    "Size": "58945368",
+    "SHA256": "6c964acad9b3c929edb97eba9acc799907a68c89011336e813c88ee26fb00e9c"
+  },
+  "inputs": {
+    "gradle-9.8.0-bin.zip": {
+      "url": "https://services.gradle.org/distributions/gradle-9.8.0-bin.zip",
+      "bytes": 151611662,
+      "sha256": "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c"
+    },
+    "ubuntu-InRelease": {
+      "url": "https://snapshot.ubuntu.com/ubuntu/20260916T161054Z/dists/noble-security/InRelease",
+      "bytes": 126127,
+      "sha256": "584a96d5479a65179e58ef96255cf5c9345b3ca35054f27c4a8dbe462e5030f3"
+    },
+    "ubuntu-Packages.xz": {
+      "url": "https://snapshot.ubuntu.com/ubuntu/20260916T161054Z/dists/noble-security/universe/binary-amd64/Packages.xz",
+      "bytes": 1207300,
+      "sha256": "a0a274e607303da840c074b4883a6883e8faed1914195d23836a20d3714d88ff"
+    },
+    "openjdk-25-jre-headless.deb": {
+      "url": "https://snapshot.ubuntu.com/ubuntu/20260916T161054Z/pool/universe/o/openjdk-25/openjdk-25-jre-headless_25.0.4+7-1~24.04_amd64.deb",
+      "bytes": 58945368,
+      "sha256": "6c964acad9b3c929edb97eba9acc799907a68c89011336e813c88ee26fb00e9c"
+    }
+  },
+  "components": {
+    "lib/libmanagement.so": {
+      "sha256": "5ec5217ca219a177c034e5c83c450bb9ecd7480db6226f5c693565b0bd2f1b62",
+      "bytes": 29352,
+      "mode": "0o644"
+    },
+    "lib/libmanagement_ext.so": {
+      "sha256": "b248a402d1ea88ca4c99a21c4caf79d88afc29053efb7681046a903b18b796a0",
+      "bytes": 41192,
+      "mode": "0o644"
+    },
+    "lib/libmanagement_agent.so": {
+      "sha256": "f244819f8d4b00c4afe20f01e48862fd3e34808e11f9cc9b8b52dab506e78083",
+      "bytes": 15648,
+      "mode": "0o644"
+    }
+  },
+  "componentELF": {
+    "libmanagement.so": {
+      "sha256": "5ec5217ca219a177c034e5c83c450bb9ecd7480db6226f5c693565b0bd2f1b62",
+      "needed": [
+        "libjava.so",
+        "libjvm.so",
+        "libc.so.6"
+      ],
+      "glibc": [
+        "GLIBC_2.2.5",
+        "GLIBC_2.3.4",
+        "GLIBC_2.4"
+      ]
+    },
+    "libmanagement_agent.so": {
+      "sha256": "f244819f8d4b00c4afe20f01e48862fd3e34808e11f9cc9b8b52dab506e78083",
+      "needed": [
+        "libjava.so",
+        "libc.so.6"
+      ],
+      "glibc": [
+        "GLIBC_2.2.5",
+        "GLIBC_2.33",
+        "GLIBC_2.4"
+      ]
+    },
+    "libmanagement_ext.so": {
+      "sha256": "b248a402d1ea88ca4c99a21c4caf79d88afc29053efb7681046a903b18b796a0",
+      "needed": [
+        "libjava.so",
+        "libjvm.so",
+        "libc.so.6"
+      ],
+      "glibc": [
+        "GLIBC_2.2.5",
+        "GLIBC_2.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.38",
+        "GLIBC_2.4"
+      ]
+    }
+  },
+  "existingDependencyPins": {
+    "libjava.so": "a053f358cfa0b9024451d5e35c7e843016bf9d6d5f1fe7661057499bf0add0f9",
+    "libjvm.so": "417f06962915828626e255b2c0c5ecc61fabfd58b411bc997821033327d8bae8",
+    "baseLibc": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf"
+  }
+}

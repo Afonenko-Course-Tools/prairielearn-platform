@@ -26,13 +26,7 @@ closure и artifact. Public student feedback это поле не содержи
 `check-course` сохраняет operator logs/manifest рядом с private report в
 `<report>.private-build-evidence/` до cleanup scratch.
 
-Текущий lock подтверждает официальный distribution archive и 716 regular files.
-Полный JDK/base-image admission остаётся открытым: status
-`prepared-archive-awaiting-image-admission` намеренно не допускает исполнение.
-Исторические published registry/image pins не обновлены. Новый image,
-изолированная offline сборка, exact tuple/export/receipt, CI и публикация
-требуют отдельных фактических доказательств. Синтетические fixtures unit tests
-не являются OCI image или доказательством настоящего Gradle execution.
+Source lock содержит ожидаемые319 JDK/716 Gradle files со статусом `prepared-completion-awaiting-image-admission`. Он не утверждает наличие нового опубликованного образа. В прежнем exact локальном snapshot фактически выполнены finite native сборки; перенос их результата на clean Dockerfile candidate требует отдельного readback и smoke. Исторические published registry/image pins2.2.0 не обновлены.
 
 
 ## Отдельные роли build и grading
@@ -68,3 +62,23 @@ Dockerfile требует закрытые `.native-toolchain` inputs, подг�
 файлов, не доказательство установки. Generated private baked view/installed lock
 принимаются только после actual preparation/readback и finite kernel/native gates.
 Исторические published registry/image pins не объявляются новым native candidate.
+
+## Версионная подготовка build context
+
+Предпосылки: clean Git checkout, Linux host, Python3.14+ (закрытый zstd reader), gpgv и безопасный owner-controlled cache. Один и тот же preparer используется локально и в CI:
+
+```sh
+# Только explicit initial preparation может получать fixed HTTPS inputs.
+python3 tools/prepare_native_toolchain.py --fetch
+# При готовом cache — повторная аутентификация и materialization без сети:
+# python3 tools/prepare_native_toolchain.py --cache /private/exact-cache
+python3 tools/prepare_native_toolchain.py --verify-context
+python3 tools/prepare_native_toolchain.py --write-build-context /private/fresh-context.tar
+# Выполнять только после допуска фактической offline builder boundary:
+DOCKER_BUILDKIT=0 docker build --pull=false --network=none --no-cache \
+  -f images/java25-grader/Dockerfile -t local/platform-native-toolchain:candidate - < /private/fresh-context.tar
+```
+
+Output `.native-toolchain` должен отсутствовать. Cache/outputs не принимают symlink, hardlink, special file, writable parent или collision; partial staging удаляется при отказе. Atomic no-replace публикация не заменяет существующий context. Public input pins/keyring/source inventory находятся в `images/java25-grader/toolchain/`; временный context/cache в Git не входят. Host не запускает installer/Java/Gradle, apt или maintainer scripts. Generated completion authority содержит только package/component provenance, без старых private execution receipts.
+
+Детерминированный TAR передаёт только публичный runtime/runner/normalizer и closed prepared payload. Installer создаёт fresh normalization/completion receipts, проверяет exact source/hardened316 → private319 relation и удаляет distribution ZIP/temporary components. Проверка `--verify-context` повторно выводит hashes из canonical source, поэтому изменение manifest не авторизует изменённый installer/helper. Отсутствие сетевых загрузок при build требует actual builder/resolver admission; flags сами по себе его не доказывают.
