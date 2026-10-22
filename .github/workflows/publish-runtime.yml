@@ -59,7 +59,7 @@ jobs:
           python3 tools/prepare_native_toolchain.py --verify-context
           python3 tools/prepare_native_toolchain.py --write-build-context "$RUNNER_TEMP/native-build-context.tar"
           docker pull ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17
-      - name: Подготовить host fish через официальный HTTPS mirror с конечными лимитами
+      - name: Установить fish из официального зеркала Ubuntu
         timeout-minutes: 5
         shell: bash
         run: |
