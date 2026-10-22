@@ -32,6 +32,6 @@ class NestedJvm(unittest.TestCase):
  }return 42;
  }}''')
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  result=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=30)
+  result=subprocess.run(['docker','run','--rm','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=30)
   self.assertEqual(result.returncode,0,result.stderr)
   actual=json.loads((self.job/'results/results.json').read_text());self.assertEqual(actual['score'],1,actual);self.assertEqual(actual['containment'],'official-landlock-sbuser')
