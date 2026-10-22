@@ -283,6 +283,117 @@
         "maxArchiveBytes"
       ],
       "additionalProperties": false
+    },
+    "publicCases": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "test": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          },
+          "input": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "state": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "action": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8192
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "\\S"
+          }
+        },
+        "required": [
+          "id",
+          "test",
+          "expected",
+          "name"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "input"
+            ]
+          },
+          {
+            "required": [
+              "state"
+            ]
+          },
+          {
+            "required": [
+              "action"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "properties": {
+        "requirement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "whatCheck": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "requirement",
+        "whatCheck"
+      ],
+      "additionalProperties": false
+    },
+    "javaBuild": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "gradle-jar-v1"
+        },
+        "mainClass": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$"
+        },
+        "artifact": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
+        }
+      },
+      "required": [
+        "kind",
+        "mainClass",
+        "artifact"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -320,7 +431,8 @@
           "runtime": {
             "enum": [
               "java25-junit-v1",
-              "fish-git-v1"
+              "fish-git-v1",
+              "java25-gradle-junit-v1"
             ]
           }
         },
@@ -341,7 +453,8 @@
           "runtime": {
             "enum": [
               "java25-junit-v1",
-              "java25-mutation-v1"
+              "java25-mutation-v1",
+              "java25-gradle-junit-v1"
             ]
           }
         }
@@ -368,7 +481,10 @@
       "then": {
         "properties": {
           "runtime": {
-            "const": "java25-junit-v1"
+            "enum": [
+              "java25-junit-v1",
+              "java25-gradle-junit-v1"
+            ]
           },
           "mode": {
             "const": "implementation"
@@ -388,11 +504,43 @@
       "then": {
         "properties": {
           "runtime": {
-            "const": "java25-junit-v1"
+            "enum": [
+              "java25-junit-v1",
+              "java25-gradle-junit-v1"
+            ]
           },
           "mode": {
             "const": "implementation"
           }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-gradle-junit-v1"
+          }
+        },
+        "required": [
+          "runtime"
+        ]
+      },
+      "then": {
+        "required": [
+          "javaBuild"
+        ],
+        "properties": {
+          "mode": {
+            "const": "implementation"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "javaBuild"
+          ]
         }
       }
     }

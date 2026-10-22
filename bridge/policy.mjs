@@ -72,28 +72,61 @@ export function assignmentTransition(request, prior) {
   return 'apply';
 }
 export function validateNativeGroups(work, groups) {
-  if (!Array.isArray(groups) || groups.length !== work.slots.length) fail('Native group inventory differs from delivery');
-  const mapping = new Map(), used = new Set();
-  for (const slot of work.slots) {
-    const matches = groups.filter(group => canonicalJSONString([...group.question_ids].sort()) === canonicalJSONString([...slot.candidates].sort()));
-    if (matches.length !== 1 || (matches[0].number_choose !== 1 && !(slot.selection==='fixed' && matches[0].number_choose===null)) || used.has(matches[0].group_id)) fail('Native group candidate set or selection differs from delivery');
-    if(matches[0].zone_number_choose!=null)fail('Zone subset selection is unsupported');
-    used.add(matches[0].group_id);mapping.set(slot.id,matches[0].group_id);
+  const expected=work.slots.reduce((n,slot)=>n+(slot.selection==='choice'?slot.candidates.length:1),0);
+  if(!Array.isArray(groups)||groups.length!==expected||new Set(groups.map(g=>g.group_id)).size!==groups.length)fail('Native group inventory differs from delivery');
+  const mapping=new Map(),used=new Set();
+  for(const slot of work.slots){
+    if(slot.selection==='choice'){
+      const matches=groups.filter(g=>g.question_ids.length===1&&slot.candidates.includes(g.question_ids[0]));
+      if(matches.length!==slot.candidates.length||new Set(matches.map(g=>g.question_ids[0])).size!==slot.candidates.length||new Set(matches.map(g=>g.zone_id)).size!==1)fail('Choice requires all candidates in one native zone');
+      const zone=matches[0].zone_id;
+      if(typeof zone!=='string'||groups.filter(g=>g.zone_id===zone).length!==matches.length||matches.some(g=>g.zone_best_questions!==1||g.zone_number_choose!==null||![null,1].includes(g.number_choose)||used.has(g.group_id)))fail('Choice requires a dedicated bestQuestions one zone without random selection');
+      matches.forEach(g=>used.add(g.group_id));mapping.set(slot.id,{choice:true,zoneId:zone,groups:matches});
+    }else{
+      if(!['fixed','random'].includes(slot.selection))fail('Unsupported slot selection');
+      const matches=groups.filter(g=>canonicalJSONString([...g.question_ids].sort())===canonicalJSONString([...slot.candidates].sort()));
+      if(matches.length!==1||matches[0].number_choose!==1&&!(slot.selection==='fixed'&&matches[0].number_choose===null)||used.has(matches[0].group_id))fail('Native group candidate set or selection differs from delivery');
+      if(matches[0].zone_number_choose!==null||matches[0].zone_best_questions!==null)fail('Regular slots cannot hide zone subset/best selection');
+      used.add(matches[0].group_id);mapping.set(slot.id,matches[0].group_id);
+    }
   }
+  if(used.size!==groups.length)fail('Unbound native group');
   return mapping;
+}
+function nativeCandidate(row,attempt){
+  if(![null,'complete','unanswered','saved','correct','incorrect','grading','invalid'].includes(row.native_status))fail('Invalid native candidate status');
+  if(row.attempt_id!==attempt.id||row.attempt_number!==attempt.number||typeof row.requires_manual_grading!=='boolean')fail('Native candidate attempt/manual status missing or different');
+  const status=row.requires_manual_grading?'grading':['complete','correct','incorrect'].includes(row.native_status)?'complete':row.native_status==='grading'?'grading':'unanswered';
+  if(row.score!==null&&(!Number.isFinite(row.score)||row.score<0||row.score>1))fail('Invalid candidate score');
+  for(const field of ['points','max_points'])if(row[field]!==null&&(!Number.isFinite(row[field])||row[field]<0))fail('Invalid candidate points');
+  if(row.points!==null&&row.max_points!==null&&row.points>row.max_points)fail('Candidate points exceed ceiling');
+  if(status==='complete'&&row.score===1&&(row.max_points===null||row.max_points<=0||row.points!==row.max_points))fail('Incomplete full candidate result');
+  return {qualifiedId:row.qualified_id,score:row.score,points:row.points,maxPoints:row.max_points,status};
 }
 export function assignedSlots(work, rows, attempt, groups) {
   const mapping=validateNativeGroups(work,groups);
-  if (!attempt) {if(rows.length)fail('Selection without native attempt');return [];}
-  if(rows.length!==work.slots.length)fail('Exactly one assigned question per slot required');
+  if(!attempt){if(rows.length)fail('Selection without native attempt');return []}
+  const expected=work.slots.reduce((n,s)=>n+(s.selection==='choice'?s.candidates.length:1),0);
+  if(rows.length!==expected)fail('Exact assigned candidate inventory required');
   const result=[],seen=new Set();
   for(const slot of work.slots){
-    const selected=rows.filter(row=>row.group_id===mapping.get(slot.id));
-    if(selected.length!==1)fail('Missing or multiple native selections');
-    const row=selected[0];
-    if(!slot.candidates.includes(row.qualified_id)||seen.has(row.qualified_id)||row.attempt_id!==attempt.id||row.attempt_number!==attempt.number)fail('Selected question or attempt differs from delivery');
-    seen.add(row.qualified_id);
-    result.push({slotId:slot.id,qualifiedId:row.qualified_id,score:row.score,points:row.points,maxPoints:row.max_points,status:['complete','correct','incorrect'].includes(row.native_status)?'complete':row.native_status==='grading'?'grading':'unanswered'});
+    const binding=mapping.get(slot.id);
+    if(slot.selection==='choice'){
+      const candidateRows=binding.groups.map(group=>{
+        const matching=rows.filter(row=>row.group_id===group.group_id);
+        if(matching.length!==1||matching[0].qualified_id!==group.question_ids[0]||seen.has(matching[0].qualified_id))fail('Missing, duplicate or foreign choice candidate');
+        seen.add(matching[0].qualified_id);return nativeCandidate(matching[0],attempt);
+      });
+      if(new Set(candidateRows.map(r=>r.maxPoints)).size!==1||candidateRows[0].maxPoints===null||candidateRows[0].maxPoints<=0)fail('Choice candidate weights differ');
+      const full=r=>r.status==='complete'&&r.score===1;
+      const ranked=[...candidateRows].sort((a,b)=>Number(full(b))-Number(full(a))||(b.score??-1)-(a.score??-1)||(a.qualifiedId<b.qualifiedId?-1:a.qualifiedId>b.qualifiedId?1:0));
+      const best={...ranked[0]};
+      result.push({slotId:slot.id,...best});
+    }else{
+      const selected=rows.filter(row=>row.group_id===binding);
+      if(selected.length!==1||!slot.candidates.includes(selected[0].qualified_id)||seen.has(selected[0].qualified_id))fail('Missing or multiple native selections');
+      seen.add(selected[0].qualified_id);result.push({slotId:slot.id,...nativeCandidate(selected[0],attempt)});
+    }
   }
   return result;
 }

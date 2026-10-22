@@ -4,6 +4,8 @@ COPY images/prairielearn/patch-localhost-cookies.py /tmp/patch-localhost-cookies
 RUN python3 /tmp/patch-localhost-cookies.py /PrairieLearn/apps/prairielearn/src/lib/config.ts /PrairieLearn/apps/prairielearn/dist/lib/config.js && rm /tmp/patch-localhost-cookies.py
 COPY images/prairielearn/patch-local-grader.py /tmp/patch-local-grader.py
 RUN python3 /tmp/patch-local-grader.py /PrairieLearn/apps/prairielearn/src/lib/externalGraderLocal.ts /PrairieLearn/apps/prairielearn/dist/lib/externalGraderLocal.js && rm /tmp/patch-local-grader.py
+COPY images/prairielearn/patch-gateway-name.py /tmp/patch-gateway-name.py
+RUN python3 /tmp/patch-gateway-name.py /PrairieLearn/apps/prairielearn/src/pages/authCallbackShib/authCallbackShib.ts /PrairieLearn/apps/prairielearn/dist/pages/authCallbackShib/authCallbackShib.js && rm /tmp/patch-gateway-name.py
 COPY bridge /PrairieLearn/apps/prairielearn/bridge
 COPY tools/sync-native-course.mjs tools/course-sync-policy.mjs tools/institution-bootstrap.mjs tools/bootstrap-native-course.mjs tools/native-course-payload.mjs /PrairieLearn/apps/prairielearn/tools/
 COPY config/institutions.json /PrairieLearn/apps/prairielearn/config/institutions.json

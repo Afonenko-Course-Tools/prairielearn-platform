@@ -1,4 +1,5 @@
 """Builder uses installed full exporter and preserves fresh candidate semantics."""
+from gradle_unit_fixtures import write_registry as unit_registry_file
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -10,7 +11,7 @@ class BuilderContract(unittest.TestCase):
  def test_existing_output_is_preserved(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);source=root/'source';source.mkdir();out=root/'out';out.mkdir();(out/'sentinel').write_text('keep')
-   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',out)
+   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',out,runtime_registry=unit_registry_file(root))
    self.assertEqual((out/'sentinel').read_text(),'keep')
  def test_old_shell_exporter_cannot_build(self):
   with tempfile.TemporaryDirectory() as d:
@@ -18,7 +19,7 @@ class BuilderContract(unittest.TestCase):
    for cmd in [['git','init','-q'],['git','config','user.name','Synthetic'],['git','config','user.email','synthetic@example.test'],['git','remote','add','origin','https://example.test/source.git']]:subprocess.run(cmd,cwd=source,check=True)
    p=source/'tasks/_extensions/course-prairielearn/entrypoints/export.ts';p.parent.mkdir(parents=True);p.write_text('// old exporter')
    subprocess.run(['git','add','.'],cwd=source,check=True);subprocess.run(['git','commit','-qm','Fixture'],cwd=source,check=True)
-   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',root/'out')
+   with self.assertRaises(builder.BuildError):builder.build_course(source,'tasks','pilot',root/'out',runtime_registry=unit_registry_file(root))
    self.assertFalse((root/'out').exists())
  def test_atomic_publication_does_not_overwrite_concurrent_directory(self):
   with tempfile.TemporaryDirectory() as d:
@@ -42,10 +43,10 @@ out=pathlib.Path(sys.argv[4]);out.mkdir();checks=pathlib.Path(sys.argv[8])
 q=out/'questions/synthetic/exr-a';q.mkdir(parents=True)
 (q/'info.json').write_text(json.dumps({'uuid':'00000000-0000-4000-8000-000000000001'}))
 (q/'question.html').write_text('Synthetic condition')
-delivery={'schemaVersion':2,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
+delivery={'schemaVersion':3,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['synthetic/exr-a']}
 (out/'delivery.json').write_text(json.dumps(delivery));checks.write_text(json.dumps({'schemaVersion':1,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[]}))
 ''');(binary/'quarto').chmod(0o755)
    output=root/'candidate'
-   with patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}):builder.build_course(source,'tasks','pilot',output)
+   with patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}):builder.build_course(source,'tasks','pilot',output,runtime_registry=unit_registry_file(root))
    self.assertTrue((output/'questions/synthetic/exr-a/info.json').is_file());self.assertTrue((root/'candidate-checks.json').is_file());self.assertFalse((output/'checks.json').exists())
    p=json.loads((output/'provenance.json').read_text());self.assertEqual(p['deliveryHash'],'c'*64);self.assertEqual(p['source']['dirty'],False)

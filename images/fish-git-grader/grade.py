@@ -34,7 +34,9 @@ def preflight():
     supervisor=types.ModuleType('bounded_supervisor')
     exec(compile((bundle/'supervisor.py').read_text(),str(bundle/'supervisor.py'),'exec'),supervisor.__dict__)
     if not shutil.which('fish'): raise GraderError('fish executable unavailable')
-    closure={**hashes,'runner/grade.py':runner}
+    for name,sha in profile['sharedFiles'].items():
+        if hashlib.sha256(file(ROOT,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
+    closure={**hashes,**profile['sharedFiles'],'runner/grade.py':runner}
     return supervisor,{'dependencyHashes':closure,'dependencyHash':digest(closure)}
 
 def grade(job_dir):
@@ -67,7 +69,7 @@ def grade(job_dir):
     if reason: raise GraderError('fish syntax tool failed')
     if code:
         return {**base,'studentCompilation':'failure','trustedCompilation':'not-run','gradable':False,'classification':'student-compilation-failure','format_errors':'Ошибка синтаксиса fish','output':output}
-    observations=[];output='';classification=None;started=time.monotonic()
+    observations=[];public_observations=[];output='';classification=None;started=time.monotonic()
     # Leave time for reporting before the container's hard deadline. A student
     # exceeding the shared execution budget must remain a student timeout.
     deadline=entered+max(0,config['limits']['outer-seconds']-.5)
@@ -90,9 +92,18 @@ def grade(job_dir):
             if reason:
                 classification='student-timeout' if reason=='timeout' else 'student-output-overflow'
                 break
-            for name,passed in checker.check(work,case):
-                if type(passed) is not bool: raise GraderError('Trusted check must return boolean')
-                observations.append((str(index)+': '+name,passed))
+            if code:
+                classification='student-runtime-failure'
+                break
+            for observation in checker.check(work,case):
+                if not isinstance(observation,(list,tuple)) or len(observation) not in (2,3):raise GraderError('Trusted check must return name/boolean and optional observed text')
+                name,passed=observation[:2]
+                if not isinstance(name,str) or type(passed) is not bool or len(observation)==3 and not isinstance(observation[2],str):raise GraderError('Invalid trusted observation')
+                binding=str(index)+': '+name
+                observations.append((binding,passed))
+                if len(observation)==3:
+                    for public in config.get('publicCases',[]):
+                        if public['test']==binding:public_observations.append({'id':public['id'],'test':binding,'actual':observation[2][:8192],'status':'passed' if passed else 'failed'})
     if classification:
         return {**base,'score':0,'classification':classification,'timed_out':classification=='student-timeout','output_limited':classification=='student-output-overflow','message':'Превышен предел выполнения ответа','output':output}
     if len(observations)<config['discovery']['min-executed']: raise GraderError('No trusted checks executed')
@@ -102,13 +113,21 @@ def grade(job_dir):
     elif config['scoring']['mode']!='weighted': raise GraderError('Unsupported fish scoring')
     raw={'score':score,'points':passed,'max_points':len(tests),'gradable':True,'message':'','output':output,'tests':tests}
     counts={'discovered':len(tests),'executed':len(tests),'passed':passed,'failed':len(tests)-passed,'skipped':0,'aborted':0,'containerFailures':0,'outcomes':{name:'successful' if ok else 'failed' for name,ok in observations}}
-    return {**base,'score':score,'maxPoints':len(tests),'classification':'success' if score==1 else 'behavior-failure','rawResult':raw,'counts':counts,'tests':tests,'output':output,'durations':{'execution':time.monotonic()-started}}
+    return {**base,'publicCaseObservations':public_observations,'score':score,'maxPoints':len(tests),'classification':'success' if score==1 else 'behavior-failure','rawResult':raw,'counts':counts,'tests':tests,'output':output,'durations':{'execution':time.monotonic()-started}}
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser();parser.add_argument('--verification',action='store_true',help='Private operator verification report');args=parser.parse_args()
     job=Path('/grade')
     try: result=grade(job);status=0
     except Exception as error:
         result={'gradable':False,'grading_error':True,'infrastructure':'failure','classification':'infrastructure-failure','message':str(error)};status=2
+    if not args.verification:
+        import runpy
+        boundary=runpy.run_path(str(ROOT/'runtime/student_feedback.py'))['student_result']
+        try:descriptor=json.loads(file(job/'tests','grading-job.json').read_text())
+        except (OSError,ValueError):descriptor={}
+        result=boundary(result,descriptor)
     folder=job/'results';folder.mkdir(exist_ok=True);folder.chmod(0o700)
     temporary=folder/'results.json.tmp';temporary.write_text(json.dumps(result,ensure_ascii=False));temporary.chmod(0o600)
     temporary.replace(folder/'results.json')

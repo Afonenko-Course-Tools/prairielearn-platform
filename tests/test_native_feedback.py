@@ -1,9 +1,11 @@
-"""The Platform result must reach the native external-grader feedback renderer."""
+"""Private verification observations and the separate native student boundary."""
 import json
 import os
 from pathlib import Path
 import unittest
 import test_grading_job as fixtures
+import runpy
+boundary=runpy.run_path(str(Path(__file__).resolve().parents[1]/"runtime/student_feedback.py"))["student_result"]
 
 class NativeFeedbackTests(unittest.TestCase):
  setUp=fixtures.JUnitJob.setUp
@@ -14,9 +16,11 @@ class NativeFeedbackTests(unittest.TestCase):
   self.capture(name,result)
   return result
  def capture(self,name,result):
+  native=boundary(result,self.cfg)
+  self.assertIn('feedback',native);self.assertNotIn('rawResult',native);self.assertNotIn('variants',native);self.assertNotIn('output',native)
   if os.environ.get('PL_FEEDBACK_CAPTURE_DIR'):
    output=Path(os.environ['PL_FEEDBACK_CAPTURE_DIR']);output.mkdir(parents=True,exist_ok=True)
-   (output/(name+'.json')).write_text(json.dumps(result,indent=2)+'\n')
+   (output/(name+'.json')).write_text(json.dumps(native,indent=2,ensure_ascii=False)+'\n')
  def test_missing_api_has_native_test_message(self):
   r=self.result('missing-api','public class Student {}')
   self.assertEqual(r['classification'],'behavior-failure');self.assertEqual(r['score'],0)

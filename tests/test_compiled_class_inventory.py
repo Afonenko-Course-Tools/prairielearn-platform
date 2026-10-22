@@ -1,6 +1,7 @@
 """Настоящие binary inventories вместо догадок по Java source: JDK25 и canaries."""
 from pathlib import Path
 import hashlib,json,subprocess,sys,tempfile,unittest
+from gradle_unit_fixtures import unit_platform
 ROOT=Path(__file__).resolve().parents[1]
 CASES=[]
 def case(name,**kw):CASES.append(dict(name=name,expected='success',api=True,**kw))
@@ -52,7 +53,7 @@ def execute(c,platform,output):
  cfg={'schemaVersion':1,'sourceFiles':list(source),'testFiles':list(tests),'mode':mode,'runtime':'java25-mutation-v1' if c.get('mutation') else 'java25-junit-v1','java':{'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']},'limits':{'outer-seconds':30,'compile-seconds':15,'run-seconds':5,'max-output-bytes':65536,'networking':False},'scoring':{'mode':'all-pass'},'discovery':{'min-executed':1,'allow-skipped':False}}
  if c.get('api'):cfg['apiPrecheck']={'files':['PublishedApi.java'],'entry':'PublishedApi'}
  if c.get('mutation'):cfg['variants']={'correct':['correct'],'mutants':['wrong']}
- (job/'tests/grading-job.json').write_text(json.dumps(cfg));argv=[sys.executable,str(platform/'images/java25-grader/grade.py'),'--job-dir',str(job)];run=subprocess.run(argv,capture_output=True,text=True,timeout=90);rp=job/'results/results.json';r=json.loads(rp.read_text()) if rp.exists() else {};errors=[]
+ (job/'tests/grading-job.json').write_text(json.dumps(cfg));argv=[sys.executable,str(platform/'images/java25-grader/grade.py'),'--job-dir',str(job),'--verification'];run=subprocess.run(argv,capture_output=True,text=True,timeout=90);rp=job/'results/results.json';r=json.loads(rp.read_text()) if rp.exists() else {};errors=[]
  if r.get('classification')!=c['expected']:errors.append('classification expected '+c['expected']+' observed '+str(r.get('classification')))
  if c['expected']=='success':
   if r.get('score')!=1 or not r.get('gradable'):errors.append('expected gradable score1')
@@ -78,7 +79,7 @@ class CompiledClassInventoryTests(unittest.TestCase):
 
 def install_case(case):
  def check(self):
-  result=execute(case,ROOT,self.output)
+  result=execute(case,unit_platform(self),self.output)
   self.assertTrue(result['passed'],json.dumps(result,ensure_ascii=False,indent=2))
  check.__doc__=case['name']
  setattr(CompiledClassInventoryTests,'test_'+case['name'].replace('-','_'),check)

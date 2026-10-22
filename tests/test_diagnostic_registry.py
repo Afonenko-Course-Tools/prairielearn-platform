@@ -8,11 +8,12 @@ import unittest
 from unittest.mock import patch
 import test_check_course as checks
 import test_build_course as builds
+from gradle_unit_fixtures import registry as unit_registry
 ROOT=Path(__file__).resolve().parents[1]
 
 class DiagnosticRegistry(unittest.TestCase):
  def test_explicit_registry_selects_candidate_and_host_runner_consistently(self):
-  m=checks.InventoryTests().module();registry=copy.deepcopy(m.load_runtime_registry());registry['profiles']['java25-junit-v1']['image']=None
+  m=checks.InventoryTests().module();registry=unit_registry();registry['profiles']['java25-junit-v1']['image']=None
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);project=root/'tasks/p';project.mkdir(parents=True)
    files={'S.java':'class S{}','T.java':'class T{}'}

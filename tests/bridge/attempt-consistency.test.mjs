@@ -4,9 +4,9 @@ import { completion, assignedSlots } from '../../bridge/policy.mjs';
 
 const source = await readFile(new URL('../../bridge/server.mjs', import.meta.url), 'utf8');
 const body = source.slice(source.indexOf('async function workResults(request) {'), source.indexOf('async function workLaunch(request) {'));
-const work = { id:'lab',slots:[{id:'fixture/lab/exr-q1',selection:'fixed',candidates:['fixture/q1'],assignment:{requirement:'required',workMode:'individual'}}],nativeGroups:[{group_id:'7',question_ids:['fixture/q1'],number_choose:null}],completion:{slotIds:['fixture/lab/exr-q1'],requiredSlotIds:['fixture/lab/exr-q1'],atLeast:1,fullyCompletedScore:1} };
+const work = { id:'lab',slots:[{id:'fixture/lab/exr-q1',selection:'fixed',candidates:['fixture/q1'],assignment:{requirement:'required',workMode:'individual'}}],nativeGroups:[{group_id:'7',question_ids:['fixture/q1'],number_choose:null,zone_number_choose:null,zone_best_questions:null}],completion:{slotIds:['fixture/lab/exr-q1'],requiredSlotIds:['fixture/lab/exr-q1'],atLeast:1,fullyCompletedScore:1} };
 const attempt = { id: '100', number: 1, points: 1, max_points: 4 };
-const authorized = { attempt_id: '100', attempt_number: 1, group_id:'7',qualified_id: 'fixture/q1', points: 2, max_points: 4, score: .5, native_status: 'complete', attempt_points: 2, attempt_max_points: 4 };
+const authorized = { attempt_id: '100', attempt_number: 1, group_id:'7',qualified_id: 'fixture/q1', points: 2, max_points: 4, score: .5, native_status: 'complete',requires_manual_grading:false, attempt_points: 2, attempt_max_points: 4 };
 const newer = { ...authorized, attempt_id: '200', attempt_number: 2, points: 4, score: 1, attempt_points: 4 };
 const request = { userUid: 'fixture-user', instance: 'fixture', deliveryHash: 'a'.repeat(64), workId: 'lab' };
 for (const captured of [attempt, null]) {

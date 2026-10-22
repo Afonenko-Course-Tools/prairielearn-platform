@@ -1,4 +1,5 @@
 """Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
+from gradle_unit_fixtures import registry as unit_registry
 import json
 import os
 from pathlib import Path
@@ -61,7 +62,8 @@ class ApiPrecheckTests(unittest.TestCase):
   with self.assertRaisesRegex(grader.GraderError,'API precheck compilation failed'):self.run_job()
  def test_trusted_test_defect_after_precheck_stays_infrastructure(self):
   (self.job/'tests/AnswerTest.java').write_text('broken trusted Java')
-  with self.assertRaisesRegex(grader.GraderError,'Trusted suite compilation failed'):self.run_job()
+  result=self.run_job();self.assertEqual(result['classification'],'infrastructure-failure');self.assertFalse(result['gradable']);self.assertTrue(result['grading_error']);self.assertNotIn('score',result)
+  self.assertEqual((result['studentCompilation'],result['trustedCompilation'],result['dependentExecution']),('success','failure','not-run'));self.assertIn('apiExecution',result['durations'])
  def test_metadata_does_not_initialize_student(self):
   self.check(METHOD+'api.expect(System.getProperty("api.probe.initialized")==null,"без инициализации","инициализирован");')
   (self.job/'student/Student.java').write_text('public class Student {static {System.setProperty("api.probe.initialized","yes");}public static int answer(){return 42;}}')
@@ -92,9 +94,12 @@ class ApiContainerTests(ApiPrecheckTests):
  def run_job(self):
   import subprocess
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  p=subprocess.run(['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE']],capture_output=True,text=True,timeout=45)
+  p=subprocess.run(['docker','run','--rm','--pull','never','--network','none','--cpus','0.9','--memory','512m','--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_API_TEST_IMAGE'],'--verification'],capture_output=True,text=True,timeout=45)
   r=json.loads((self.job/'results/results.json').read_text())
-  if r.get('infrastructure')=='failure':raise grader.GraderError(r.get('message','container infrastructure failed'))
+  if r.get('infrastructure')=='failure':
+   self.assertEqual(p.returncode,2,p.stderr)
+   if (r.get('classification'),r.get('studentCompilation'),r.get('trustedCompilation'),r.get('dependentExecution'))==('infrastructure-failure','success','failure','not-run'):return r
+   raise grader.GraderError(r.get('message','container infrastructure failed'))
   self.assertEqual(p.returncode,0,p.stderr)
   return r
  def test_precheck_official_sandbox_cannot_read_proc_or_write_trusted(self):
@@ -125,7 +130,7 @@ class ApiDeliveryTests(unittest.TestCase):
    def s(name,target):return {'projectRelativePath':name,'submissionRelativePath':target,'sha256':hashlib.sha256((p/name).read_bytes()).hexdigest()}
    fact={'qualifiedId':'demo/exr-api','projectRoot':'p','check':{'runtime':'java25-junit-v1','api-precheck':{'files':['tests/ApiContract.java'],'entry':'ApiContract'},'verification-api-precheck':{'files':['student/public/PublicApi.java'],'entry':'PublicApi'}},'sources':[s('student/Student.java','Student.java')],'trustedTests':[s('tests/ApiContract.java','ApiContract.java'),s('tests/AnswerTest.java','AnswerTest.java')],'verificationTests':[s('student/public/PublicApi.java','public/PublicApi.java'),s('student/public/PublicTest.java','public/PublicTest.java')],'apiPrecheck':{'files':['ApiContract.java'],'entry':'ApiContract'},'verificationApiPrecheck':{'files':['public/PublicApi.java'],'entry':'PublicApi'}}
    manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
-   job=m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   job=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())
    try:
     self.assertEqual(job['grading']['apiPrecheck'],{'files':['ApiContract.java'],'entry':'ApiContract'})
     public=json.loads((job.root/'public-verification/tests/grading-job.json').read_text())
@@ -133,28 +138,28 @@ class ApiDeliveryTests(unittest.TestCase):
     saved_public=fact.pop('verificationApiPrecheck');saved_declaration=fact['check'].pop('verification-api-precheck')
     try:
      with self.assertRaises(m.JobError):
-      omitted=m.prepare_job(manifest,snapshot,'demo/exr-api','starter');shutil.rmtree(omitted.root)
+      omitted=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry());shutil.rmtree(omitted.root)
     finally:fact['verificationApiPrecheck']=saved_public;fact['check']['verification-api-precheck']=saved_declaration
-    result=m.run_job(job,'host');self.assertEqual(result['classification'],'student-api-mismatch');m.validate('check-result',result)
+    result=m.run_job(job,'host',registry=unit_registry());self.assertEqual(result['classification'],'student-api-mismatch');m.validate('check-result',result)
     self.assertEqual(result['publicResult']['classification'],'student-api-mismatch')
     wrong={**result,'score':0}
     with self.assertRaises(m.JobError):m.validate('check-result',wrong)
     # Native delivery binds API descriptor and source bytes exactly like JUnit.
     native=snapshot/'native';question=native/'questions/demo/exr-api';question.mkdir(parents=True)
-    image=m.load_runtime_registry()['profiles']['java25-junit-v1']['image']
+    image=unit_registry()['profiles']['java25-junit-v1']['image']
     (question/'info.json').write_text(json.dumps({'externalGradingOptions':{'image':image}}))
     shutil.copytree(job.root/'tests',question/'tests')
     shutil.copytree(job.root/'student',question/'serverFilesQuestion/starter')
     native_files={f.relative_to(native).as_posix():hashlib.sha256(f.read_bytes()).hexdigest() for f in native.rglob('*') if f.is_file()}
-    delivery={'schemaVersion':2,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['demo/exr-api'],'verificationInventoryHash':m.digest(m.scenario_inventory(manifest,snapshot)),'files':native_files}
+    delivery={'schemaVersion':3,'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'questions':['demo/exr-api'],'verificationInventoryHash':m.digest(m.scenario_inventory(manifest,snapshot)),'files':native_files}
     delivery['deliveryHash']=m.digest(delivery);delivery['_root']=str(native)
-    delivered=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery)
+    delivered=m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery,registry=unit_registry())
     try:self.assertEqual(delivered['grading']['apiPrecheck'],{'files':['ApiContract.java'],'entry':'ApiContract'})
     finally:shutil.rmtree(delivered.root)
     cfg=question/'tests/grading-job.json';bad=json.loads(cfg.read_text());bad['apiPrecheck']['entry']='Wrong';cfg.write_text(json.dumps(bad))
-    with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery)
+    with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',scope='delivery',delivery=delivery,registry=unit_registry())
    finally:shutil.rmtree(job.root)
    fact['apiPrecheck']['files']=['public/PublicApi.java']
-   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())
    fact['apiPrecheck']['files']=['ApiContract.java'];(p/'tests/ApiContract.java').write_text('tampered')
-   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter')
+   with self.assertRaises(m.JobError):m.prepare_job(manifest,snapshot,'demo/exr-api','starter',registry=unit_registry())

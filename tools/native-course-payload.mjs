@@ -1,6 +1,7 @@
 import {readFile,lstat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {isAbsolute,resolve,basename} from 'node:path';
+import {bridgeDeliverySchema} from '../bridge/delivery.mjs';
 import {canonicalJSONString} from '../bridge/policy.mjs';
 
 /** Чтение immutable payload до соединения с native БД. */
@@ -14,7 +15,8 @@ export async function readNativeCoursePayload(path) {
  }
  const delivery=JSON.parse(await containedFile('delivery.json'));
  const info=JSON.parse(await containedFile('infoCourse.json'));
- if(!delivery||delivery.schemaVersion!==2||!delivery.files||typeof delivery.files!=='object'||Array.isArray(delivery.files)||!Object.hasOwn(delivery.files,'infoCourse.json'))throw new Error('Course metadata absent from native v2 inventory');
+ if(!delivery||delivery.schemaVersion!==3||!delivery.files||typeof delivery.files!=='object'||Array.isArray(delivery.files)||!Object.hasOwn(delivery.files,'infoCourse.json'))throw new Error('Course metadata absent from native v3 inventory');
+ bridgeDeliverySchema.parse(delivery);
  const {deliveryHash,...payload}=delivery;
  if(createHash('sha256').update(canonicalJSONString(payload)).digest('hex')!==deliveryHash||basename(path)!==deliveryHash)throw new Error('Delivery hash mismatch');
  if(delivery.candidate)throw new Error('Candidate payload requires separate diagnostic verification; production bootstrap rejected');

@@ -1,6 +1,11 @@
 .git
-.superpowers
+node_modules
+**/__pycache__
+**/*.pyc
+.pytest_cache
 .runtime
-__pycache__
-*.pyc
 private
+jobs
+.env
+.native-toolchain-cache
+.native-toolchain-preparing-*

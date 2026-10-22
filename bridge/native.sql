@@ -61,7 +61,7 @@ ORDER BY ai.number DESC,ai.id DESC LIMIT 1;
 -- BLOCK select_results
 SELECT ai.id::text AS attempt_id,ai.number AS attempt_number,q.qid AS qualified_id,
  aq.alternative_group_id::text AS group_id,iq.points,aq.max_points,
- iq.score_perc/100.0 AS score,iq.status::text AS native_status
+ iq.score_perc/100.0 AS score,iq.status::text AS native_status,iq.requires_manual_grading
 FROM assessment_instances ai JOIN assessments a ON a.id=ai.assessment_id
 JOIN instance_questions iq ON iq.assessment_instance_id=ai.id
 JOIN assessment_questions aq ON aq.id=iq.assessment_question_id AND aq.deleted_at IS NULL AND aq.assessment_id=a.id
@@ -71,7 +71,7 @@ AND a.tid=$work_id AND a.deleted_at IS NULL AND ai.user_id=$user_id AND ai.team_
 ORDER BY iq.id;
 
 -- BLOCK validate_assessment
-SELECT ag.id::text AS group_id,ag.number_choose,z.number_choose AS zone_number_choose,
+SELECT ag.id::text AS group_id,ag.number_choose,z.id::text AS zone_id,z.best_questions AS zone_best_questions,z.number_choose AS zone_number_choose,
  array_agg(q.qid ORDER BY q.qid) AS question_ids
 FROM assessments a JOIN assessment_questions aq ON aq.assessment_id=a.id AND aq.deleted_at IS NULL
 LEFT JOIN alternative_groups ag ON ag.id=aq.alternative_group_id AND ag.assessment_id=a.id
@@ -130,7 +130,7 @@ SELECT
   iq.points,
   aq.max_points,
   iq.score_perc / 100.0 AS score,
-  iq.status::text AS native_status
+  iq.status::text AS native_status,iq.requires_manual_grading
 FROM
   assessment_instances ai
   JOIN assessments a ON a.id = ai.assessment_id

@@ -11,6 +11,10 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+import importlib.util
+
+_private_spec=importlib.util.spec_from_file_location('private_source',Path(__file__).with_name('prepare-private-source.py'))
+_private=importlib.util.module_from_spec(_private_spec);_private_spec.loader.exec_module(_private)
 
 PLATFORM = Path(__file__).resolve().parents[1]
 ID = re.compile(r'[a-z][a-z0-9-]*\Z')
@@ -121,14 +125,21 @@ def publish_directory(source, destination):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None) -> None:
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, staging_receipt=None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
     if not output.parent.is_dir() or output.parent.resolve()!=output.parent:raise BuildError('Output parent must be real existing directory')
     if git(source,'status','--porcelain','--untracked-files=all'):raise BuildError('Source checkout must be clean before export')
-    repository=git(source,'remote','get-url','origin')
-    if not re.fullmatch(r'https://[^/@\s]+/[^\s]+',repository):raise BuildError('Origin must be credential-free HTTPS')
+    staging=None
+    if staging_receipt:
+        try:staging=_private.validate(source,staging_receipt)
+        except (_private.StageError,OSError) as error:raise BuildError('Private staging receipt validation failed') from error
+        if staging['publicBase']['book']!=book:raise BuildError('Staging receipt book mismatch')
+        repository=staging['publicBase']['repository']
+    else:
+        repository=git(source,'remote','get-url','origin')
+        if not re.fullmatch(r'https://[^/@\s]+/[^\s]+',repository):raise BuildError('Origin must be credential-free HTTPS')
     commit=git(source,'rev-parse','HEAD');root=relative_path(source,book)
     entries=[root/'_extensions/course-prairielearn/entrypoints/export-course.ts',root/'_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export-course.ts']
     entries=[p for p in entries if p.is_file() and not p.is_symlink()]
@@ -138,16 +149,24 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
         command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
         if candidate_image:command+=['--candidate-image',candidate_image]
+        if staging:command+=['--staging-receipt',str(Path(staging_receipt).absolute())]
         try:subprocess.run(command,cwd=source,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
         files=tree(native)
         if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
         delivery=read_json(native/'delivery.json');manifest=read_json(checks)
-        if delivery.get('schemaVersion')!=2 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
+        if delivery.get('schemaVersion')!=3 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
         validate_uuids_and_assessments(native,delivery['questions'])
         provenance={'schema':'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':{'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
-        write_json(native/'provenance.json',provenance)
+        if staging:
+            provenance['source']={'mode':'private-stage','publicBase':staging['publicBase'],'privateStage':staging['privateStage'],'stagingReceiptSha256':hashlib.sha256(Path(staging_receipt).read_bytes()).hexdigest(),'materialization':staging['materialization'],'seedFiles':staging['seedFiles'],'seedStorage':staging['seedStorage'],'dirty':False,'book':book,'instance':instance}
         if git(source,'status','--porcelain','--untracked-files=all'):raise BuildError('Exporter changed clean source')
+        if staging:
+            try:
+                if _private.validate(source,staging_receipt,allow_runtime=True)!=staging:raise _private.StageError('Receipt changed')
+                provenance['source']['runtimeInventory']=_private.runtime_inventory(source,staging)
+            except (_private.StageError,OSError) as error:raise BuildError('Exporter changed private staging inventory') from error
+        write_json(native/'provenance.json',provenance)
         # Checks inventory stays private outside native payload.
         checks_output=output.parent/(output.name+'-checks.json')
         if checks_output.exists():raise BuildError('Private checks output must be fresh')
@@ -160,7 +179,7 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');args=parser.parse_args()
-    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--staging-receipt',type=Path);args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.staging_receipt)
     except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
 if __name__=='__main__':main()

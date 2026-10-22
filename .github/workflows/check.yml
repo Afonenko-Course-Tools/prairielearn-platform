@@ -21,8 +21,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends fish
+      - name: Подготовить закреплённые Python зависимости проверок
+        run: |
+          python3 -m venv "$RUNNER_TEMP/platform-ci"
+          "$RUNNER_TEMP/platform-ci/bin/python" -m pip install --requirement requirements.txt
+          echo "$RUNNER_TEMP/platform-ci/bin" >> "$GITHUB_PATH"
       - name: Проверить native bridge и fail-closed patches
         run: |
+          npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/bridge/*.test.mjs
           python3 tests/bridge/cookie-domain.test.py
           python3 tests/bridge/grader-patch.test.py
@@ -36,3 +42,33 @@ jobs:
           echo 'public class CompilerReady {}' > "$TASK_CI_WARMUP_DIR/CompilerReady.java"
           javac --release 25 -d "$TASK_CI_WARMUP_DIR" "$TASK_CI_WARMUP_DIR/CompilerReady.java"
           python3 -m unittest discover -s tests -v
+
+  native-toolchain-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - name: Проверить границы подготовки
+        run: python3 -m unittest discover -s tests -p test_native_toolchain_preparation.py -v
+      - name: Подготовить фиксированные публичные inputs и base
+        run: |
+          python3 tools/prepare_native_toolchain.py --fetch
+          python3 tools/prepare_native_toolchain.py --verify-context
+          python3 tools/prepare_native_toolchain.py --write-build-context "$RUNNER_TEMP/native-build-context.tar"
+          docker pull ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17
+      - name: Выполнить clean Dockerfile build без сетевых RUN
+        env:
+          DOCKER_BUILDKIT: '0'
+        run: |
+          docker version
+          docker image inspect ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17
+          timeout --signal=TERM --kill-after=5s 360s docker build --pull=false --network=none --no-cache --rm=true --force-rm --memory=2g --memory-swap=2g --cpu-period=100000 --cpu-quota=200000 --ulimit=nofile=4096:4096 --ulimit=core=0:0 -f images/java25-grader/Dockerfile -t local/platform-native-toolchain:ci - < "$RUNNER_TEMP/native-build-context.tar"
+          python3 tools/prepare_native_toolchain.py --verify-context
+      - name: Проверить независимый readback и конечный synthetic runtime smoke
+        run: |
+          PL_NATIVE_PREPARED_IMAGE="$(docker image inspect local/platform-native-toolchain:ci --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_native_toolchain_image.py -v

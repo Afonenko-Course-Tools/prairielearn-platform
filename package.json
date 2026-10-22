@@ -1,0 +1,8 @@
+{
+  "name": "prairielearn-platform-checks",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "zod": "4.6.5"
+  }
+}

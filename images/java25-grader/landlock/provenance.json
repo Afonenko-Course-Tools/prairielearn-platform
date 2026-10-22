@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "component": "landlock_sandbox",
+  "modifiedDate": "2026-10-22",
+  "upstream": {
+    "repository": "https://github.com/PrairieLearn/PrairieLearn",
+    "path": "graders/java/sandbox.c",
+    "commit": "7ab76051b1957a4dd4717f1ec4c6087d1da8b7cf",
+    "gitBlobSHA1": "51ba7f2d161db4a18dd59e7f4140f53543479a44",
+    "sha256": "d66307407799c6f838e677adb0448ab85c9012fcca1c7202266e5338926a431a",
+    "bytes": 4702
+  },
+  "derivedSource": {
+    "path": "images/java25-grader/landlock/sandbox.c",
+    "sha256": "488b4f7b0872afa8b9e4944da7fdd179ba5e72b20b7eb1aa575cf1ad5fdefb1f"
+  },
+  "generatedBinary": {
+    "runtimePath": "/usr/local/bin/landlock_sandbox",
+    "sha256": "81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef",
+    "bytes": 16760,
+    "sourceBeforeAfterVerified": true,
+    "recipe": [
+      "gcc",
+      "-std=c11",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-fPIE",
+      "-pie",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-Wl,-z,relro,-z,now,-z,noexecstack",
+      "-MD",
+      "-MF",
+      "<private-output>/helper.d",
+      "images/java25-grader/landlock/sandbox.c",
+      "-o",
+      "<private-output>/landlock_sandbox"
+    ]
+  },
+  "upstreamDiffSHA256": "68586da7ef826b00985a13ac82f59372ce5440b8283e2be33a578c06a23a89aa",
+  "licenseNotices": {
+    "path": "images/java25-grader/landlock/PRAIRIELEARN-LICENSE",
+    "sha256": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
+    "copiedFromExistingRepositoryPath": "schemas/native-upstream/PRAIRIELEARN-LICENSE",
+    "existingUpstreamLicenseSnapshotCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6"
+  },
+  "oldELFReproducibilityClaim": false,
+  "newELFExecutedAtSourceReview": false
+}

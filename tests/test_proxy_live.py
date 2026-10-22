@@ -15,9 +15,9 @@ class ProxyIntegration(unittest.TestCase):
     def test_native_path_and_query_are_preserved(self):
         response=self.request('/pl/example?x=1');self.assertEqual(response.status,200);self.assertEqual(json.loads(response.read())['path'],'/pl/example?x=1')
     def test_client_identity_and_forwarding_headers_are_stripped(self):
-        response=self.request('/pl/example',{'X-Trust-Auth-Uid':'forged@example.test','X-Trust-Auth-Name':'Forged','X-Trust-Auth-Uin':'fake','X-Forwarded-For':'1.2.3.4','X-Forwarded-Proto':'http','Forwarded':'for=1.2.3.4'})
+        response=self.request('/pl/example',{'X-Trust-Auth-Uid':'forged@example.test','X-Trust-Auth-Name':'Forged','X-Trust-Auth-Name-UTF8-B64':'v1.Rm9yZ2Vk','X-Trust-Auth-Uin':'fake','X-Forwarded-For':'1.2.3.4','X-Forwarded-Proto':'http','Forwarded':'for=1.2.3.4'})
         headers={k.lower():v for k,v in json.loads(response.read())['headers'].items()}
-        for name in ['x-trust-auth-uid','x-trust-auth-name','x-trust-auth-uin','forwarded']:self.assertNotIn(name,headers)
+        for name in ['x-trust-auth-uid','x-trust-auth-name','x-trust-auth-name-utf8-b64','x-trust-auth-uin','forwarded']:self.assertNotIn(name,headers)
         self.assertNotEqual(headers['x-forwarded-for'],'1.2.3.4');self.assertEqual(headers['x-forwarded-proto'],'https')
     def test_auth_routes_fail_closed(self):
         for path in ['/pl/shibcallback','/pl/shibcallback?ticket=forged','/pl/shibcallback/extra','/gateway','/gateway/launch']:
