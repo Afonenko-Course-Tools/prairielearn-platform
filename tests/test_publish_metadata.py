@@ -117,6 +117,29 @@ class PublishedMetadata(unittest.TestCase):
             with self.assertRaises(job.JobError):
                 job.runtime_evidence('java25-gradle-junit-v1', registry)
 
+    def test_pure_derivation_matches_preparer_and_publisher_keeps_context_guards(self):
+        from unittest.mock import patch
+        spec=importlib.util.spec_from_file_location('unit_pure_publisher',ROOT/'tools/publish-receipt.py')
+        publication=importlib.util.module_from_spec(spec);spec.loader.exec_module(publication)
+        prep=publication.preparation
+        lock,_=prep.generated_locks(json.loads((ROOT/'runtime/gradle-jar-v1/toolchain-lock.json').read_bytes()))
+        expected=prep.baked_view(ROOT,lock)
+        expected['profiles']['fish-git-v1']=prep._fish_view(ROOT)['profiles']['fish-git-v1']
+        registry,actual_lock=publication.derive_release_registry(ROOT,IMAGES)
+        self.assertEqual(registry,publication.assign_images(expected,IMAGES));self.assertEqual(actual_lock,lock)
+        manifest={'source':{'commit':'a'*40},'version':'2.3.0'}
+        with patch.object(prep,'verify_context',return_value=manifest) as verify:
+            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),(registry,lock));self.assertEqual(verify.call_count,2)
+        with patch.object(prep,'verify_context',side_effect=[manifest,{'changed':True}]),self.assertRaisesRegex(ValueError,'Prepared inputs changed'):
+            publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0')
+        def extra_profile(path):
+            data=path.read_bytes()
+            if path==ROOT/'runtime-profiles.json':
+                value=json.loads(data);value['profiles']['extra']={};data=json.dumps(value).encode()
+            return data
+        with self.assertRaisesRegex(ValueError,'Unexpected historical profile set'):
+            publication.derive_release_registry(ROOT,IMAGES,extra_profile)
+
     def test_wrong_repository_digest_is_refused(self):
         self.assert_refused({'JAVA_DIGEST': IMAGES['fish']})
 

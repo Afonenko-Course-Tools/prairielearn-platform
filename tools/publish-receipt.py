@@ -26,23 +26,22 @@ def assign_images(registry,images):
         profile['image']=images[PROFILE_IMAGES[name]]
     return result
 
+def derive_release_registry(root,images,read=None):
+    """Одна чистая derivation для publisher и reader pinned Git metadata."""
+    read=read or preparation.read_regular
+    historical=json.loads(read(root/'runtime-profiles.json'))
+    preparation.require(set(historical['profiles'])=={'java25-junit-v1','java25-mutation-v1','fish-git-v1'},'Unexpected historical profile set')
+    expected,_=preparation.generated_locks(json.loads(read(root/'runtime/gradle-jar-v1/toolchain-lock.json')))
+    registry=preparation.baked_view(root,expected,read)
+    registry['profiles']['fish-git-v1']=preparation._fish_view(root,read)['profiles']['fish-git-v1']
+    return assign_images(registry,images),expected
+
 def release_registry(root,images,source_commit,version):
-    # The preparer is the single authority for generated Java profiles/locks.
-    # It checks the full closed context, clean HEAD, actual source pins and modes.
+    # Publisher сохраняет прежние authenticated preparation/clean-source guards.
     manifest=preparation.verify_context(root)
     preparation.require(manifest['source']['commit']==source_commit,'Published source must equal prepared clean HEAD')
     preparation.require(manifest['version']==version,'Published version must equal prepared VERSION')
-    prepared=root/'.native-toolchain'
-    registry=json.loads(preparation.read_regular(prepared/'runtime-profiles.json'))
-    preparation.require(set(registry['profiles'])==set(PROFILE_IMAGES)-{'fish-git-v1'},'Exactly three prepared Java profiles required')
-    historical=json.loads(preparation.read_regular(root/'runtime-profiles.json'))
-    preparation.require(set(historical['profiles'])=={'java25-junit-v1','java25-mutation-v1','fish-git-v1'},'Unexpected historical profile set')
-    fish=json.loads(preparation.read_regular(prepared/'fish-runtime-profiles.json'))['profiles']['fish-git-v1']
-    registry['profiles']['fish-git-v1']=fish
-    registry=assign_images(registry,images)
-    lock=preparation.read_regular(prepared/'operator/expected-toolchain-lock.json')
-    preparation.require(preparation.digest_bytes(lock)==preparation.EXPECTED_LOCK,'Published generated lock mismatch')
-    # Recheck source/context after deriving fish hashes, before any output.
+    registry,lock=derive_release_registry(root,images)
     preparation.require(preparation.verify_context(root)==manifest,'Prepared inputs changed during publication metadata generation')
     return registry,lock
 

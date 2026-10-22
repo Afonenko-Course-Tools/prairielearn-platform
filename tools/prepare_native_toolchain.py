@@ -106,29 +106,31 @@ def generated_locks(canonical):
  require(digest_bytes(expected)==EXPECTED_LOCK and digest_bytes(hardened)==HARDENED_LOCK,'Generated lock pin mismatch')
  return expected,hardened
 
-def baked_view(root,expected):
+def baked_view(root,expected,read=None):
+ read=read or read_regular
  require(digest_bytes(expected)==EXPECTED_LOCK,'Unexpected generated lock')
- source=json.loads(read_regular(root/'runtime-profiles.json'));profiles={}
+ source=json.loads(read(root/'runtime-profiles.json'));profiles={}
  for name in ('java25-junit-v1','java25-mutation-v1'):
   profile=copy.deepcopy(source['profiles'][name]);profile.pop('image');profile['runnerSha256']=RUNNER
-  for relative,pin in profile['files'].items():require(digest_bytes(read_regular(root/profile['bundle']/relative))==pin,'Bundle pin mismatch')
-  for relative,pin in profile['sharedFiles'].items():require(digest_bytes(read_regular(root/relative))==pin,'Shared dependency mismatch')
+  for relative,pin in profile['files'].items():require(digest_bytes(read(root/profile['bundle']/relative))==pin,'Bundle pin mismatch')
+  for relative,pin in profile['sharedFiles'].items():require(digest_bytes(read(root/relative))==pin,'Shared dependency mismatch')
   profile['sharedFiles']['runtime/gradle-jar-v1/toolchain-lock.json']=EXPECTED_LOCK;profiles[name]=profile
  native=copy.deepcopy(profiles['java25-junit-v1']);native['sharedFiles'].pop('runtime/gradle-jar-v1/toolchain-lock.json')
  for name in ('build.gradle','settings.gradle'):
-  relative='runtime/gradle-jar-v1/'+name;native['sharedFiles'][relative]=digest_bytes(read_regular(root/relative))
+  relative='runtime/gradle-jar-v1/'+name;native['sharedFiles'][relative]=digest_bytes(read(root/relative))
  native['sharedFiles']['runtime/gradle-jar-v1/toolchain-lock.json']=EXPECTED_LOCK;profiles['java25-gradle-junit-v1']=native
- require(digest_bytes(read_regular(root/'images/java25-grader/grade.py'))==RUNNER,'Runner drift')
+ require(digest_bytes(read(root/'images/java25-grader/grade.py'))==RUNNER,'Runner drift')
  return {'schemaVersion':1,'profiles':profiles}
 
-def _fish_view(root):
- source=json.loads(read_regular(root/'runtime-profiles.json'))
+def _fish_view(root,read=None):
+ read=read or read_regular
+ source=json.loads(read(root/'runtime-profiles.json'))
  fish=copy.deepcopy(source['profiles']['fish-git-v1']);fish.pop('image')
  bundle=root/fish['bundle']
  require({p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}==set(fish['files']),'Fish dependency closure changed')
- fish['runnerSha256']=digest_bytes(read_regular(root/fish['runner']))
- fish['files']={name:digest_bytes(read_regular(bundle/name)) for name in fish['files']}
- fish['sharedFiles']={name:digest_bytes(read_regular(root/name)) for name in fish['sharedFiles']}
+ fish['runnerSha256']=digest_bytes(read(root/fish['runner']))
+ fish['files']={name:digest_bytes(read(bundle/name)) for name in fish['files']}
+ fish['sharedFiles']={name:digest_bytes(read(root/name)) for name in fish['sharedFiles']}
  return {'schemaVersion':1,'profiles':{'fish-git-v1':fish}}
 
 def package_stanza(text,expected):
