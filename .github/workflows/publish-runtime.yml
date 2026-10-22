@@ -66,8 +66,8 @@ jobs:
           test -f /etc/apt/apt-mirrors.txt
           test ! -L /etc/apt/apt-mirrors.txt
           printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
-          timeout --signal=TERM --kill-after=5s 120s sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 --error-on=any update
-          timeout --signal=TERM --kill-after=5s 120s sudo apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends fish
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 --error-on=any update
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends fish
       - name: Собрать и проверить Java
         run: |
           python3 -m pip install --requirement requirements.txt
