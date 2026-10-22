@@ -41,9 +41,12 @@ class DiagnosticRegistry(unittest.TestCase):
    with tempfile.TemporaryDirectory() as d:
     root=Path(d);source=root/'source';entry=source/'tasks/_extensions/course-prairielearn/entrypoints/export-course.ts';entry.parent.mkdir(parents=True);entry.write_text('// owner')
     def git(path,*args):return 'https://example.test/source.git' if args==('remote','get-url','origin') else 'abc' if args==('rev-parse','HEAD') else ''
-    with patch.object(builds.builder,'git',side_effect=git),patch.object(builds.builder.subprocess,'run',side_effect=OSError('stop after capture')) as run:
+    with patch.object(builds.builder,'git',side_effect=git),patch.object(builds.builder._assembly,'for_build',return_value=None) as assembly,patch.object(builds.builder.subprocess,'run',side_effect=OSError('stop after capture')) as run:
      with self.assertRaises(builds.builder.BuildError):builds.builder.build_course(source,'tasks','pilot',root/'out',root/'registry.json','sha256:'+'d'*64)
+    assembly.assert_called_once_with(builds.builder.PLATFORM,(root/'registry.json').absolute())
+    run.assert_called_once()
     command=run.call_args.args[0]
+    self.assertEqual(command[:3],['quarto','run','tasks/_extensions/course-prairielearn/entrypoints/export-course.ts'])
     self.assertEqual(command[command.index('--candidate-image')+1],'sha256:'+'d'*64)
  def test_check_cli_threads_one_explicit_registry_through_prepare_execute_and_receipt(self):
   import sys
