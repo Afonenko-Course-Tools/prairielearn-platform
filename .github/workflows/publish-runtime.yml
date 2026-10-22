@@ -59,10 +59,18 @@ jobs:
           python3 tools/prepare_native_toolchain.py --verify-context
           python3 tools/prepare_native_toolchain.py --write-build-context "$RUNNER_TEMP/native-build-context.tar"
           docker pull ghcr.io/afonenko-course-tools/java25-grader@sha256:6052b077f7d5fabaedbd2deb829eed15e9911beafaf78f29c90083ff917b8c17
+      - name: Установить fish из официального зеркала Ubuntu
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          test -f /etc/apt/apt-mirrors.txt
+          test ! -L /etc/apt/apt-mirrors.txt
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 --error-on=any update
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends fish
       - name: Собрать и проверить Java
         run: |
           python3 -m pip install --requirement requirements.txt
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends fish
           DOCKER_BUILDKIT=0 timeout --signal=TERM --kill-after=5s 360s docker build --pull=false --network=none --no-cache --rm=true --force-rm --memory=2g --memory-swap=2g --cpu-period=100000 --cpu-quota=200000 --ulimit=nofile=4096:4096 --ulimit=core=0:0 --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" - < "$RUNNER_TEMP/native-build-context.tar"
           TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
           PL_TEST_IMAGE="$TEST_IMAGE_ID" PL_API_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -v
