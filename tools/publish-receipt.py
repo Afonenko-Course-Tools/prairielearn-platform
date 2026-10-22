@@ -56,7 +56,7 @@ def main():
         images={key:os.environ[key.upper()+'_DIGEST'] for key in REPOSITORIES}
         registry,lock=release_registry(ROOT,images,os.environ['GITHUB_SHA'],os.environ['VERSION'])
         data=preparation.encode(registry)
-        receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':2,'resultsSchemaVersion':2,'runtimeProfilesSha256':preparation.digest_bytes(data)}
+        receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':3,'resultsSchemaVersion':2,'runtimeProfilesSha256':preparation.digest_bytes(data)}
         # Release assembly supplies this generated lock at the existing runtime
         # path. The canonical prepared-status source lock remains unchanged.
         Path('published-runtime-profiles.json').write_bytes(data)

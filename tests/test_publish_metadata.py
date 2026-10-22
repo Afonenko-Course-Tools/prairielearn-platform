@@ -68,7 +68,27 @@ class PublishedMetadata(unittest.TestCase):
                          'c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca')
         receipt = json.loads(files['runtime-image.json'])
         self.assertEqual(receipt['runtimeProfilesSha256'], hashlib.sha256(files['published-runtime-profiles.json']).hexdigest())
-        self.assertEqual(receipt['deliverySchemaVersion'], 2)
+        self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion'],
+                          receipt['resultsSchemaVersion']), (2, 3, 2))
+        # Bind the emitted protocol to the actual current delivery consumer,
+        # rather than deriving the expected version from the publisher itself.
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import delivery_verification
+        delivery = {
+            'schemaVersion': receipt['deliverySchemaVersion'], 'courseId': 'synthetic',
+            'bookRoot': 'tasks', 'sourceSnapshotHash': 'a' * 64, 'inventoryHash': 'b' * 64,
+            'verificationInventoryHash': 'c' * 64, 'deliveryHash': 'd' * 64,
+            'questions': ['synthetic/exr-manual'],
+            'gradingPayloads': {'synthetic/exr-manual': {
+                'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
+                'grading': {'method': 'manual'}, 'submission': {'mode': 'upload'},
+                'sourceRoot': 'projects/manual'}},
+            'works': [{'id': 'unit'}],
+            'instances': {'fixture': {'works': ['unit'], 'selfEnrollment': False}}, 'files': {}}
+        self.assertEqual(delivery_verification.classification(delivery), {'synthetic/exr-manual': 'manual'})
+        delivery['schemaVersion'] = 2
+        with self.assertRaises(delivery_verification.JobError):
+            delivery_verification.classification(delivery)
         self.assertEqual(receipt['images'], IMAGES)
         self.assertEqual(receipt['sourceCommit'], subprocess.check_output(
             ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip())

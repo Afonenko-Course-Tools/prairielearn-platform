@@ -5,14 +5,16 @@
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
 проверки metadata commit с фактическими pins.
-Интерфейс Tool2.1.0 и delivery/results2 сохраняются. Body/delivery/results используют
+Исторический receipt2.2.0 объявляет delivery/results2; эти опубликованные bytes сохранены.
+Кандидат2.3.0 использует текущий native delivery3 и results2 при receipt schemaVersion2
+и неизменном Tool API2.1.0. Body/delivery/results используют
 позиции: каждый native экземпляр выбирает один вопрос каждой позиции, все кандидаты
 остаются в каталоге. Прежние delivery/results отклоняются до sync/Bridge операций.
 
 | Интерфейс | Текущий контракт |
 | --- | --- |
 | `check-course.py inventory/verify`, `grading_job.py`, build/sync | Tool2.1.0 |
-| Native delivery и Gateway results | schemaVersion2; per-slot-results-v2 |
+| Native delivery кандидата2.3.0 / Gateway results | schemaVersion3 / schemaVersion2; per-slot-results-v2 |
 | Completion | required-slot-completion, позиции requiredSlotIds |
 | Runtime registry, grading descriptors/jobs, check results, verification receipts, contract cases | schemaVersion1, отдельные закрытые schemas/ |
 | Project check | project-check.schema.json, без отдельного schemaVersion |
@@ -85,7 +87,7 @@ Candidate не допускается к staging независимо от ус�
    заканчиваются до pushes. Затем отдельно публикует три образа и получает их
    repository@sha256 digests; каждый digest проверяется docker pull.
 4. Receipt schemaVersion2 содержит sourceCommit/version, три images,
-   delivery/results2 и runtimeProfilesSha256. published-runtime-profiles.json
+   deliverySchemaVersion3, resultsSchemaVersion2 и runtimeProfilesSha256. published-runtime-profiles.json
    связывает три Java профиля с java25-grader, fish с fish-git-grader. Producer проверяет
    clean source HEAD/version и весь prepared context; Java pins берёт из его
    проверенного baked view, fish pins — из фактических файлов того же source HEAD.
