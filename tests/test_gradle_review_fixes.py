@@ -180,3 +180,36 @@ class PublicInfrastructureBoundaryTests(unittest.TestCase):
    self.assertEqual(result['buildEvidence']['status'],'success');self.assertEqual(result['publicResult']['buildEvidence']['status'],'failure')
    self.assertEqual(jobs.verify_results([result],{},registry=value)['status'],'infrastructure-failure')
   finally:fixture.doCleanups()
+
+
+class GradingRuntimeTransitionTests(unittest.TestCase):
+ """Synthetic consumer checkpoint; actual JVM/DAC replay is separate evidence."""
+ setUp=native.fixtures.JUnitJob.setUp
+ def test_api_then_native_build_reopens_only_adapter_parent_before_junit(self):
+  import os,stat,tempfile
+  cfg=copy.deepcopy(self.cfg);cfg.update(runtime='java25-gradle-junit-v1',javaBuild={'kind':'gradle-jar-v1','mainClass':'Main','artifact':'gradeapp.jar'},apiPrecheck={'files':['Api.java'],'entry':'Api'})
+  cfg['testFiles'].append('Api.java');(self.job/'tests/Api.java').write_text('class Api {}')
+  sources=grader._files(self.job/'student',cfg['sourceFiles']);tests=grader._files(self.job/'tests',cfg['testFiles']);phases=[]
+  class ReachedJUnitCheckpoint(Exception):pass
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);bundle=root/'bundle';bundle.mkdir();(bundle/'fixture.jar').write_bytes(b'SYNTHETIC LIBRARY')
+   home=root/'runtime';home.mkdir();runtime=grader._JobRuntime(home,bundle)
+   runtime.compiler_archive.write_bytes(b'PRIVATE SYNTHETIC COMPILER ARCHIVE');runtime.compiler_archive.chmod(0o600)
+   private=home/'additional-sources';private.mkdir(mode=0o700);(private/'Source.java').write_text('class Source {}');(private/'Source.java').chmod(0o600)
+   def api(job,config,stage,*args):
+    runtime.compiled=True;runtime.root.chmod(0o711);phases.append('api711');p=stage/'precheck';p.mkdir();return {'status':'success'},p,'synthetic-official'
+   def build(stage,*args):
+    stage.chmod(0o700);runtime.root.chmod(0o700);phases.append('build700');return {'status':'success'},lambda:None
+   def child(command,*args,**kwargs):
+    if 'PlatformJUnitAdapter' in command:
+     self.assertEqual(stat.S_IMODE(runtime.root.stat().st_mode),0o711)
+     self.assertEqual(stat.S_IMODE(private.stat().st_mode),0o700)
+     self.assertEqual(stat.S_IMODE(runtime.compiler_archive.stat().st_mode),0o600)
+     self.assertEqual(stat.S_IMODE((self.job/'tests').stat().st_mode),0o700)
+     phases.append('junit711');raise ReachedJUnitCheckpoint()
+    return 0,'',None
+   real_is_file=Path.is_file
+   def files(path):return True if str(path)=='/usr/local/bin/landlock_sandbox' else real_is_file(path)
+   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',files),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_api_precheck',side_effect=api),patch.object(grader,'_run',side_effect=child):
+    with self.assertRaises(ReachedJUnitCheckpoint):grader._execute(self.job,cfg,sources,tests,bundle,'synthetic JDK25',runtime,native_context={'build':build})
+   self.assertEqual(phases,['api711','build700','junit711'])

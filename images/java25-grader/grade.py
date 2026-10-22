@@ -560,7 +560,7 @@ def _execute(job,config,sources,tests,bundle,toolchain,runtime,student_tests=Fal
             _protect_input_identity(job)
             # Preserve official UNIX boundaries: tests, source and runtime remain
             # private; compiled classpath is root-owned and only readable.
-            stage.chmod(0o711);reports.chmod(0o777);params.chmod(0o777)
+            stage.chmod(0o711);runtime.root.chmod(0o711);reports.chmod(0o777);params.chmod(0o777)
             for directory in (student,trusted,adapter,library_dir):
                 directory.chmod(0o755)
                 for file in directory.rglob('*'):file.chmod(0o755 if file.is_dir() else 0o644)
