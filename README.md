@@ -1,6 +1,6 @@
 # PrairieLearn platform
 
-Кандидат исходников **2.3.0** добавляет доверенную Gradle JAR-сборку при сохранении классических Java/JUnit-профилей. Это не опубликованный выпуск: действующие registry, `runtime-image.json` и `images.lock.json` по-прежнему описывают опубликованную **2.2.0**. Новый image digest и приёмка CI/публикации подтверждаются отдельно. Подготовка воспроизводимого toolchain context описана в [runtime README](runtime/gradle-jar-v1/README.md), порядок выпуска — в [docs/releasing.md](docs/releasing.md).
+Кандидат исходников **2.3.1** изменяет host helper для точного freeze из чистого public snapshot и отдельного execution checkout с исходным Git seed. Этот source patch ещё не опубликован и не выпускает новые runtime images. Последующая сборка использует принятую внешнюю assembly **2.3.0** из `c0208e16d2480b45d0cf0ef3c44ed706aee293f0` с её опубликованными assets/images; новый helper checkout не подменяет её source/version provenance. Подробности — в [docs/private-source.md](docs/private-source.md), граница host-only выпуска — в [docs/releasing.md](docs/releasing.md).
 
 Shared platform for native PrairieLearn courses, with a Java 25 grader.
 The candidate provides local verification, a private Community Gateway bridge and

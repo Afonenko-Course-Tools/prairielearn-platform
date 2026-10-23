@@ -26,6 +26,42 @@ Core receipt обязан содержать внутренне полученн
 с public HEAD. Config-only commit после материализации требует новой сборки Core;
 отсутствующее поле также останавливает freeze до записи.
 
+### Generated seed в отдельном execution checkout
+
+`--source` остаётся чистым публичным checkout. Core receipt может относиться
+к другому execution checkout с теми же HTTPS origin, HEAD и полным tracked tree.
+`sourceRoot` в исходном receipt не переписывается: это настоящий execution owner.
+Helper проверяет оба index, отсутствие skip-worktree/assume-unchanged, каждый
+Git blob, живые байты и режимы. Public/common inputs и sourceDocuments сверяются
+с обоими источниками. Дополнительные execution-файлы допускаются только как
+точные public entries Core внутри выбранных student partitions, включая всю
+разрешённую учебную `.git`. Ignored/untracked файлы снаружи, недостающий seed,
+ссылки, изменение Core или любого входа во время freeze означают отказ.
+
+Existing recipe читается из чистого checkout и пишет только в execution.
+После последнего настоящего materialize --write/--check caller сохраняет
+перечисленные runtime outputs capture снаружи execution, не перемещая source
+inputs или Core manifest. Этот прежний NativeRun после переноса не предъявляется
+как current. Public Git objects копируются только из чистого checkout;
+replacement bytes — только из Core. Generated execution не называется clean.
+Его status и полный seed inventory до/после freeze сохраняются во внешнем
+приватном свидетельстве caller; receipt.publicBase содержит только чистый
+repository/commit/book, а materialization.sha256 — исходный Core receipt.
+
+Только под Git roots, уже подтверждёнными generated public entries Core,
+допускаются существующие пустые `objects/info`, `objects/pack`, `refs/tags`
+с mode0755. Их identity/type/owner/mode/presence и пустота замкнуты до/после
+freeze. Произвольный пустой каталог или новый child по-прежнему отказ;
+в Core manifest и private-stage эти дополнительные каталоги не добавляются.
+Прежний same-root маршрут поддерживает обычный Git worktree с `.git` file;
+раздельные P/E остаются самостоятельными checkout.
+
+Host helper из source patch 2.3.1 закрепляется собственными commit и SHA256
+во внешнем свидетельстве. Последующий build-course и Context используют
+прежнюю принятую assembly 2.3.0 с её двумя authenticated overlays и assets/images.
+Нельзя подставлять patched helper checkout вместо builder и приписывать ему
+bytes или image provenance 2.3.0. Нового runtime image этот host patch не требует.
+
 Git не индексирует вложенную student/.git. Такие controlled seed файлы остаются
 в stage и хешируются receipt вне stage index. Проверка inventory до и после
 export отклоняет как изменение, так и добавление seed файла. Отсутствие изменений
