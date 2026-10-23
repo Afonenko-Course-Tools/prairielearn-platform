@@ -1,6 +1,15 @@
 # Версии Platform и публикация образов
 
-`VERSION` содержит **2.3.0** — локальную кандидатуру с новым opt-in Gradle JAR profile и совместимыми классическими JUnit-профилями. Публикация2.3.0 не выполнена; новые OCI digests отсутствуют.
+`VERSION` содержит **2.3.1** — source-only кандидатуру host helper для заморозки
+generated Git seed. Этот patch ещё не опубликован; новые runtime images не
+выпускаются. Helper закрепляется отдельными source commit и SHA256. Builder,
+release Context, runtime registry и образы остаются из принятой 2.3.0 assembly
+`c0208e16d2480b45d0cf0ef3c44ed706aee293f0`. Её assets/digests не переписываются
+и не приписываются новому helper checkout. Публикация numbered source patch
+допускается только после source review и CI; publisher runtime ниже для этого
+host-only patch не запускается.
+
+Ниже сохранена историческая процедура runtime-выпуска 2.3.0.
 
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
