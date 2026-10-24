@@ -72,3 +72,69 @@ jobs:
       - name: Проверить независимый readback и конечный synthetic runtime smoke
         run: |
           PL_NATIVE_PREPARED_IMAGE="$(docker image inspect local/platform-native-toolchain:ci --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_native_toolchain_image.py -v
+
+  publication-conditions-private-source:
+    name: Публикационные архивы из настоящего private stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course
+          ref: 58fc5c9cb39867f6c612922eec9af09713539ca4
+          path: .ci-deps/core
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course-prairielearn
+          # Независимый кандидат Exporter 8.2.3, родитель принятой линии 8.2.1.
+          ref: 59ae2f453900952843355c550af85c41e0f392af
+          path: .ci-deps/exporter
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-project-download
+          ref: 2dd97d8ce28c4ad514e869fe86d25dbc19f79def
+          path: .ci-deps/download
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/prairielearn-platform
+          ref: c0208e16d2480b45d0cf0ef3c44ed706aee293f0
+          fetch-depth: 0
+          path: .ci-deps/runtime-platform
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
+        with:
+          version: '1.11.5'
+      - uses: cue-lang/setup-cue@b0e30e540a2dae47304ebf16586a5b2db023b61c
+        with:
+          version: v0.17.1
+      - name: Подготовить три точных опубликованных asset 2.3.0 и фактические Java/fish images
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/runtime-assets"
+          for NAME in runtime-image.json published-runtime-profiles.json published-toolchain-lock.json; do
+            curl --fail --location --max-time 60 --output "$RUNNER_TEMP/runtime-assets/$NAME" "https://github.com/Afonenko-Course-Tools/prairielearn-platform/releases/download/v2.3.0/$NAME"
+          done
+          docker pull ghcr.io/afonenko-course-tools/java25-grader@sha256:a1221ab6cecd0ba4d0cc5f06b9aa2a671d79fc5fa54303cfaa612316b006c59e
+          docker pull ghcr.io/afonenko-course-tools/fish-git-grader@sha256:030828d3a6c7c17c13682a74dd3936b9e539cefc1f35cd6134aed1cebdcebd9e
+      - name: Проверить exact c020 CLI с inherited ENV и настоящим private stage
+        run: |
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "58fc5c9cb39867f6c612922eec9af09713539ca4"
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = "59ae2f453900952843355c550af85c41e0f392af"
+          test "$(git -C .ci-deps/download rev-parse HEAD)" = "2dd97d8ce28c4ad514e869fe86d25dbc19f79def"
+          python3 -m pip install --requirement requirements.txt
+          test "$(git -C .ci-deps/runtime-platform rev-parse HEAD)" = "c0208e16d2480b45d0cf0ef3c44ed706aee293f0"
+          test "$(git -C .ci-deps/runtime-platform rev-parse 'v2.3.0^{commit}')" = "c0208e16d2480b45d0cf0ef3c44ed706aee293f0"
+          PYTHONDONTWRITEBYTECODE=1 CORE="$PWD/.ci-deps/core" EXPORTER="$PWD/.ci-deps/exporter" DOWNLOAD="$PWD/.ci-deps/download" OLD_PLATFORM="$PWD/.ci-deps/runtime-platform" OLD_RELEASE_ASSETS="$RUNNER_TEMP/runtime-assets" python3 -m unittest discover -s tests -p test_private_source_native.py -v

@@ -99,9 +99,42 @@ runtime output не становится частью исходного receipt
 python3 -m unittest discover -s tests -p test_private_source.py
 python3 -m unittest discover -s tests -p test_build_course.py
 CORE=/absolute/quarto-course EXPORTER=/absolute/quarto-course-prairielearn \
+  DOWNLOAD=/absolute/quarto-project-download \
+  OLD_PLATFORM=/absolute/clean-published-c020 \
+  OLD_RELEASE_ASSETS=/absolute/three-published-v230-assets \
   python3 -m unittest discover -s tests -p test_private_source_native.py
 ```
 
 Последняя проверка выполняет настоящий Quarto export синтетического курса
 из examples/native-course и приватного overlay. Она не запускает External grader
 и не доказывает Moodle/native UI integration.
+
+## Внешние архивы через неизменённый runtime builder
+
+Установленный Exporter 8.2.3 принимает явный абсолютный путь manifest через
+`PRAIRIELEARN_PUBLICATION_CONDITIONS`. Неизменённый build-course.py из принятой
+assembly 2.3.0 наследует это окружение настоящему Quarto subprocess; нового
+builder flag или выпуска Platform 2.3.3 для передачи пути нет. Helper 2.3.2
+остаётся отдельным source-only инструментом заморозки.
+
+```bash
+PRAIRIELEARN_PUBLICATION_CONDITIONS=/absolute/publication-conditions.json \
+  python3 /absolute/accepted-c020-assembly/tools/build-course.py \
+  --source /absolute/fresh-private-source --book tasks --instance pilot \
+  --output /absolute/fresh-native \
+  --staging-receipt /absolute/private-source-receipt.json \
+  --runtime-registry /absolute/accepted-assets/published-runtime-profiles.json
+```
+
+Исполнитель закрепляет exact ENV и typed refs manifest/исторической публикации/
+всех whole ZIP до/после операции. Exporter отказывает при CLI+ENV одновременно,
+проверяет current publicBase, source/ZIP bytes и сохраняет JSON dependency receipt
+в stdout. Обычные ZIP/link inventories и delivery hash связывают output. При
+отсутствии обоих inputs прежний маршрут сохраняется. Runtime assembly проверяет
+прежний c020 source/tree/tag/VERSION, два data overlays и четыре внешних assets;
+нового code overlay, подмены provenance или runtime image release нет.
+
+Hosted native integration отдельно проверяет настоящий неизменённый c020 CLI,
+опубликованные asset hashes и Context admission, private-stage publicBase,
+whole ZIP/link и stdout receipt через ENV. Первая UNIT-registry поставка этого
+synthetic теста — отдельный baseline; она не доказывает production assembly.
