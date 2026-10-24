@@ -72,3 +72,52 @@ jobs:
       - name: Проверить независимый readback и конечный synthetic runtime smoke
         run: |
           PL_NATIVE_PREPARED_IMAGE="$(docker image inspect local/platform-native-toolchain:ci --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_native_toolchain_image.py -v
+
+  publication-conditions-private-source:
+    name: Публикационные архивы из настоящего private stage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course
+          ref: 7d8a472a0fe4f05b5543fb856336a6d15278ef3a
+          path: .ci-deps/core
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course-prairielearn
+          # Кандидат независим от Performance8.2.2, родитель adopted8.2.1.
+          ref: 6c901e508a2a62b9bfc85e3acfaf1c75bf4fa80c
+          path: .ci-deps/exporter
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-project-download
+          ref: 2dd97d8ce28c4ad514e869fe86d25dbc19f79def
+          path: .ci-deps/download
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
+        with:
+          version: '1.11.5'
+      - uses: cue-lang/setup-cue@b0e30e540a2dae47304ebf16586a5b2db023b61c
+        with:
+          version: v0.17.1
+      - name: Проверить точные зависимости и выполнить старый genuine recipe с optional input
+        run: |
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "7d8a472a0fe4f05b5543fb856336a6d15278ef3a"
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = "6c901e508a2a62b9bfc85e3acfaf1c75bf4fa80c"
+          test "$(git -C .ci-deps/download rev-parse HEAD)" = "2dd97d8ce28c4ad514e869fe86d25dbc19f79def"
+          python3 -m pip install --requirement requirements.txt
+          CORE="$PWD/.ci-deps/core" EXPORTER="$PWD/.ci-deps/exporter" DOWNLOAD="$PWD/.ci-deps/download" python3 -m unittest discover -s tests -p test_private_source_native.py -v

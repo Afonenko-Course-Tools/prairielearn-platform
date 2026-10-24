@@ -105,3 +105,19 @@ CORE=/absolute/quarto-course EXPORTER=/absolute/quarto-course-prairielearn \
 Последняя проверка выполняет настоящий Quarto export синтетического курса
 из examples/native-course и приватного overlay. Она не запускает External grader
 и не доказывает Moodle/native UI integration.
+
+## Внешние publication conditions при build
+
+Опциональный `build-course.py --publication-conditions /absolute/manifest.json`
+передаёт тот же явный параметр установленному Exporter. Manifest
+`pl-publication-conditions-v1` связывает текущий курс/source и целые ZIP принятой
+исторической публикации; его семантику проверяет Exporter. Builder проверяет
+обычные внешние файлы, hashes и identity до export и перед публикацией результата,
+сохраняет manifest SHA256 в stdout caller receipt. ROOT связывает этот receipt
+и typed inputs с точными normal delivery/provenance inventories.
+
+Это не новый runtime/schema/receipt режим. `pl-provenance-v2` сохраняет закрытый
+набор полей; обычные hashes `delivery.json`, question HTML и client ZIP включены
+в уже существующий inventory. Source helper, M и runtime images не меняются.
+Нельзя добавлять архивы в уже замороженный private stage/export: нужен новый
+нормальный export. Вызов без параметра сохраняет прежнее поведение.

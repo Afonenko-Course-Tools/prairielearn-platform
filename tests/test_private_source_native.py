@@ -18,7 +18,8 @@ class NativePrivateSource(unittest.TestCase):
    (project/'student/README.md').write_text('Публичная инструкция: данные в data/sample.txt\n')
    (project/'student/data').mkdir();(project/'student/data/sample.txt').write_text('PUBLIC_DATA')
    (project/'student/diagram.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"><text>PUBLIC_FIGURE</text></svg>')
-   lab=public/'tasks/lab.qmd';lab.write_text(lab.read_text().replace('\n::::\n','\n\n[README](projects/add/student/README.md)\n\n![Схема](projects/add/student/diagram.svg)\n::::\n'))
+   config.write_text(config.read_text().replace('filters: [course-core, course-prairielearn]','filters: [course-core, course-prairielearn, project-download]')+'\nproject-download: {course-model: true}\n')
+   lab=public/'tasks/lab.qmd';lab.write_text(lab.read_text().replace('\n::::\n','\n\n{{< project-download exr-add kind="conditions" text="Скачать условие для локального просмотра" >}}\n\n[README](projects/add/student/README.md)\n\n![Схема](projects/add/student/diagram.svg)\n::::\n'))
    reference=teacher/'projects/add/reference/demo/Add.java';reference.write_text(reference.read_text()+'\n// PRIVATE_REFERENCE_CANARY\n')
    (public/'.gitignore').write_text('.quarto/\n**/.quarto/\n**/_generated/\n')
    def run(args,cwd=public):
@@ -46,6 +47,27 @@ class NativePrivateSource(unittest.TestCase):
     self.assertIn('README.md',archive.namelist());self.assertIn('src/main/java/demo/Add.java',archive.namelist());self.assertEqual(archive.read('data/sample.txt'),b'PUBLIC_DATA');self.assertFalse(any('reference' in name or 'tests/' in name for name in archive.namelist()))
    self.assertFalse(any(b'PRIVATE_REFERENCE_CANARY' in path.read_bytes() for path in (question/'clientFilesQuestion').rglob('*') if path.is_file()))
    self.assertFalse((public/'tasks/projects/add/reference').exists());stage.validate(private,receipt,allow_runtime=True)
+   # Вторая fresh private stage проверяет реальный optional CLI/consumer с publicBase,
+   # отличным от origin-less private Git commit. Первая поставка остаётся baseline.
+   self.assertFalse((question/'clientFilesQuestion/exr-add-conditions.zip').exists())
+   private2=root/'private-conditions';receipt2=root/'receipt-conditions.json';staged=stage.prepare(public,'tasks',materialized,private2,receipt2)
+   self.assertNotEqual(staged['publicBase']['commit'],staged['privateStage']['commit']);self.assertEqual(staged['privateStage']['remotes'],[])
+   self.assertEqual(subprocess.check_output(['git','remote'],cwd=private2,text=True).strip(),'')
+   accepted=root/'historical-publication.json';accepted.write_text(json.dumps({'fixture':'explicit accepted historical publication','sourceCommit':'b'*40}))
+   conditions=root/'exr-add-conditions.zip'
+   with zipfile.ZipFile(conditions,'w') as archive:archive.writestr('index.html','<!doctype html><title>Условие</title><p>Публичное условие синтетического курса</p>')
+   import hashlib
+   def typed(path):return {'path':str(path),'bytes':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+   conditions_input=root/'publication-conditions.json';conditions_input.write_text(json.dumps({'schema':'pl-publication-conditions-v1','courseId':'native-java-demo','source':staged['publicBase'],'publication':{'repository':staged['publicBase']['repository'],'commit':'b'*40,'receipt':typed(accepted)},'archives':[{'questionId':'exr-add','source':'lab.qmd','sourceSha256':hashlib.sha256((private2/'tasks/lab.qmd').read_bytes()).hexdigest(),'file':typed(conditions)}]}))
+   before=(conditions.read_bytes(),conditions_input.read_bytes(),accepted.read_bytes())
+   candidate2=root/'native-conditions';builder.build_course(private2,'tasks','pilot',candidate2,staging_receipt=receipt2,runtime_registry=unit_registry_file(root),publication_conditions=conditions_input)
+   self.assertEqual(before,(conditions.read_bytes(),conditions_input.read_bytes(),accepted.read_bytes()))
+   question2=candidate2/'questions/native-java-demo/exr-add';self.assertEqual((question2/'clientFilesQuestion/exr-add-conditions.zip').read_bytes(),conditions.read_bytes())
+   self.assertIn('{{options.client_files_question_url}}/exr-add-conditions.zip',(question2/'question.html').read_text());self.assertIn('Скачать условие для локального просмотра',(question2/'question.html').read_text())
+   self.assertEqual((question2/'clientFilesQuestion/starter.zip').read_bytes(),(question/'clientFilesQuestion/starter.zip').read_bytes())
+   p2=json.loads((candidate2/'provenance.json').read_text());self.assertEqual(p2['source']['publicBase'],staged['publicBase']);self.assertEqual(p2['source']['privateStage'],staged['privateStage']);self.assertEqual(set(p2),{'schema','source','builder','deliveryHash','sourceSnapshotHash','inventoryHash','platformImages','files'})
+   delivery2=json.loads((candidate2/'delivery.json').read_text());verification.package_integrity(delivery2,candidate2)
+   self.assertIn('questions/native-java-demo/exr-add/clientFilesQuestion/exr-add-conditions.zip',delivery2['files']);stage.validate(private2,receipt2,allow_runtime=True)
    config=public/'tasks/_quarto.yml';config.write_text(config.read_text()+'\n# CONFIG_ONLY_COMMIT\n')
    run(['git','add','tasks/_quarto.yml']);run(['git','-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Config only after materialization'])
    with self.assertRaisesRegex(stage.StageError,'sourceCommit'):stage.prepare(public,'tasks',materialized,root/'config-drift',root/'config-drift-receipt.json')
