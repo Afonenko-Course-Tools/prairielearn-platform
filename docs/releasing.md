@@ -1,18 +1,5 @@
 # Версии Platform и публикация образов
 
-## Source-only кандидат 2.3.3
-
-Новый кандидат добавляет только host builder forwarding внешних whole ZIP
-условий и проверку точного независимого Exporter 8.2.3 с Core 8.2.4 в hosted CI.
-Helper 2.3.2, `VERSION`, runtime registry, schemas и опубликованные images
-сохранены. Внешняя assembly остаётся 2.3.0 из
-`c0208e16d2480b45d0cf0ef3c44ed706aee293f0`. Source tag 2.3.3 не является
-версией runtime assembly; publisher runtime для этого выпуска не запускается.
-Публикация допускается после независимого review и полного hosted CI;
-новая фактическая поставка курса проверяется отдельно.
-
-## Историческое описание source patch 2.3.1
-
 `VERSION` содержит **2.3.1** — source-only кандидатуру host helper для заморозки
 generated Git seed. Этот patch ещё не опубликован; новые runtime images не
 выпускаются. Helper закрепляется отдельными source commit и SHA256. Builder,

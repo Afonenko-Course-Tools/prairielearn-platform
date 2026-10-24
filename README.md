@@ -1,14 +1,5 @@
 # PrairieLearn platform
 
-Кандидат source-only выпуска **2.3.3** добавляет передачу опционального
-`--publication-conditions` в независимый Exporter **8.2.3**. Полный hosted CI
-закрепляет точный commit этого экспортёра и опубликованный Core **8.2.4**.
-Выпуск ещё не опубликован. Helper из 2.3.2 сохранён побайтово; внешняя runtime
-assembly **2.3.0** (`c0208e16d2480b45d0cf0ef3c44ed706aee293f0`), images, registry,
-`VERSION` и схемы не меняются. Новые runtime images не выпускаются.
-
-## Историческое описание source patch 2.3.1
-
 Кандидат исходников **2.3.1** изменяет host helper для точного freeze из чистого public snapshot и отдельного execution checkout с исходным Git seed. Этот source patch ещё не опубликован и не выпускает новые runtime images. Последующая сборка использует принятую внешнюю assembly **2.3.0** из `c0208e16d2480b45d0cf0ef3c44ed706aee293f0` с её опубликованными assets/images; новый helper checkout не подменяет её source/version provenance. Подробности — в [docs/private-source.md](docs/private-source.md), граница host-only выпуска — в [docs/releasing.md](docs/releasing.md).
 
 Shared platform for native PrairieLearn courses, with a Java 25 grader.

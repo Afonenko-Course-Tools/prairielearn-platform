@@ -127,34 +127,7 @@ def publish_directory(source, destination):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def publication_conditions_snapshot(path):
-    """Наружные входы до/после exporter; семантику проверяет сам Exporter."""
-    snapshot={}
-    def capture(name,expected=None):
-        item=Path(name).absolute()
-        if str(item)!=str(name) or item.resolve()!=item:raise BuildError('Unsafe publication conditions dependency path')
-        before=item.lstat()
-        import stat
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1:raise BuildError('Publication dependency must be ordinary file without links')
-        if before.st_size>256*1024**2:raise BuildError('Publication dependency bytes cap')
-        data=item.read_bytes();after=item.lstat()
-        identity=lambda row:(row.st_dev,row.st_ino,row.st_mode,row.st_size,row.st_mtime_ns,row.st_ctime_ns,row.st_nlink)
-        pin=hashlib.sha256(data).hexdigest()
-        if identity(before)!=identity(after):raise BuildError('Publication dependency changed during read')
-        if expected and (len(data)!=expected['bytes'] or pin!=expected['sha256']):raise BuildError('Publication dependency bytes/hash mismatch')
-        snapshot[str(item)]={'sha256':pin,'bytes':len(data),'identity':identity(after)}
-        return data
-    try:
-        raw=capture(str(Path(path).absolute()))
-        if len(raw)>2*1024**2:raise BuildError('Publication manifest bytes cap')
-        value=json.loads(raw)
-        if value.get('schema')!='pl-publication-conditions-v1':raise BuildError('Publication conditions manifest required')
-        proof=value['publication']['receipt'];capture(proof['path'],proof)
-        for row in value['archives']:capture(row['file']['path'],row['file'])
-        return snapshot
-    except (ValueError,KeyError,TypeError) as error:raise BuildError('Invalid publication conditions dependency manifest') from error
-
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, staging_receipt=None, publication_conditions=None) -> None:
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, staging_receipt=None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
@@ -182,14 +155,11 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         if assembly:
             try:assembly.recheck()
             except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as error:raise BuildError('Release assembly changed during export') from error
-    publication_path=Path(publication_conditions).absolute() if publication_conditions else None
-    publication_before=publication_conditions_snapshot(publication_path) if publication_path else None
     with tempfile.TemporaryDirectory(prefix='.pl-full-export-',dir=output.parent) as tmp:
         stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
         command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
         if candidate_image:command+=['--candidate-image',candidate_image]
         if staging:command+=['--staging-receipt',str(Path(staging_receipt).absolute())]
-        if publication_path:command+=['--publication-conditions',str(publication_path)]
         try:subprocess.run(command,cwd=source,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
         files=tree(native)
@@ -206,7 +176,6 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
                 if _private.validate(source,staging_receipt,allow_runtime=True)!=staging or hashlib.sha256(Path(staging_receipt).read_bytes()).hexdigest()!=staging_sha:raise _private.StageError('Receipt changed')
                 provenance['source']['runtimeInventory']=_private.runtime_inventory(source,staging)
             except (_private.StageError,OSError) as error:raise BuildError('Exporter changed private staging inventory') from error
-        if publication_path and publication_conditions_snapshot(publication_path)!=publication_before:raise BuildError('Publication dependencies changed during export')
         recheck_assembly()
         if assembly:
             try:_assembly.validate_provenance(provenance,delivery,assembly)
@@ -220,16 +189,14 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
             try:
                 recheck_assembly()
                 if {n:b for n,b in tree(native).items() if n!='provenance.json'}!=files:raise BuildError('Native inventory changed before publication')
-                if publication_path and publication_conditions_snapshot(publication_path)!=publication_before:raise BuildError('Publication dependencies changed before publication')
                 publish_directory(native,output)
-                if publication_path:print('PL publication conditions caller receipt '+json.dumps({'manifestSha256':publication_before[str(publication_path)]['sha256'],'dependencyGuards':'pre/post exact','nativeDeliveryHash':delivery['deliveryHash']},sort_keys=True))
             except BuildError:
                 checks_output.unlink()
                 raise
         except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--staging-receipt',type=Path);parser.add_argument('--publication-conditions',type=Path);args=parser.parse_args()
-    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.staging_receipt,args.publication_conditions)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--staging-receipt',type=Path);args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.staging_receipt)
     except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
 if __name__=='__main__':main()
