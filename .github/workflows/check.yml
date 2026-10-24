@@ -85,14 +85,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course
-          ref: 7d8a472a0fe4f05b5543fb856336a6d15278ef3a
+          ref: 58fc5c9cb39867f6c612922eec9af09713539ca4
           path: .ci-deps/core
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course-prairielearn
           # Независимый кандидат Exporter 8.2.3, родитель принятой линии 8.2.1.
-          ref: 149af3a8597691c3024ecbf0325647a8d102e7cc
+          ref: 59ae2f453900952843355c550af85c41e0f392af
           path: .ci-deps/exporter
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -131,8 +131,8 @@ jobs:
           docker pull ghcr.io/afonenko-course-tools/fish-git-grader@sha256:030828d3a6c7c17c13682a74dd3936b9e539cefc1f35cd6134aed1cebdcebd9e
       - name: Проверить exact c020 CLI с inherited ENV и настоящим private stage
         run: |
-          test "$(git -C .ci-deps/core rev-parse HEAD)" = "7d8a472a0fe4f05b5543fb856336a6d15278ef3a"
-          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = "149af3a8597691c3024ecbf0325647a8d102e7cc"
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "58fc5c9cb39867f6c612922eec9af09713539ca4"
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = "59ae2f453900952843355c550af85c41e0f392af"
           test "$(git -C .ci-deps/download rev-parse HEAD)" = "2dd97d8ce28c4ad514e869fe86d25dbc19f79def"
           python3 -m pip install --requirement requirements.txt
           test "$(git -C .ci-deps/runtime-platform rev-parse HEAD)" = "c0208e16d2480b45d0cf0ef3c44ed706aee293f0"
