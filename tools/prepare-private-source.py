@@ -138,7 +138,16 @@ def validate(source,receipt,allow_runtime=False):
     if files!=value.get('files'):raise StageError('Private stage inventory изменён (включая ignored seed files)')
     return value
 
-def prepare(public,book,core,output,receipt):
+def publication_catalog_state(path):
+    if path.resolve()!=path:raise StageError('Publication catalog: символические ссылки запрещены')
+    before=path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1:raise StageError('Publication catalog должен быть обычным файлом без hardlink')
+    data=path.read_bytes();after=path.lstat()
+    identity=lambda value:(value.st_dev,value.st_ino,value.st_size,value.st_mode,value.st_mtime_ns,value.st_ctime_ns,value.st_nlink)
+    if identity(before)!=identity(after):raise StageError('Publication catalog изменён во время чтения')
+    return data,identity(after)
+
+def prepare(public,book,core,output,receipt,publication_catalog=None):
     public=Path(public).absolute();core=Path(core).absolute();output=Path(output).absolute();receipt=Path(receipt).absolute()
     for root in (public,core):
         if root.resolve()!=root or not root.is_dir():raise StageError('Требуется настоящий входной каталог')
@@ -204,6 +213,12 @@ def prepare(public,book,core,output,receipt):
     for name,sha in [*manifest.get('sourceDocuments',{}).items(),*manifest.get('commonSources',{}).items()]:
         relative=book+'/'+name
         if relative not in source_files or digest(source_files[relative][0])!=sha or digest(safe(owner,name).read_bytes())!=sha or digest(safe(public_owner,name).read_bytes())!=sha:raise StageError('Captured owner document/common изменён или отсутствует в Git snapshot')
+    catalog_target='_site-student/reference-catalog.json'
+    catalog_state=None
+    if publication_catalog is not None:
+        publication_catalog=Path(publication_catalog).absolute()
+        catalog_state=publication_catalog_state(publication_catalog)
+        if any(name==catalog_target or name.startswith(catalog_target+'/') or catalog_target.startswith(name+'/') for name in entries):raise StageError('Publication catalog пересекается с public Git snapshot')
     execution_state=None
     if distinct:
         if set(physical_state(public)[0])!=set(entries):raise StageError('Чистый public snapshot содержит ignored дополнительные файлы')
@@ -218,6 +233,9 @@ def prepare(public,book,core,output,receipt):
             target=safe(output,name);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);target.chmod(int(mode[-3:],8))
         for name,data in replacements.items():
             target=safe(output,book+'/'+name);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
+        if catalog_state is not None:
+            target=safe(output,catalog_target);target.parent.mkdir(parents=True,exist_ok=True)
+            with target.open('xb') as stream:stream.write(catalog_state[0])
         runtime_roots=[book+'/_generated',book+'/.quarto','.quarto']
         if any(safe(output,name).exists() for name in runtime_roots):raise StageError('Runtime roots должны отсутствовать при freeze')
         git(output,'init','-q','--initial-branch=private-stage');files=inventory(output)
@@ -239,6 +257,7 @@ def prepare(public,book,core,output,receipt):
         if distinct and any(not (root/'.git').is_dir() for root in (public,execution)):raise StageError('Git topology раздельных источников изменилась')
         if distinct:exact_execution_inventory(execution,entries,generated)
         if any(physical_state(root)!=before for root,before in initial.items()):raise StageError('Public/execution/Core input изменён во время freeze')
+        if catalog_state is not None and publication_catalog_state(publication_catalog)!=catalog_state:raise StageError('Publication catalog изменён во время freeze')
         return value
     except Exception:
         shutil.rmtree(output);receipt.unlink(missing_ok=True);raise
@@ -246,7 +265,9 @@ def prepare(public,book,core,output,receipt):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('source','book','materialized','output','receipt'):parser.add_argument('--'+name,required=True)
+    parser.add_argument('--publication-catalog',type=Path,action='append',help='Один полный публикационный каталог для _site-student/reference-catalog.json')
     args=parser.parse_args()
-    try:prepare(Path(args.source),args.book,Path(args.materialized),Path(args.output),Path(args.receipt))
+    if args.publication_catalog and len(args.publication_catalog)!=1:parser.error('Допустим только один --publication-catalog')
+    try:prepare(Path(args.source),args.book,Path(args.materialized),Path(args.output),Path(args.receipt),publication_catalog=args.publication_catalog[0] if args.publication_catalog else None)
     except (StageError,OSError,KeyError,TypeError) as error:parser.exit(1,f'Private source rejected: {error}\n')
 if __name__=='__main__':main()
