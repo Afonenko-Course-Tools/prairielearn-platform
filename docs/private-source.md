@@ -18,6 +18,18 @@ python3 tools/build-course.py --source /absolute/fresh-private-source \
   --staging-receipt /absolute/private-source-receipt.json
 ```
 
+Если export требует полный каталог уже принятой публикации, добавьте к вызову
+подготовки один `--publication-catalog /absolute/reference-catalog.json`.
+Helper копирует исходные bytes целиком в фиксированный путь
+`_site-student/reference-catalog.json` до inventory, private Git commit и receipt.
+Путь включается в прежние `receipt.files` и Git tree, даже если `_site-student`
+игнорируется Git. Schema и runtime roots не меняются. Происхождение исходного
+каталога, точный hash и разрешение на использование связываются внешним typed
+receipt; helper не генерирует, не фильтрует и семантически не квалифицирует каталог.
+Вход должен быть обычным файлом без symlink/hardlink; изменение во время freeze,
+повторный флаг и пересечение target с public Git snapshot означают отказ.
+Вызов без флага сохраняет прежнее поведение.
+
 Public origin должен быть credential-free HTTPS. Receipt связывает настоящий
 public repository/commit, private stage commit/tree, Core declaration/common/
 teacher hashes и полный file inventory. Private commit не приписывается public
