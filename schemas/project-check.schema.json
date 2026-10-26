@@ -514,6 +514,7 @@
     "additional-java-sources": {
       "type": "object",
       "properties": {
+        "primary-required": {"type": "boolean"},
         "archive": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"

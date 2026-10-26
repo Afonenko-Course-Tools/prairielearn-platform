@@ -17,3 +17,12 @@ Upload control проверяется по фактическим атрибут
 а optional-file-names — только с объявленным additionalJavaSources.archive.
 Пустые, повторные, посторонние и выходящие из проекта имена запрещены. Manual
 принимает штатные именованные файлы и pattern upload без создания auto proof.
+
+При `additionalJavaSources.primaryRequired: false` допускается только upload:
+`file-names` пуст, `optional-file-names` в точности содержит bound primary names и
+объявленный ZIP archive. Отсутствие поля/`true` сохраняет прежние проверки.
+
+В opt-in upload отдельно перечисляются только primary без каталогов и архив.
+Nested primary передаются внутри ZIP с исходными относительными путями; полный
+`sourceFiles` и canonical binding сохраняются. Flattening, кодирование имён и
+wildcard загрузка не применяются.

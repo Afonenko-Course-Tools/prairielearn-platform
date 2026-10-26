@@ -287,6 +287,22 @@ def _files(root, names):
     return files
 
 
+def _primary_files(job,config):
+    """Необязательность допускает отсутствие, но не unsafe/oversized primary."""
+    root=job/'student';names=_names(config,'sourceFiles')
+    if config.get('additionalJavaSources',{}).get('primaryRequired',True):return _files(root,names)
+    if root.is_symlink() or not root.is_dir():raise ValueError('Unsafe student directory')
+    present=[]
+    for name in names:
+        path=root
+        for part in PurePosixPath(name).parts:
+            path=path/part
+            if path.is_symlink():raise ValueError('Symlink source is forbidden')
+            if path.exists() and path!=root/name and not path.is_dir():raise ValueError('Unsafe source parent')
+        if path.exists():present.extend(_files(root,[name]))
+    return present
+
+
 PLATFORM=Path(__file__).resolve().parents[2]
 LANDLOCK_HELPER_SHA256='81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef'
 
@@ -383,7 +399,8 @@ def validate_config(config):
         policy=config['additionalJavaSources']
         caps={'maxFiles':128,'maxFileBytes':1048576,'maxTotalBytes':4194304,'maxArchiveBytes':2097152}
         if (config.get('runtime') not in ('java25-junit-v1','java25-gradle-junit-v1') or config['mode']!='implementation'
-                or not isinstance(policy,dict) or set(policy)!={'archive',*caps}
+                or not isinstance(policy,dict) or set(policy)-{'archive','primaryRequired',*caps} or not {'archive',*caps}<=set(policy)
+                or ('primaryRequired' in policy and type(policy['primaryRequired']) is not bool)
                 or not isinstance(policy['archive'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip',policy['archive'])
                 or any(type(policy[k]) is not int or not 1<=policy[k]<=limit for k,limit in caps.items())):
             raise GraderError('Invalid closed additional Java sources policy')
@@ -737,13 +754,14 @@ def _native_build(job,config,sources,extra_names,stage,runtime,dependency_hash,d
     lock=_verify_native_toolchain();boundary=_grading_boundary();_enable_build_reaper()
     if _build_process_records(Path('/proc'),uid):raise GraderError('Native build role is not fresh')
     inputs=_source_inventory(job,sources,extra_names)
-    original_names=['tests/grading-job.json',*['tests/'+name for name in config['testFiles']],*['student/'+name for name in config['sourceFiles']]]
+    primary_files=_primary_files(job,config)
+    original_names=['tests/grading-job.json',*['tests/'+name for name in config['testFiles']],*[Path(p).relative_to(job).as_posix() for p in primary_files]]
     if 'additionalJavaSources' in config and (job/'student'/config['additionalJavaSources']['archive']).exists():original_names.append('student/'+config['additionalJavaSources']['archive'])
     original={name:hashlib.sha256(_files_any(job,name).read_bytes()).hexdigest() for name in original_names}
     recipe={name:hashlib.sha256(_files_any(PLATFORM,name).read_bytes()).hexdigest() for name in NATIVE_RECIPE}
     input_hash=_hash_value({'sources':inputs,'javaBuild':build})
     def intact():
-        if _source_inventory(job,sources,extra_names)!=inputs or any(hashlib.sha256(_files_any(job,p).read_bytes()).hexdigest()!=h for p,h in original.items()) or any(hashlib.sha256(_files_any(PLATFORM,p).read_bytes()).hexdigest()!=h for p,h in recipe.items()):raise GraderError('Native source/configuration integrity drift')
+        if _primary_files(job,config)!=primary_files or _source_inventory(job,sources,extra_names)!=inputs or any(hashlib.sha256(_files_any(job,p).read_bytes()).hexdigest()!=h for p,h in original.items()) or any(hashlib.sha256(_files_any(PLATFORM,p).read_bytes()).hexdigest()!=h for p,h in recipe.items()):raise GraderError('Native source/configuration integrity drift')
         if _verify_native_toolchain()!=lock or _grading_boundary()!=boundary:raise GraderError('Native toolchain/role identity drift')
     private=job/'.native-build-private';private.mkdir(mode=0o700);os.chown(private,job.stat().st_uid,-1)
     private_manifest={'buildEvidence':{'schemaVersion':1,'kind':'gradle-jar-v1','status':'failure','reason':'build','inputHash':input_hash,'dependencyHash':dependency_hash},'sourceInventory':inputs,'recipeHashes':recipe,'gradleUid':uid,'accessRoles':boundary['roles'],'buildRoleTransitions':[],'supervisorUid':os.geteuid(),'canaryDenied':True}
@@ -830,7 +848,7 @@ def _additional_inventory(job,config):
     if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
         raise _AdditionalSubmissionError('архив должен быть обычным файлом без symlink')
     if file.stat().st_size>policy['maxArchiveBytes']:raise _AdditionalSubmissionError('превышен maxArchiveBytes')
-    reserved=[*config['sourceFiles'],*config['testFiles'],'grading-job.json','tests/grading-job.json',policy['archive']]
+    reserved=[*(config['sourceFiles'] if policy.get('primaryRequired',True) else [Path(p).relative_to(root).as_posix() for p in _primary_files(job,config)]),*config['testFiles'],'grading-job.json','tests/grading-job.json',policy['archive']]
     members=[];names={};total=0
     try:
         with file.open('rb') as raw:
@@ -905,13 +923,14 @@ def grade(job_dir,registry=None):
     source_names=_names(config,'sourceFiles');test_names=_names(config,'testFiles')
     try:tests=_files(job/'tests',test_names)
     except ValueError as error:raise GraderError('Missing or unsafe trusted sources') from error
-    try:sources=_files(job/'student',source_names)
+    try:sources=_primary_files(job,config)
     except ValueError:return finish(_invalid('Upload all declared Java files'))
     try:additional,additional_evidence=_additional_inventory(job,config)
     except _AdditionalSubmissionError as error:
         result=_invalid(str(error),classification=error.classification)
         if 'apiPrecheck' in config:result.update(apiPrecheck='not-run',dependentExecution='not-run')
         return finish(result)
+    if not sources and not additional:return finish(_invalid('Представьте хотя бы один Java source'))
     with tempfile.TemporaryDirectory(prefix='java25-job-runtime-') as runtime_dir:
         extra_root=Path(runtime_dir)/'additional-sources'
         if additional:extra_root.mkdir(mode=0o700)

@@ -73,7 +73,7 @@ class PreparationBoundaries(unittest.TestCase):
   baked=self.p.baked_view(ROOT,expected)
   self.assertEqual(set(baked['profiles']),{'java25-junit-v1','java25-mutation-v1','java25-gradle-junit-v1'})
   for profile in baked['profiles'].values():
-   self.assertNotIn('image',profile);self.assertEqual(profile['runnerSha256'],'05aa5dfe0889c48b57eacf665c4274ac18d9ac3b1a0f18f4a948cc09fba7a737')
+   self.assertNotIn('image',profile);self.assertEqual(profile['runnerSha256'],'6971e911c88298ef04a7d0a71ab1fd96c80822d7676b520f88c5b3bfd68f3aef')
   changed=json.loads(expected);changed['jdk']['files'].pop('lib/libmanagement.so')
   with self.assertRaises(ValueError):self.p.generated_locks(changed)
  def test_fish_view_is_source_current_dependency_only_and_in_closed_payload(self):
