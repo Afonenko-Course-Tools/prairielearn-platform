@@ -6,7 +6,9 @@
 новый versioned source commit и его actual merged main SHA после review;
 старые 2.2.0/2.3.0 receipts не подтверждают этот runner. Source tag должен
 указывать на тот же source commit, что и новый runtime-image receipt.
-Adoption 12 publication updates Platform main ожидает отдельной приёмки Root.
+Принятые Root84 publication updates a42728c3534a65d77a5e7ca55ae4a81f83d3a36e
+включены локально; remote merge/publisher/actual image приёмка ещё не выполнены.
+Ниже сохранены исторические сведения и порядок runtime-выпуска2.3.0.
 
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после

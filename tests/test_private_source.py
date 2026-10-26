@@ -79,3 +79,128 @@ if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/E
    write(core/'materialization.json',json.dumps([{'name':'README.md','bytes':[1,2]}]))
    with self.assertRaisesRegex(stage.StageError,'artifact files'):stage.prepare(public,'tasks',core,root/'artifact-stage',root/'artifact-receipt.json')
    self.assertFalse((root/'artifact-stage').exists())
+
+class GeneratedExecutionSource(unittest.TestCase):
+ def fixture(self,root):
+  public=root/'public';public.mkdir();git(public,'init','-q');git(public,'remote','add','origin','https://example.invalid/course.git')
+  for name,data in {'.gitignore':'ignored/\n**/.quarto/\n**/_generated/\n','tasks/_quarto.yml':'project: {type: website}\n','tasks/lab.qmd':'PUBLIC','tasks/shared.txt':'COMMON','tasks/projects/demo/student/main.txt':'STARTER'}.items():write(public/name,data)
+  git(public,'add','.');git(public,'-c','user.name=F','-c','user.email=f@example.invalid','commit','-qm','Public')
+  execution=root/'execution';git(root,'clone','-q','--no-hardlinks',str(public),str(execution));git(execution,'remote','set-url','origin','https://example.invalid/course.git')
+  write(execution/'tasks/projects/demo/student/seed/data.txt','INITIAL_ONLY');write(execution/'tasks/projects/demo/student/seed/.git/HEAD','ref: refs/heads/main\n')
+  core=root/'core';files=[]
+  for name in ['main.txt','seed/data.txt','seed/.git/HEAD']:
+   target='projects/demo/student/'+name;source=execution/'tasks'/target;data=source.read_bytes();p=core/target;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data);files.append({'target':target,'source':str(source),'sha256':hashlib.sha256(data).hexdigest(),'origin':'public'})
+  data=b'COMMON';write(core/'projects/demo/tests/shared.txt',data.decode());files.append({'target':'projects/demo/tests/shared.txt','source':str(execution/'tasks/shared.txt'),'sha256':hashlib.sha256(data).hexdigest(),'origin':'common'})
+  manifest={'schema':'course-project-materialization-v1','audience':'grading','sourceRoot':str(execution/'tasks'),'sourceCommit':git(public,'rev-parse','HEAD'),'projects':[{'exerciseId':'exr-demo','projectRoot':'projects/demo'}],'replacementRoots':['projects/demo/'+p for p in ['student','reference','tests','rubric.md','contract.md']],'files':files,'sourceDocuments':{'lab.qmd':hashlib.sha256(b'PUBLIC').hexdigest()},'commonSources':{'shared.txt':hashlib.sha256(b'COMMON').hexdigest()},'declarationsHash':'a'*64}
+  write(core/'materialization.json',json.dumps(manifest));return public,execution,core,root/'stage',root/'receipt.json',manifest
+ def test_distinct_generated_owner_preserves_real_manifest(self):
+  with tempfile.TemporaryDirectory() as d:
+   p,e,c,out,receipt,m=self.fixture(Path(d));before=(c/'materialization.json').read_bytes();value=stage.prepare(p,'tasks',c,out,receipt)
+   self.assertEqual(value['publicBase'],{'repository':'https://example.invalid/course.git','commit':git(p,'rev-parse','HEAD'),'book':'tasks'})
+   self.assertEqual(value['materialization']['sha256'],hashlib.sha256(before).hexdigest());self.assertEqual((c/'materialization.json').read_bytes(),before)
+   self.assertEqual((out/'tasks/projects/demo/student/seed/data.txt').read_text(),'INITIAL_ONLY');self.assertEqual(git(p,'status','--porcelain','--untracked-files=all'),'');self.assertNotEqual(git(e,'status','--porcelain','--untracked-files=all'),'');stage.validate(out,receipt)
+ def test_distinct_owner_rejects_unbound_inputs_before_write(self):
+  def replace_tree(p,e,c,m):
+   empty=subprocess.check_output(['git','hash-object','-t','tree','-w','--stdin'],cwd=e,input=b'').decode().strip()
+   replacement=git(e,'-c','user.name=F','-c','user.email=f@example.invalid','commit-tree',empty,'-m','Other tree')
+   git(e,'replace','HEAD',replacement)
+  changes={
+   'head':lambda p,e,c,m:git(e,'-c','user.name=F','-c','user.email=f@example.invalid','commit','--allow-empty','-qm','Other HEAD'),
+   'same-head-replaced-tree':replace_tree,
+   'origin':lambda p,e,c,m:git(e,'remote','set-url','origin','https://other.invalid/course.git'),
+   'tracked-bytes':lambda p,e,c,m:write(e/'tasks/lab.qmd','DRIFT'),
+   'tracked-mode':lambda p,e,c,m:(e/'tasks/lab.qmd').chmod(0o755),
+   'tracked-private-mode':lambda p,e,c,m:(e/'tasks/lab.qmd').chmod(0o600),
+   'index':lambda p,e,c,m:git(e,'rm','--cached','tasks/lab.qmd'),
+   'assume-unchanged':lambda p,e,c,m:git(e,'update-index','--assume-unchanged','tasks/lab.qmd'),
+   'skip-worktree':lambda p,e,c,m:git(e,'update-index','--skip-worktree','tasks/lab.qmd'),
+   'missing-seed':lambda p,e,c,m:(e/'tasks/projects/demo/student/seed/data.txt').unlink(),
+   'changed-seed':lambda p,e,c,m:write(e/'tasks/projects/demo/student/seed/data.txt','DRIFT'),
+   'extra-seed':lambda p,e,c,m:write(e/'tasks/projects/demo/student/seed/extra','EXTRA'),
+   'untracked-outside':lambda p,e,c,m:write(e/'EXTRA','EXTRA'),
+   'ignored-outside':lambda p,e,c,m:write(e/'ignored/EXTRA','EXTRA'),
+   'ignored-git-outside':lambda p,e,c,m:write(e/'ignored/.git/HEAD','ref: refs/heads/main\n'),
+   'empty-directory-outside':lambda p,e,c,m:(e/'ignored').mkdir(),
+   'symlink':lambda p,e,c,m:(e/'ignored').symlink_to(p,target_is_directory=True),
+   'hardlink':lambda p,e,c,m:((e/'tasks/projects/demo/student/seed/data.txt').unlink(),os.link(c/'projects/demo/student/seed/data.txt',e/'tasks/projects/demo/student/seed/data.txt')),
+   'source-document':lambda p,e,c,m:m['sourceDocuments'].update({'missing.qmd':'a'*64}),
+   'common':lambda p,e,c,m:m['commonSources'].update({'shared.txt':'a'*64}),
+   'document-common-conflict':lambda p,e,c,m:(m['sourceDocuments'].update({'shared.txt':'a'*64})),
+   'untracked-common':lambda p,e,c,m:m['files'][1].update(origin='common'),
+   'foreign-source':lambda p,e,c,m:m['files'][0].update(source=str(p/'tasks/projects/demo/student/main.txt')),
+   'owner-root':lambda p,e,c,m:m.update(sourceRoot=str(e)),
+   'manifest-hash':lambda p,e,c,m:m['files'][0].update(sha256='a'*64),
+   'extra-core':lambda p,e,c,m:write(c/'EXTRA','EXTRA'),
+  }
+  for name,change in changes.items():
+   with self.subTest(name=name),tempfile.TemporaryDirectory() as d:
+    p,e,c,out,r,m=self.fixture(Path(d));change(p,e,c,m);write(c/'materialization.json',json.dumps(m))
+    with self.assertRaises((stage.StageError,OSError)):stage.prepare(p,'tasks',c,out,r)
+    self.assertFalse(out.exists());self.assertFalse(r.exists())
+ def test_execution_output_and_receipt_collisions_rejected(self):
+  for which in ['output','receipt']:
+   with self.subTest(which=which),tempfile.TemporaryDirectory() as d:
+    p,e,c,out,r,m=self.fixture(Path(d))
+    if which=='output':out=e/'new-stage'
+    else:r=e/'new-receipt.json'
+    with self.assertRaises(stage.StageError):stage.prepare(p,'tasks',c,out,r)
+    self.assertFalse(out.exists());self.assertFalse(r.exists())
+ def test_ordinary_same_owner_git_worktree(self):
+  with tempfile.TemporaryDirectory() as d:
+   p,e,c,out,r,m=self.fixture(Path(d));worktree=Path(d)/'worktree';git(p,'worktree','add','--detach',str(worktree),'HEAD')
+   removed=[f for f in m['files'] if '/seed/' in f['target']]
+   for f in removed:(c/f['target']).unlink()
+   m['files']=[f for f in m['files'] if f not in removed];m['sourceRoot']=str(worktree/'tasks')
+   for f in m['files']:f['source']=str(worktree/Path(f['source']).relative_to(e))
+   write(c/'materialization.json',json.dumps(m));value=stage.prepare(worktree,'tasks',c,out,r);stage.validate(out,r);self.assertEqual(value['publicBase']['commit'],git(p,'rev-parse','HEAD'))
+ def empty_git_directories(self,e):
+  base=e/'tasks/projects/demo/student/seed/.git';paths=[base/x for x in ['objects/info','objects/pack','refs/tags']]
+  # Родители реальных objects/refs должны уже принадлежать file-only receipt.
+  return paths
+ def test_fixed_empty_git_directories_and_prepost_identity(self):
+  changes={
+   'positive':lambda path:None,
+   'arbitrary':lambda path:(path.parent/'extra').mkdir(),
+   'child-file':lambda path:write(path/'EXTRA','EXTRA'),
+   'child-directory':lambda path:(path/'extra').mkdir(),
+   'mode':lambda path:path.chmod(0o700),
+   'type':lambda path:(path.rmdir(),path.write_text('FILE')),
+   'symlink':lambda path:(path.rmdir(),path.symlink_to(path.parent,target_is_directory=True)),
+  }
+  for name,change in changes.items():
+   with self.subTest(name=name),tempfile.TemporaryDirectory() as d:
+    p,e,c,out,r,m=self.fixture(Path(d));base=e/'tasks/projects/demo/student/seed/.git'
+    # Оба базовых родителя — ancestors настоящих M files, не новое разрешение.
+    for leaf in ['objects/aa/known','refs/heads/main']:
+     src=base/leaf;write(src,'SEED');target='projects/demo/student/seed/.git/'+leaf;write(c/target,'SEED');m['files'].append({'target':target,'source':str(src),'sha256':hashlib.sha256(b'SEED').hexdigest(),'origin':'public'})
+    paths=self.empty_git_directories(e)
+    for path in paths:path.mkdir(mode=0o755)
+    write(c/'materialization.json',json.dumps(m));change(paths[0])
+    if name=='positive':stage.prepare(p,'tasks',c,out,r);stage.validate(out,r)
+    else:
+     with self.assertRaises(stage.StageError):stage.prepare(p,'tasks',c,out,r)
+     self.assertFalse(out.exists());self.assertFalse(r.exists())
+  for drift in ['replace','remove','add-presence','mode','child']:
+   with self.subTest(drift=drift),tempfile.TemporaryDirectory() as d:
+    p,e,c,out,r,m=self.fixture(Path(d));base=e/'tasks/projects/demo/student/seed/.git';path=base/'refs/tags';write(base/'refs/heads/main','SEED');target='projects/demo/student/seed/.git/refs/heads/main';write(c/target,'SEED');m['files'].append({'target':target,'source':str(base/'refs/heads/main'),'sha256':hashlib.sha256(b'SEED').hexdigest(),'origin':'public'});write(c/'materialization.json',json.dumps(m))
+    if drift!='add-presence':path.mkdir(mode=0o755)
+    original=stage.validate
+    def mutate(*args,**kwargs):
+     if drift=='replace':path.rename(Path(d)/'retired');path.mkdir(mode=0o755)
+     elif drift=='remove':path.rmdir()
+     elif drift=='add-presence':path.mkdir(mode=0o755)
+     elif drift=='mode':path.chmod(0o700)
+     else:write(path/'ADDED','ADDED')
+     return original(*args,**kwargs)
+    with patch.object(stage,'validate',side_effect=mutate):
+     with self.assertRaises(stage.StageError):stage.prepare(p,'tasks',c,out,r)
+    self.assertFalse(out.exists());self.assertFalse(r.exists())
+ def test_distinct_owner_prepost_drift_cleans_only_new_outputs(self):
+  for scope in ['public','execution','core']:
+   with self.subTest(scope=scope),tempfile.TemporaryDirectory() as d:
+    p,e,c,out,r,m=self.fixture(Path(d));original=stage.validate
+    def drift(*args,**kwargs):
+     write({'public':p/'tasks/lab.qmd','execution':e/'tasks/projects/demo/student/seed/ADDED','core':c/'ADDED'}[scope],'DRIFT');return original(*args,**kwargs)
+    with patch.object(stage,'validate',side_effect=drift):
+     with self.assertRaises(stage.StageError):stage.prepare(p,'tasks',c,out,r)
+    self.assertFalse(out.exists());self.assertFalse(r.exists());self.assertTrue(p.exists() and e.exists() and c.exists())

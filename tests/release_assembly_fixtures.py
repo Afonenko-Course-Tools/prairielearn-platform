@@ -18,7 +18,8 @@ class AssemblyFixture:
   if (ROOT/'tools/release_assembly.py').is_file():names.append('tools/release_assembly.py')
   for n in sorted(set(names)):
    f=ROOT/n;put(self.platform/n,f.read_bytes(),0o755 if f.stat().st_mode&0o111 else 0o644)
-  # Исторический UNIT Context сохраняет version/tag2.3.0 внутри своей копии.
+  # UNIT Context проверяет именно прежнюю runtime2.3.0 assembly. Новый host-only
+  # helper имеет отдельный source version и не подменяет её VERSION/assets.
   put(self.platform/'VERSION','2.3.0\n')
   git(self.platform,'init','-q');git(self.platform,'remote','add','origin',REPOSITORY);git(self.platform,'add','-A');git(self.platform,'-c','user.name=UNIT','-c','user.email=unit@example.invalid','commit','-qm','UNIT source fixture')
   self.commit=git(self.platform,'rev-parse','HEAD');self.tree=git(self.platform,'rev-parse','HEAD^{tree}');git(self.platform,'-c','user.name=UNIT','-c','user.email=unit@example.invalid','tag','-a','v2.3.0','-m','UNIT ONLY not published')

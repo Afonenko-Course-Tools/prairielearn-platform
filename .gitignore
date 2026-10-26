@@ -14,3 +14,4 @@ node_modules/
 .native-toolchain/
 .native-toolchain-cache/
 .native-toolchain-preparing-*/
+.ci-deps/
