@@ -175,7 +175,15 @@ class PublishedMetadata(unittest.TestCase):
         self.changed_context('fish-runtime-profiles.json', stale)
 
     def test_stale_baked_runner_is_refused(self):
-        self.changed_context('runtime-profiles.json', lambda b: b.replace(b'05aa5dfe', b'00000000'))
+        def stale(data):
+            value = json.loads(data)
+            profile = value['profiles']['java25-junit-v1']
+            digest = profile['runnerSha256']
+            profile['runnerSha256'] = ('0' if digest[0] != '0' else '1') + digest[1:]
+            changed = json.dumps(value).encode()
+            self.assertNotEqual(data, changed)
+            return changed
+        self.changed_context('runtime-profiles.json', stale)
 
     def test_missing_native_profile_is_refused(self):
         def remove(data):
