@@ -144,3 +144,45 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
    fact['check']['additional-java-sources']=saved
    (project/'tests/fixtures/extra.zip').write_bytes(b'tampered')
    with self.assertRaisesRegex(jobs.JobError,'snapshot changed'):jobs.prepare_job(manifest,snapshot,'demo/exr-extra','contract:extra',registry=unit_registry())
+
+class PreparationMetadataTests(unittest.TestCase):
+ def setUp(self):
+  import hashlib
+  spec=importlib.util.spec_from_file_location('metadata_jobs',ROOT/'tools/grading_job.py');self.jobs=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.jobs)
+  self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.snapshot=Path(self.tmp.name);project=self.snapshot/'tasks/p'
+  files={'student/Student.java':'public class Student {}','tests/AnswerTest.java':TEST}
+  for name,source in files.items():
+   path=project/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(source)
+  def selected(name,target):return {'projectRelativePath':name,'submissionRelativePath':target,'sha256':hashlib.sha256((project/name).read_bytes()).hexdigest()}
+  self.feedback={'requirement':'Return the required answer.','what-check':'The answer equals 42.'}
+  self.cases=[{'id':'answer','test':'AnswerTest.right','input':'42','expected':'42','name':'Required answer'}]
+  fact={'qualifiedId':'demo/exr-metadata','projectRoot':'p','check':{'runtime':'java25-junit-v1','sourceProfile':{'mode':'implementation','root':'student','include':['*.java']},'feedback':self.feedback,'public-cases':self.cases},'sources':[selected('student/Student.java','Student.java')],'trustedTests':[selected('tests/AnswerTest.java','AnswerTest.java')],'verificationTests':[]}
+  self.manifest={'schemaVersion':1,'bookRoot':'tasks','sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64,'projects':[fact]}
+ def prepare(self):
+  import shutil
+  job=self.jobs.prepare_job(self.manifest,self.snapshot,'demo/exr-metadata','starter',registry=unit_registry())
+  self.addCleanup(shutil.rmtree,job.root);return job
+ def test_prepare_preserves_legal_feedback_and_public_cases(self):
+  job=self.prepare();expected={'requirement':'Return the required answer.','whatCheck':'The answer equals 42.'}
+  self.assertEqual(job['grading']['feedback'],expected)
+  self.assertEqual(job['grading']['publicCases'],[{'id':'answer','test':'AnswerTest.right','input':'42','expected':'42','name':'Required answer'}])
+  written=json.loads((job.root/'tests/grading-job.json').read_text())
+  self.assertEqual(written['feedback'],expected);self.assertEqual(written['publicCases'],job['grading']['publicCases'])
+ def test_embedded_feedback_rejects_malformed_nested_values(self):
+  import copy
+  job=self.prepare()
+  for bad in [{'requirement':'','whatCheck':'Check'},{'requirement':'Required','whatCheck':'Check','unknown':True}]:
+   with self.subTest(feedback=bad):
+    value=copy.deepcopy(dict(job));value['grading']['feedback']=bad
+    with self.assertRaises(self.jobs.JobError):self.jobs.validate('grading-job',value)
+ def test_embedded_public_cases_rejects_missing_required_and_unknown_fields(self):
+  import copy
+  job=self.prepare()
+  for bad in [{'id':'answer','test':'AnswerTest.right','input':'42','expected':'42'},{'id':'answer','test':'AnswerTest.right','input':'42','expected':'42','name':'Required answer','unknown':True}]:
+   with self.subTest(publicCase=bad):
+    value=copy.deepcopy(dict(job));value['grading']['publicCases']=[bad]
+    with self.assertRaises(self.jobs.JobError):self.jobs.validate('grading-job',value)
+ def test_prepared_job_keeps_grading_unknown_fields_closed(self):
+  import copy
+  value=copy.deepcopy(dict(self.prepare()));value['grading']['unknown']=True
+  with self.assertRaises(self.jobs.JobError):self.jobs.validate('grading-job',value)
