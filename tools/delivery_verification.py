@@ -94,7 +94,7 @@ def package_integrity(delivery,native,checks=None):
  covered=set();works={work.get('id'):work for work in delivery['works'] if isinstance(work,dict)}
  if len(works)!=len(delivery['works']) or any(not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]*',key) for key in works):raise JobError('Unique canonical work identities required')
  for instance,catalog in delivery['instances'].items():
-  if not isinstance(instance,str) or not re.fullmatch(r'[a-z][a-z0-9-]*',instance) or not isinstance(catalog,dict) or set(catalog)!={'works','selfEnrollment'} or type(catalog['selfEnrollment']) is not bool or not isinstance(catalog['works'],list) or not catalog['works'] or len(set(catalog['works']))!=len(catalog['works']) or any(work not in works for work in catalog['works']):raise JobError('Exact canonical instance work catalog required')
+  if not isinstance(instance,str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]*',instance) or not isinstance(catalog,dict) or set(catalog)!={'works','selfEnrollment'} or type(catalog['selfEnrollment']) is not bool or not isinstance(catalog['works'],list) or not catalog['works'] or len(set(catalog['works']))!=len(catalog['works']) or any(work not in works for work in catalog['works']):raise JobError('Exact canonical instance work catalog required')
   instance_path='courseInstances/'+instance+'/infoCourseInstance.json'
   if instance_path not in files:raise JobError('Native instance metadata missing')
   for work_id in catalog['works']:
