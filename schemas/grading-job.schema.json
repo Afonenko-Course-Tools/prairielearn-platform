@@ -377,6 +377,7 @@
         "additionalJavaSources": {
           "type": "object",
           "properties": {
+            "primaryRequired": {"type": "boolean"},
             "archive": {
               "type": "string",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"

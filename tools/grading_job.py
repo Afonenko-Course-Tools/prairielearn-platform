@@ -119,6 +119,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     selected=sources
     extra_policy=check.get('additional-java-sources')
     archive_name=extra_policy['archive'] if extra_policy else None
+    optional_primary=extra_policy is not None and extra_policy.get('primary-required',True) is False
     primary_names={x['submissionRelativePath'] for x in sources}
     generated_archive=None
     if archive_name:
@@ -133,7 +134,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
         if len(declared)!=1:raise JobError('Named reference inventory missing '+name)
         selected=_selection(project,declared[0].get('sources',[]))
         reference_names={x['submissionRelativePath'] for x in selected}
-        if (not extra_policy and reference_names!=primary_names) or not primary_names<=reference_names:raise JobError('Reference source mapping differs from student source names')
+        if (not extra_policy and reference_names!=primary_names) or (not optional_primary and not primary_names<=reference_names):raise JobError('Reference source mapping differs from student source names')
         extras=[x for x in selected if x['submissionRelativePath'] not in primary_names]
         if extras:
             if any(not x['submissionRelativePath'].endswith('.java') for x in extras):raise JobError('Reference extras must be Java sources')
@@ -143,7 +144,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
                     info=zipfile.ZipInfo(x['submissionRelativePath'],date_time=(1980,1,1,0,0,0));info.create_system=3;info.external_attr=(stat.S_IFREG|0o644)<<16;info.compress_type=zipfile.ZIP_DEFLATED
                     archive.writestr(info,safe(project,x['projectRelativePath']).read_bytes())
             generated_archive=buffer.getvalue()
-        for x in sources:
+        for x in selected:
             f=safe(root,x['submissionRelativePath'])
             if not f.is_file():raise JobError('Reference source mapping missing '+x['submissionRelativePath'])
             if not any(y['projectRelativePath']==f.relative_to(project).as_posix() for y in selected):raise JobError('Reference selection does not match declared root')
@@ -161,8 +162,8 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
             if not f.is_file():raise JobError('Missing contract fixture')
             if x['submission'] in replacements:raise JobError('Duplicate fixture submission')
             replacements[x['submission']]={'projectRelativePath':x['fixture'],'submissionRelativePath':x['submission'],'sha256':hashlib.sha256(f.read_bytes()).hexdigest()}
-        selected=[replacements.get(x['submissionRelativePath'],x) for x in sources]
-        if archive_name in replacements:selected.append(replacements[archive_name])
+        selected=list(replacements.values()) if optional_primary else [replacements.get(x['submissionRelativePath'],x) for x in sources]
+        if not optional_primary and archive_name in replacements:selected.append(replacements[archive_name])
     elif scenario!='starter':raise JobError('Unknown scenario')
     java={'release':25,'encoding':'UTF-8','compiler-options':['-proc:none','-Xmaxerrs','5']};java.update(check.get('java',{}))
     limits={'outer-seconds':30,'compile-seconds':15,'run-seconds':10,'networking':False,'max-output-bytes':65536};limits.update(check.get('limits',{}))
@@ -185,7 +186,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     if 'public-cases' in check:grading['publicCases']=check['public-cases']
     if api:grading['apiPrecheck']=api
     if extra_policy:
-        grading['additionalJavaSources']={'archive':archive_name,**{new:extra_policy[old] for old,new in [('max-files','maxFiles'),('max-file-bytes','maxFileBytes'),('max-total-bytes','maxTotalBytes'),('max-archive-bytes','maxArchiveBytes')]}}
+        grading['additionalJavaSources']={**({'primaryRequired':extra_policy['primary-required']} if 'primary-required' in extra_policy else {}),'archive':archive_name,**{new:extra_policy[old] for old,new in [('max-files','maxFiles'),('max-file-bytes','maxFileBytes'),('max-total-bytes','maxTotalBytes'),('max-archive-bytes','maxArchiveBytes')]}}
     if 'java-build' in check:
         build=check['java-build'];grading['javaBuild']={'kind':build['kind'],'mainClass':build['main-class'],'artifact':build['artifact']}
     if 'variants' in check:grading['variants']=check['variants']
@@ -221,6 +222,7 @@ def prepare_job(manifest,snapshot,id,scenario,scope='declared',delivery=None,reg
     validate('grading-job',job)
     job.root=Path(tempfile.mkdtemp(prefix='grading-job-'))
     for folder,selection in [('student',selected),('tests',tests)]:
+        (job.root/folder).mkdir(exist_ok=True)
         for x in selection:
             if folder=='student' and generated_archive is not None and x['submissionRelativePath'] not in primary_names:continue
             target=safe(job.root,folder+'/'+x['submissionRelativePath']);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(safe(project,x['projectRelativePath']).read_bytes())
@@ -242,7 +244,11 @@ NATIVE_RUNTIME='java25-gradle-junit-v1'
 def _prepared_build_input_hash(job):
     """Hash captured/materialized bytes, independently of the returned proof."""
     config=job['grading'];root=job.root
-    files={name:hashlib.sha256(safe(root/'student',name).read_bytes()).hexdigest() for name in config['sourceFiles']}
+    files={}
+    for name in config['sourceFiles']:
+        path=safe(root/'student',name)
+        if not path.exists() and config.get('additionalJavaSources',{}).get('primaryRequired',True) is False:continue
+        files[name]=hashlib.sha256(path.read_bytes()).hexdigest()
     selected={x['submissionRelativePath']:x['sha256'] for x in job['sources']}
     if any(selected.get(name)!=sha for name,sha in files.items()):raise JobError('Materialized native source differs from captured selection')
     if 'additionalJavaSources' in config:

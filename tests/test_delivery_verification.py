@@ -94,6 +94,19 @@ class DeliveryPackage(unittest.TestCase):
   descriptor['additionalJavaSources']={'archive':'additional-sources.zip','maxFiles':8,'maxFileBytes':1024,'maxTotalBytes':4096,'maxArchiveBytes':4096}
   self.put('questions/'+self.q+'/tests/grading-job.json',descriptor)
   self.put(html,original.replace('file-names="S.java"','file-names="S.java" optional-file-names="additional-sources.zip"'));self.refresh();v.package_integrity(self.delivery,self.root,self.checks)
+  descriptor['additionalJavaSources']['primaryRequired']=False
+  self.put('questions/'+self.q+'/tests/grading-job.json',descriptor)
+  self.put(html,original.replace('file-names="S.java"','optional-file-names="S.java,additional-sources.zip"'));self.refresh();v.package_integrity(self.delivery,self.root,self.checks)
+  for attrs in ['file-names="S.java" optional-file-names="additional-sources.zip"','optional-file-names="additional-sources.zip"','optional-file-names="S.java,additional-sources.zip,Other.java"']:
+   self.put(html,'<pl-file-upload '+attrs+'></pl-file-upload><pl-external-grader-results></pl-external-grader-results>');self.refresh()
+   with self.subTest(optional_attrs=attrs),self.assertRaises(g.JobError):v.package_integrity(self.delivery,self.root,self.checks)
+  nested={**binding['sources'][0],'projectRelativePath':'student/pkg/Nested.java','submissionRelativePath':'pkg/Nested.java'}
+  binding['sources'].append(nested);descriptor['sourceFiles'].append('pkg/Nested.java')
+  self.put('questions/'+self.q+'/tests/grading-job.json',descriptor)
+  self.put(html,original.replace('file-names="S.java"','optional-file-names="S.java,additional-sources.zip"'));self.refresh();v.package_integrity(self.delivery,self.root,self.checks)
+  self.put(html,original.replace('file-names="S.java"','optional-file-names="S.java,pkg/Nested.java,additional-sources.zip"'));self.refresh()
+  with self.assertRaises(g.JobError):v.package_integrity(self.delivery,self.root,self.checks)
+  binding['sources'].pop();descriptor['sourceFiles'].pop()
   descriptor.pop('additionalJavaSources');self.put('questions/'+self.q+'/tests/grading-job.json',descriptor)
   self.put(html,original);self.refresh()
   assessment['zones'][0]['questions'][0].pop('manualPoints');self.put(name,assessment);self.refresh()

@@ -166,11 +166,13 @@ def package_integrity(delivery,native,checks=None):
    names.extend(required);optional.extend(extra);patterns.extend(globs)
   if len(set(names+optional))!=len(names+optional):raise JobError('Duplicate native upload name')
   if method!='manual':
-   expected_optional=[descriptor['additionalJavaSources']['archive']] if descriptor.get('additionalJavaSources') else []
-   if patterns or sorted(optional)!=expected_optional:raise JobError('Native upload optional files differ from declared policy')
+   extra_policy=descriptor.get('additionalJavaSources');optional_primary=extra_policy is not None and extra_policy.get('primaryRequired',True) is False
+   expected_optional=([*[source['submissionRelativePath'] for source in binding['sources'] if '/' not in source['submissionRelativePath']],extra_policy['archive']] if optional_primary else [extra_policy['archive']]) if extra_policy else []
+   if optional_primary and binding['submission']['mode']!='upload':raise JobError('Optional primary requires upload')
+   if patterns or sorted(optional)!=sorted(expected_optional):raise JobError('Native upload optional files differ from declared policy')
   if binding['submission']['mode']=='upload':
    if editors or not uploads:raise JobError('Native upload input missing or empty')
-   if method!='manual' and set(names)!={source['submissionRelativePath'] for source in binding['sources']}:raise JobError('Native upload inputs differ from bound source files')
+   if method!='manual' and set(names)!=(set() if optional_primary else {source['submissionRelativePath'] for source in binding['sources']}):raise JobError('Native upload inputs differ from bound source files')
   else:
    if names:raise JobError('Editor cannot add required upload names')
    expected=[source['submissionRelativePath'] for source in binding['sources']]

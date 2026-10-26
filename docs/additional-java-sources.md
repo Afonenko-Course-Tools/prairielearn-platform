@@ -13,3 +13,29 @@ Preflight проверяет declared и фактические размеры, 
 Результат может содержать `additionalSources`: имя/hash архива и принятый отсортированный inventory `{path,sha256,bytes}`. При unsafe ZIP непроверенный inventory не выдаётся как принятый. ZIP fixtures остаются под `tests/fixtures` и входят в snapshot hashes. Reference extras разрешены только с policy: обязательные filenames сохраняются, дополнительные `.java` доверенный код пакует детерминированно. Generated archive hash имеет ключ `$generated/<archive>` в sourceHashes. Descriptor equality и native delivery hashes остаются обязательными.
 
 PrairieLearn exporter показывает штатный optional upload рядом с редакторами либо в существующей upload-форме. Общий штатный предел PL5MB относится ко всему ответу с редакторными bytes; nominal maxArchiveBytes не обещает этот объём при больших основных файлах. Live PL, Windows и публикация этим локальным контрактом не подтверждены.
+
+## Opt-in необязательных основных файлов
+
+Необязательный boolean `additionalJavaSources.primaryRequired` имеет default `true`.
+При `false` `sourceFiles` остаётся непустым starter inventory, а runtime компилирует
+только непустую union фактически представленных primary и проверенных ZIP `.java`.
+Отсутствующий primary не подставляется. ZIP может содержать его имя; дубликат
+присланного primary, trusted/common/generated collision и все прежние unsafe/cap
+нарушения отвергаются. Непустой direct ответ допустим без архива. API/tests/scoring
+и JDK25 с `--release 25` сохраняются; сбой инструмента не становится оценкой 0.
+
+Авторский ключ `additional-java-sources.primary-required: false` требует полной
+bounded policy и штатного upload. Delivery verification проверяет точный набор
+optional primary+archive names и отвергает editor. Reference использует реальные
+выбранные Java sources, contract — только явно объявленные fixtures. Gradle input
+hash связывает фактические primary и ZIP members, без отсутствующего placeholder.
+
+Изменение runner требует нового честного runtime image и обновления registry/lock
+по штатному release pipeline. Локальные source tests не подтверждают новый OCI
+image; прежний digest не поддерживает новое поле. Версии и pins обновляются только
+на отдельном этапе после независимой приёмки.
+
+В opt-in upload отдельно перечисляются только primary без каталогов и архив.
+Nested primary передаются внутри ZIP с исходными относительными путями; полный
+`sourceFiles` и canonical binding сохраняются. Flattening, кодирование имён и
+wildcard загрузка не применяются.
