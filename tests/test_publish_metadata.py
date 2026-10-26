@@ -22,7 +22,7 @@ class PublishedMetadata(unittest.TestCase):
     def run_producer(self, changes=None):
         env = dict(os.environ, GITHUB_SHA=subprocess.check_output(
             ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
-            VERSION='2.3.0', **{k.upper() + '_DIGEST': v for k, v in IMAGES.items()})
+            VERSION=(ROOT / 'VERSION').read_text().strip(), **{k.upper() + '_DIGEST': v for k, v in IMAGES.items()})
         env.update(changes or {})
         with tempfile.TemporaryDirectory(prefix='publisher-unit-') as output:
             # The historical CLI reads this from cwd. Retain that real input
@@ -53,7 +53,7 @@ class PublishedMetadata(unittest.TestCase):
             profile = registry['profiles'][name]
             self.assertEqual(profile['image'], IMAGES['java'])
             self.assertEqual(profile['runnerSha256'],
-                             '05aa5dfe0889c48b57eacf665c4274ac18d9ac3b1a0f18f4a948cc09fba7a737')
+                             '6971e911c88298ef04a7d0a71ab1fd96c80822d7676b520f88c5b3bfd68f3aef')
             self.assertEqual(profile['sharedFiles']['runtime/gradle-jar-v1/toolchain-lock.json'],
                              'c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca')
         native = registry['profiles']['java25-gradle-junit-v1']

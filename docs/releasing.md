@@ -1,6 +1,12 @@
 # Версии Platform и публикация образов
 
-`VERSION` содержит **2.3.0** — локальную кандидатуру с новым opt-in Gradle JAR profile и совместимыми классическими JUnit-профилями. Публикация2.3.0 не выполнена; новые OCI digests отсутствуют.
+`VERSION` содержит **2.4.0** — локальную кандидатуру optional-primary Java с Core/Exporter 8.3.0. Новый runner source pin обновлён; новый OCI digest, actual image admission и assets ещё не получены.
+
+Далее сохранён порядок существующего runtime publisher. Для 2.4.0 используются
+новый versioned source commit и его actual merged main SHA после review;
+старые 2.2.0/2.3.0 receipts не подтверждают этот runner. Source tag должен
+указывать на тот же source commit, что и новый runtime-image receipt.
+Adoption 12 publication updates Platform main ожидает отдельной приёмки Root.
 
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
