@@ -22,6 +22,25 @@ class ReleaseAssembly(unittest.TestCase):
    override=Path(name)/'mounts.json';q=subprocess.run([sys.executable,'-B',str(f.platform/'tools/stage_courses.py'),str(registry),'--images',str(f.assets/'images.lock.json'),'--storage',str(storage),'--compose-output',str(override)],capture_output=True,timeout=30,env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1'})
    self.assertEqual(q.returncode,0,q.stderr.decode());self.assertEqual(json.loads(override.read_bytes())['services']['pl']['volumes'][0]['source'],str(destination));self.assertEqual(git(destination,'status','--porcelain'),'')
 
+ def test_stage_registry_explicit_assembly_root_preserves_original_context(self):
+  with tempfile.TemporaryDirectory() as name:
+   f=AssemblyFixture(name);stage=load('separate_host_stage',ROOT/'tools/stage_courses.py')
+   images=json.loads((f.assets/'images.lock.json').read_bytes())
+   course={'id':'unit-course','repository':'https://example.invalid/unit-native.git','commit':'1'*40,'mount':'/course'}
+   registry={'schema':'pl-courses-v1','courses':[course]};seen=[]
+   def accept(record,storage,institutions,actual_images,assembly,admission_policy=None,admission_policy_sha256=None):
+    assembly.recheck();self.assertEqual(assembly.builder['commit'],f.commit);self.assertEqual(actual_images,images);seen.append(assembly);return Path(name)/'native'
+   with patch.object(stage,'stage_course',accept):
+    result=stage.stage_registry(registry,images,Path(name),images_path=f.assets/'images.lock.json',assembly_root=f.platform)
+   self.assertEqual(len(seen),1);self.assertEqual(result['services']['pl']['volumes'][0]['source'],str(Path(name)/'native'))
+   stage.builder.PLATFORM=f.platform
+   with patch.object(stage,'stage_course',accept):stage.stage_registry(registry,images,Path(name),images_path=f.assets/'images.lock.json')
+   for bad in [Path(name)/'missing',Path('relative')]:
+    with self.subTest(root=bad),self.assertRaises(stage.StorageError):stage.stage_registry(registry,images,Path(name),images_path=f.assets/'images.lock.json',assembly_root=bad)
+   link=Path(name)/'alias';link.symlink_to(f.platform,target_is_directory=True)
+   with self.assertRaises(stage.StorageError):stage.stage_registry(registry,images,Path(name),images_path=f.assets/'images.lock.json',assembly_root=link)
+   original=(f.assets/'runtime-image.json').read_bytes();(f.assets/'runtime-image.json').write_bytes(original+b' ')
+   with self.assertRaises(stage.StorageError):stage.stage_registry(registry,images,Path(name),images_path=f.assets/'images.lock.json',assembly_root=f.platform)
  def context(self,f):
   return load('unit_closed_assembly',ROOT/'tools/release_assembly.py').Context(f.platform,f.assets/'images.lock.json')
 
