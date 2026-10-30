@@ -133,6 +133,53 @@ class Lifecycle(unittest.TestCase):
         self.assertFalse((self.root/'escape').exists())
         self.assertFalse((self.home/'work').exists())
 
+    def test_unreachable_solution_commit_is_not_a_seed(self):
+        (self.work/'README.md').write_text('Название: проект измерений.\n')
+        git(self.work,'add','README.md')
+        git(self.work,'commit','-m','B, отсутствующий в refs')
+        hidden_b=git(self.work,'rev-parse','HEAD')
+        git(self.work,'reset','--hard',self.a)
+        shutil.rmtree(self.work/'.git/logs',ignore_errors=True)
+        self.assertEqual(git(self.work,'rev-list','--count','--all'),'1')
+        self.assertEqual(git(self.work,'show',hidden_b+':README.md'),'Название: проект измерений.')
+        self.package()
+        self.assertNotEqual(self.boot().returncode,0)
+        self.assertFalse((self.home/'work').exists())
+
+    def test_unreachable_answer_blob_is_not_a_seed(self):
+        answer=self.root/'answer.txt'
+        answer.write_text('Название: проект измерений.\n')
+        hidden_blob=git(self.work,'hash-object','-w',str(answer))
+        self.assertEqual(git(self.work,'cat-file','-t',hidden_blob),'blob')
+        self.assertEqual(git(self.work,'rev-list','--count','--all'),'1')
+        self.package()
+        self.assertNotEqual(self.boot().returncode,0)
+        self.assertFalse((self.home/'work').exists())
+
+    def test_packed_unreachable_answer_blob_is_not_a_seed(self):
+        answer=self.root/'answer.txt'
+        answer.write_text('Название: проект измерений.\n')
+        hidden_blob=git(self.work,'hash-object','-w',str(answer))
+        objects=git(self.work,'cat-file','--batch-all-objects','--batch-check=%(objectname)')
+        subprocess.check_output(['git','pack-objects','.git/objects/pack/seed'],
+                                input=objects+'\n',cwd=self.work,env=ENV,text=True)
+        git(self.work,'prune-packed')
+        self.assertFalse((self.work/'.git/objects'/hidden_blob[:2]/hidden_blob[2:]).exists())
+        self.assertEqual(git(self.work,'cat-file','-t',hidden_blob),'blob')
+        self.package()
+        self.assertNotEqual(self.boot().returncode,0)
+        self.assertFalse((self.home/'work').exists())
+
+    def test_restart_preserves_unreachable_student_objects(self):
+        work=self.ready()
+        answer=self.root/'answer.txt'
+        answer.write_text('Личная промежуточная запись студента.\n')
+        object_id=git(work,'hash-object','-w',str(answer))
+        before=inventory(self.home)
+        self.ready()
+        self.assertEqual(inventory(self.home),before)
+        self.assertEqual(git(work,'cat-file','blob',object_id),'Личная промежуточная запись студента.')
+
     def test_solution_history_is_not_a_seed(self):
         (self.work/'README.md').write_text('Название: проект измерений.\n')
         git(self.work,'add','README.md')

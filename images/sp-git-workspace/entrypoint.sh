@@ -73,6 +73,11 @@ else:
             or git('rev-list', '--count', '--all') != '1'
             or git('status', '--porcelain') != ''):
             raise SystemExit('SP.SEED_INVALID: требуется только чистый исходный A/main')
+        # В seed допустимо только замыкание A: --all не видит недостижимое решение.
+        initial_objects = set(git('rev-list', '--objects', '--no-object-names', 'HEAD').splitlines())
+        stored_objects = set(git('cat-file', '--batch-all-objects', '--batch-check=%(objectname)').splitlines())
+        if stored_objects != initial_objects:
+            raise SystemExit('SP.SEED_INVALID: object database содержит объекты вне исходного A')
         chosen = {'schema': manifest['schema'], 'sha256': digest, 'seedCommit': git('rev-parse', 'HEAD')}
         # Публикуем проверенный work одним rename, существующую работу не перезаписываем.
         (stage/'work').rename(work)

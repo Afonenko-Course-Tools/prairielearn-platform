@@ -11,6 +11,10 @@ Native exporter кладёт trusted student ZIP и manifest в `workspace/.pl-s
 Manifest `pl-git-workspace-seed-v1` содержит `sha256` архива и
 `files:[{name,sha256}]`. Первая инициализация проверяет ZIP, paths/types,
 inventory/hashes и чистый Git seed с одним A/main до атомарного переноса work.
+Вся переданная object database, включая packed и недостижимые объекты,
+должна совпадать с замыканием A; готовые B или отдельные answer blobs в seed
+отвергаются. Эта проверка выполняется только при первой инициализации:
+недостижимые объекты существующей студенческой работы при restart сохраняются.
 `identity.json` связывает выбранный архив с исходным commit. Обычный restart
 читает identity и продолжает существующее work без Git refresh и без записи
 в HEAD/index/worktree. Работа без identity, identity без work и изменённый seed
