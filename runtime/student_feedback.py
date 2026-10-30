@@ -225,12 +225,11 @@ def student_result(result, descriptor):
             {
                 "name": case["name"],
                 "description": "\n".join(
-                    label + ": " + case[key]
+                    label + ": " + case.get(key, "не установлено")
                     for key, label in (
                         ("expected", "Ожидается"),
                         ("actual", "Получено"),
                     )
-                    if key in case
                 ),
                 "message": (
                     "Проверка пройдена."

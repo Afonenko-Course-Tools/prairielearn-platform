@@ -3,6 +3,7 @@
 import os
 import shutil
 import json
+import runpy
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +16,71 @@ grader = fixtures.grader
 class CompleteJUnitResult(unittest.TestCase):
     setUp = fixtures.JUnitJob.setUp
     run_job = fixtures.JUnitJob.run_job
+
+    def public_result(self, result):
+        return runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
+            "student_result"
+        ](result, self.cfg)
+
+    def test_mutable_throwable_stack_cannot_authorize_subject_values(self):
+        for trace in (
+            "new StackTraceElement[0]",
+            'new StackTraceElement[]{new StackTraceElement("org.junit.jupiter.api.Assertions", "assertEquals", "Assertions.java", 1)}',
+        ):
+            with self.subTest(trace=trace):
+                (self.job / "student/Student.java").write_text(
+                    "public class Student {public static int answer(){"
+                    'var failure = new org.opentest4j.AssertionFailedError("PRIVATE_THROWABLE_MESSAGE",'
+                    '"FORGED_EXPECTED_CANARY",System.getProperty("java.class.path"));'
+                    f"failure.setStackTrace({trace});throw failure;}}}}"
+                )
+                (self.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @Test @DisplayName("Ответ студента") void result() { assertEquals(42, Student.answer()); }
+}""")
+                result = self.run_job()
+                public = self.public_result(result)
+                self.assertEqual(public["score"], 0)
+                self.assertEqual(result["counts"]["executed"], 1)
+                self.assertEqual(result["counts"]["failed"], 1)
+                self.assertEqual(
+                    public["feedback"]["cases"],
+                    [{"name": "Ответ студента", "status": "failed"}],
+                )
+                for canary in (
+                    "FORGED_EXPECTED_CANARY",
+                    "PRIVATE_THROWABLE_MESSAGE",
+                    "java25-job-runtime-",
+                    "junit-platform-console",
+                ):
+                    self.assertNotIn(canary, json.dumps(public))
+                self.assertEqual(
+                    public["tests"][0]["description"],
+                    "Ожидается: не установлено\nПолучено: не установлено",
+                )
+
+    def test_assertion_without_observation_keeps_values_unknown(self):
+        (self.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*;
+import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @Test @DisplayName("Проверка без наблюдения") void result() { assertEquals(41, Student.answer(), "PRIVATE_ASSERTION_MESSAGE"); }
+}""")
+        result = self.run_job()
+        public = self.public_result(result)
+        self.assertEqual(result["classification"], "behavior-failure")
+        self.assertEqual(public["score"], 0)
+        self.assertEqual(
+            public["feedback"]["cases"],
+            [{"name": "Проверка без наблюдения", "status": "failed"}],
+        )
+        self.assertEqual(
+            public["tests"][0]["description"],
+            "Ожидается: не установлено\nПолучено: не установлено",
+        )
+        self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", json.dumps(public))
 
     def test_two_ordinary_and_eight_parameter_rows_have_equal_weight(self):
         (self.job / "tests/AnswerTest.java").write_text("""
@@ -191,7 +257,7 @@ public class AnswerTest {
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 public class AnswerTest {
- @Test @DisplayName("Ответ равен ожидаемому") void result() { assertEquals(41, Student.answer(), "PRIVATE_TRACE_CANARY"); }
+ @Test @DisplayName("Ответ равен ожидаемому") void result(TestReporter reporter) { int actual = Student.answer(); reporter.publishEntry(java.util.Map.of("expected","41","actual",String.valueOf(actual))); assertEquals(41, actual, "PRIVATE_TRACE_CANARY"); }
  @Test @DisplayName("Обычный случай") void normal(TestReporter reporter) { reporter.publishEntry(java.util.Map.of("expected","42","actual",String.valueOf(Student.answer()))); assertEquals(42, Student.answer()); }
 }""")
         result = self.run_job()
@@ -207,6 +273,14 @@ public class AnswerTest {
         self.assertEqual(
             (failed["name"], failed["expected"], failed["actual"]),
             ("Ответ равен ожидаемому", "41", "42"),
+        )
+        passed = next(case for case in cases if case["status"] == "passed")
+        self.assertEqual(
+            (passed["name"], passed["expected"], passed["actual"]),
+            ("Обычный случай", "42", "42"),
+        )
+        self.assertTrue(
+            all("не установлено" not in case["description"] for case in public["tests"])
         )
         self.assertNotIn("PRIVATE_TRACE_CANARY", json.dumps(public))
 

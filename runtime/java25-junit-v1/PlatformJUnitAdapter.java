@@ -10,7 +10,6 @@ import org.junit.platform.engine.*;
 import org.junit.platform.engine.reporting.ReportEntry;
 import org.junit.platform.engine.support.descriptor.MethodSource;
 import org.junit.platform.launcher.core.*;
-import org.opentest4j.AssertionFailedError;
 
 /** Adapts the unchanged official autograder's /grade main to explicit roots. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
@@ -111,16 +110,6 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     return value.substring(0, Math.min(8192, value.length()));
   }
 
-  private static String scalar(Object value) {
-    if (value == null)
-      return "null";
-    if (value instanceof String || value instanceof Character || value instanceof Boolean
-        || value instanceof Byte || value instanceof Short || value instanceof Integer
-        || value instanceof Long || value instanceof Float || value instanceof Double)
-      return bounded(String.valueOf(value));
-    return null;
-  }
-
   private Map<String, String> caseReport(TestIdentifier test) {
     return caseReports.computeIfAbsent(test.getUniqueId(), id -> {
       Map<String, String> report = new HashMap<>();
@@ -181,19 +170,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (result.getStatus() == TestExecutionResult.Status.FAILED) {
       String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
       failures.put(test.getUniqueId(), kind);
-      if ("wrong-answer".equals(kind)
-          && result.getThrowable().orElse(null) instanceof AssertionFailedError failure) {
-        if (failure.isExpectedDefined()) {
-          String expected = scalar(failure.getExpected().getValue());
-          if (expected != null)
-            report.put("expected", expected);
-        }
-        if (failure.isActualDefined()) {
-          String actual = scalar(failure.getActual().getValue());
-          if (actual != null)
-            report.put("actual", actual);
-        }
-      }
+      // Throwable and its mutable stack do not prove who observed assertion values.
+      // Keep only values explicitly published through the trusted check's reporter.
       // A trusted public test can fail before publishing an actual value. Record
       // only its signed execution outcome, never Throwable text or private output.
       if (test.getSource().orElse(null) instanceof MethodSource method) {
