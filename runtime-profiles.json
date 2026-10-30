@@ -28,8 +28,8 @@
       },
       "runnerSha256": "8991017705453dae285e16b7246d342e8a5a42f8fc15cf259f0ea342247b5e53",
       "sharedFiles": {
-        "runtime/student_feedback.py": "df45a906a0f1041d917c02d3f516ac854eefddff2478578cdb3abfb537d9b525",
-        "runtime/junit_result.py": "7067e5548f46fcf85f8c5ad6275298907ff2d8085431b52e8bba4ee6045ae38e"
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
+        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
       },
       "assertionFeedbackProtocol": 2
     },
@@ -60,8 +60,8 @@
       },
       "runnerSha256": "8991017705453dae285e16b7246d342e8a5a42f8fc15cf259f0ea342247b5e53",
       "sharedFiles": {
-        "runtime/student_feedback.py": "df45a906a0f1041d917c02d3f516ac854eefddff2478578cdb3abfb537d9b525",
-        "runtime/junit_result.py": "7067e5548f46fcf85f8c5ad6275298907ff2d8085431b52e8bba4ee6045ae38e"
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
+        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
       },
       "assertionFeedbackProtocol": 2
     },
@@ -79,7 +79,7 @@
         "supervisor.py": "d7aa7ab5e721b4b55cb604d77a633c41fb294b540420dfc8230a47d52ccb2ee3"
       },
       "sharedFiles": {
-        "runtime/student_feedback.py": "df45a906a0f1041d917c02d3f516ac854eefddff2478578cdb3abfb537d9b525",
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
         "schemas/grading-descriptor.schema.json": "87c58232715d5146f01d37f257a04243c0f7926a0954108200cc22352add87d9"
       }
     }

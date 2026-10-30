@@ -55,6 +55,7 @@ def validate_checks(checks):
                 check["availability"] == "complete"
                 or check["availability"].startswith("incomplete: ")
             )
+            or (check["delegated"] == "unknown" and check["availability"] == "complete")
             or any(
                 k in check and not re.fullmatch(r"[0-9]+", check[k])
                 for k in ("differenceIndex", "differenceLine", "differenceColumn")

@@ -207,6 +207,23 @@ def student_result(result, descriptor):
             for c in feedback["publicCases"]
         ]
     counts = result.get("counts", {})
+    if isinstance(counts, dict) and (
+        "cases" in counts or "feedbackProtocolVersion" in counts
+    ):
+        # Fish counts have a separate shape and no JUnit case projection.
+        # Every JUnit projection uses the same decoder before reading cases.
+        import runpy
+        from pathlib import Path
+
+        runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
+            "validate_counts"
+        ](
+            counts,
+            require_cases=not (
+                descriptor.get("mode") == "student-tests"
+                and counts.get("feedbackProtocolVersion", 1) == 1
+            ),
+        )
     case_results = counts.get("cases") if isinstance(counts, dict) else None
     if (
         kind != "infrastructure"
@@ -242,13 +259,6 @@ def student_result(result, descriptor):
             for case in feedback["cases"]
         ]
         if counts.get("feedbackProtocolVersion") == 2:
-            # The same canonical decoder guards direct projection as well as the receipt boundary.
-            import runpy
-            from pathlib import Path
-
-            runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
-                "validate_counts"
-            ](counts)
             complete = True
             for original, case, test in zip(
                 case_results, feedback["cases"], native["tests"]
