@@ -4,8 +4,13 @@
 компиляция выбранных исходников → независимый API precheck → фиксированный
 `clean jar` установленного Gradle 9.8.0 → прежние trusted JUnit/JavaProcess
 проверки. Descriptor содержит закрытый `javaBuild` с `kind: gradle-jar-v1`,
-`mainClass` и безопасным basename `artifact`. В captured project-check это
-`java-build` и `main-class`; остальные поля имеют тот же смысл.
+безопасным basename `artifact` и необязательным `mainClass`. Если `mainClass`
+отсутствует, собирается обычный library JAR без `Main-Class`; фиктивный main не
+нужен. Если поле присутствует, требуется валидное Java binary name: null,
+пустая строка и лишние поля отвергаются. В captured project-check это
+`java-build` и необязательный `main-class`; omission сохраняется в mapping,
+в конфигурации recipe и input digest, без подстановки defaults. Исполняемый
+JAR с явно указанным main сохраняет прежний manifest и запуск.
 
 Сборка использует только копии выбранных production Java sources, этот recipe,
 settings и проверенные значения descriptor. Присланные build scripts, Wrapper,

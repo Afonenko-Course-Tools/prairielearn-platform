@@ -743,12 +743,18 @@ def validate_config(config):
         if (
             config.get("mode") != "implementation"
             or not isinstance(build, dict)
-            or set(build) != {"kind", "mainClass", "artifact"}
+            or set(build)
+            not in ({"kind", "artifact"}, {"kind", "mainClass", "artifact"})
             or build["kind"] != "gradle-jar-v1"
-            or not isinstance(build["mainClass"], str)
-            or not re.fullmatch(
-                r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*",
-                build["mainClass"],
+            or (
+                "mainClass" in build
+                and (
+                    not isinstance(build["mainClass"], str)
+                    or not re.fullmatch(
+                        r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*",
+                        build["mainClass"],
+                    )
+                )
             )
             or not isinstance(build["artifact"], str)
             or not re.fullmatch(

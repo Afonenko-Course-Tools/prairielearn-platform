@@ -453,7 +453,7 @@ def prepare_job(
         build = check["java-build"]
         grading["javaBuild"] = {
             "kind": build["kind"],
-            "mainClass": build["main-class"],
+            **({"mainClass": build["main-class"]} if "main-class" in build else {}),
             "artifact": build["artifact"],
         }
     if "variants" in check:

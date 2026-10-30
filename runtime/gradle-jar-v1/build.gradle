@@ -13,7 +13,9 @@ tasks.withType(JavaCompile).configureEach {
 }
 tasks.named('jar') {
     archiveFileName = nativeConfig.artifact
-    manifest { attributes('Main-Class': nativeConfig.mainClass) }
+    if (nativeConfig.containsKey('mainClass')) {
+        manifest { attributes('Main-Class': nativeConfig.mainClass) }
+    }
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
