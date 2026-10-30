@@ -18,6 +18,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
   private List<?> publicCases = List.of();
   private Set<String> studentClasses = Set.of();
   private String submissionMode;
+  private boolean observeAssertions;
   private Path studentRoot;
   private void bindStudentOrigin(JSONObject params) throws Exception {
     Object mode = params.get("submission_mode"), root = params.get("student_classes_root"),
@@ -102,6 +103,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (!registered.add(test.getUniqueId()))
       eventErrors++;
     discovered = registered.size();
+    if (observeAssertions)
+      org.prairielearn.feedback.Gate.register(test.getUniqueId());
   }
 
   // Only data deliberately produced by a trusted check cross the feedback boundary.
@@ -139,6 +142,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (test.isTest()) {
       if (!registered.contains(test.getUniqueId()) || !started.add(test.getUniqueId()))
         eventErrors++;
+      if (observeAssertions)
+        org.prairielearn.feedback.Gate.start(test.getUniqueId());
       executed++;
     }
   }
@@ -167,6 +172,20 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     Map<String, String> report = caseReport(test);
     report.put("status",
         result.getStatus() == TestExecutionResult.Status.SUCCESSFUL ? "passed" : "failed");
+    if (observeAssertions) {
+      List<Map<String, String>> checks = new ArrayList<>();
+      Set<String> publicFields = Set.of("site", "property", "availability", "expected", "actual",
+          "delta", "differenceIndex", "differenceExpected", "differenceActual", "differenceLine",
+          "differenceColumn", "delegated");
+      for (var check : org.prairielearn.feedback.Gate.finish(test.getUniqueId())) {
+        Map<String, String> safe = new LinkedHashMap<>();
+        for (var entry : check.entrySet())
+          if (publicFields.contains(entry.getKey()))
+            safe.put(entry.getKey(), entry.getValue());
+        checks.add(Map.copyOf(safe));
+      }
+      ((Map) report).put("checks", List.copyOf(checks));
+    }
     if (result.getStatus() == TestExecutionResult.Status.FAILED) {
       String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
       failures.put(test.getUniqueId(), kind);
@@ -253,6 +272,10 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       params = (JSONObject) new JSONParser().parse(reader);
     }
     Files.delete(parameterFile);
+    if (!(params.get("observe_assertions") instanceof Boolean observe))
+      throw new IOException("Missing private assertion mode");
+    if (observe)
+      org.prairielearn.feedback.Gate.bind();
     String resultFile = (String) params.get("results_file"),
            countsFile = (String) params.get("counts_file"),
            signature = (String) params.get("signature");
@@ -268,6 +291,9 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     PlatformJUnitAdapter listener = new PlatformJUnitAdapter();
     listener.bindConsoleSupport(params.get("trusted_console_support_root"));
     listener.bindStudentOrigin(params);
+    if (observe != "implementation".equals(listener.submissionMode))
+      throw new IOException("Private assertion mode mismatch");
+    listener.observeAssertions = observe;
     Object publicCases = params.get("public_cases");
     if (publicCases instanceof List<?> cases)
       listener.publicCases = cases;
@@ -279,6 +305,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     save.setAccessible(true);
     save.invoke(official, signature);
     JSONObject counts = new JSONObject();
+    counts.put("feedbackProtocolVersion", observe ? 2 : 1);
     counts.put("discovered", listener.discovered);
     counts.put("executed", listener.executed);
     counts.put("passed", listener.passed);

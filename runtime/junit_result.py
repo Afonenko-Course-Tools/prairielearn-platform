@@ -10,6 +10,59 @@ def unique_json_object(pairs):
     return value
 
 
+CHECK_FIELDS = {
+    "site",
+    "property",
+    "availability",
+    "expected",
+    "actual",
+    "delta",
+    "differenceIndex",
+    "differenceExpected",
+    "differenceActual",
+    "differenceLine",
+    "differenceColumn",
+    "delegated",
+}
+
+
+def validate_checks(checks):
+    """Одна точная публичная форма; private authority/audit не принимаются."""
+    import re
+
+    if not isinstance(checks, list) or len(checks) > 64:
+        raise ValueError("Invalid assertion check bound")
+    for check in checks:
+        if (
+            not isinstance(check, dict)
+            or set(check) - CHECK_FIELDS
+            or not {
+                "site",
+                "property",
+                "availability",
+                "expected",
+                "actual",
+                "delegated",
+            }
+            <= set(check)
+            or any(
+                not isinstance(v, str) or len(v) > 8192 or len(v.encode("utf-8")) > 8192
+                for v in check.values()
+            )
+            or not re.fullmatch(r"[\w$.-]+\.java:[0-9]+:[0-9]+", check["site"])
+            or check["delegated"] not in ("returned", "threw", "unknown")
+            or not (
+                check["availability"] == "complete"
+                or check["availability"].startswith("incomplete: ")
+            )
+            or any(
+                k in check and not re.fullmatch(r"[0-9]+", check[k])
+                for k in ("differenceIndex", "differenceLine", "differenceColumn")
+            )
+        ):
+            raise ValueError("Invalid assertion check feedback")
+
+
 def validate_counts(counts, require_cases=True):
     """Проверить завершённый набор фактических событий до вычисления оценки."""
     if not isinstance(counts, dict):
@@ -85,21 +138,31 @@ def validate_counts(counts, require_cases=True):
     cases = counts.get("cases")
     if not isinstance(cases, list):
         raise ValueError("Missing JUnit case report")
+    protocol = counts.get("feedbackProtocolVersion", 1)
+    if type(protocol) is not int or protocol not in (1, 2):
+        raise ValueError("Invalid assertion feedback protocol")
     ids = []
     for case in cases:
         if (
             not isinstance(case, dict)
-            or set(case) - {"id", "name", "status", "expected", "actual"}
+            or set(case) - {"id", "name", "status", "expected", "actual", "checks"}
             or not {"id", "name", "status"} <= set(case)
             or any(
                 not isinstance(value, str) or len(value) > 8192
-                for value in case.values()
+                for key, value in case.items()
+                if key != "checks"
             )
             or case["id"] not in outcomes
             or case["status"]
             != ("passed" if outcomes[case["id"]] == "successful" else "failed")
         ):
             raise ValueError("Invalid JUnit case feedback")
+        if protocol == 2:
+            if "checks" not in case:
+                raise ValueError("Missing assertion check sequence")
+            validate_checks(case["checks"])
+        elif "checks" in case:
+            raise ValueError("Checks require assertion protocol2")
         ids.append(case["id"])
     if (
         len(ids) != len(set(ids))

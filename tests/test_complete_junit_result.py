@@ -47,7 +47,7 @@ public class AnswerTest {
                 self.assertEqual(result["counts"]["failed"], 1)
                 self.assertEqual(
                     public["feedback"]["cases"],
-                    [{"name": "Ответ студента", "status": "failed"}],
+                    [{"name": "Ответ студента", "status": "failed", "checks": []}],
                 )
                 for canary in (
                     "FORGED_EXPECTED_CANARY",
@@ -61,25 +61,24 @@ public class AnswerTest {
                     "Ожидается: не установлено\nПолучено: не установлено",
                 )
 
-    def test_assertion_without_observation_keeps_values_unknown(self):
+    def test_real_typed_assertion_captures_arguments_without_throwable_values(self):
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
 public class AnswerTest {
- @Test @DisplayName("Проверка без наблюдения") void result() { assertEquals(41, Student.answer(), "PRIVATE_ASSERTION_MESSAGE"); }
+ @Test @DisplayName("Проверка фактических аргументов") void result() { assertEquals(41, Student.answer(), "PRIVATE_ASSERTION_MESSAGE"); }
 }""")
         result = self.run_job()
         public = self.public_result(result)
         self.assertEqual(result["classification"], "behavior-failure")
         self.assertEqual(public["score"], 0)
+        case = public["feedback"]["cases"][0]
+        self.assertEqual(case["name"], "Проверка фактических аргументов")
         self.assertEqual(
-            public["feedback"]["cases"],
-            [{"name": "Проверка без наблюдения", "status": "failed"}],
+            [(c["expected"], c["actual"]) for c in case["checks"]], [("41", "42")]
         )
-        self.assertEqual(
-            public["tests"][0]["description"],
-            "Ожидается: не установлено\nПолучено: не установлено",
-        )
+        self.assertIn("Ожидается: 41", public["tests"][0]["description"])
+        self.assertIn("Получено: 42", public["tests"][0]["description"])
         self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", json.dumps(public))
 
     def test_two_ordinary_and_eight_parameter_rows_have_equal_weight(self):

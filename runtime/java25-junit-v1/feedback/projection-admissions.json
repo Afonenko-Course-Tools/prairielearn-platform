@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "types": [
+    {
+      "binaryName": "BookSelectionTest$State",
+      "sourceSha256": "8e5bf83de1ee7332d0fdb03474407949677be51bc6ee4035fc0b866c210ae719"
+    }
+  ]
+}

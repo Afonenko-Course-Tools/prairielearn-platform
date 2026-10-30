@@ -241,6 +241,57 @@ def student_result(result, descriptor):
             }
             for case in feedback["cases"]
         ]
+        if counts.get("feedbackProtocolVersion") == 2:
+            # The same canonical decoder guards direct projection as well as the receipt boundary.
+            import runpy
+            from pathlib import Path
+
+            runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
+                "validate_counts"
+            ](counts)
+            complete = True
+            for original, case, test in zip(
+                case_results, feedback["cases"], native["tests"]
+            ):
+                checks = [dict(check) for check in original["checks"]]
+                case["checks"] = checks
+                if "expected" in case or "actual" in case:
+                    case["reporter"] = {
+                        "origin": "trusted-TestReporter",
+                        **{
+                            key: case[key]
+                            for key in ("expected", "actual")
+                            if key in case
+                        },
+                    }
+                lines = []
+                if case.get("reporter"):
+                    lines.extend(["Наблюдение TestReporter:", test["description"]])
+                if not checks:
+                    complete = False
+                for check in checks:
+                    complete &= check["availability"] == "complete"
+                    lines.extend(
+                        [
+                            "Проверка: " + check["property"],
+                            "Источник: " + check["site"],
+                            "Ожидается: " + check["expected"],
+                            "Получено: " + check["actual"],
+                        ]
+                    )
+                    if check["availability"] != "complete":
+                        lines.append("Полнота: " + check["availability"])
+                    for key, label in (
+                        ("differenceIndex", "Первое различие"),
+                        ("differenceLine", "Строка"),
+                        ("differenceColumn", "Столбец"),
+                        ("differenceExpected", "Ожидаемый фрагмент"),
+                        ("differenceActual", "Полученный фрагмент"),
+                    ):
+                        if key in check:
+                            lines.append(label + ": " + check[key])
+                test["description"] = "\n".join(lines) if lines else test["description"]
+            feedback["feedbackCompleteness"] = "complete" if complete else "incomplete"
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
         text = (

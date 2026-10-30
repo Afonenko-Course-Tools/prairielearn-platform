@@ -558,6 +558,8 @@ def preflight(runtime, registry=None):
             != profile["runnerSha256"]
         ):
             raise GraderError("Runtime runner checksum mismatch")
+        if profile.get("assertionFeedbackProtocol") != 2:
+            raise GraderError("Assertion feedback protocol mismatch")
         bundle = PLATFORM / profile["bundle"]
         actual = {
             p.relative_to(bundle).as_posix() for p in bundle.rglob("*") if p.is_file()
@@ -924,6 +926,9 @@ class _JobRuntime:
         self.adapter.mkdir()
         self.library_dir.mkdir()
         self.compiled = False
+        self.observer = root / "observer"
+        self.transformer = root / "transformer"
+        self.junit = self.library_dir / "junit-platform-console-standalone-1.14.1.jar"
         self.compiler_archive = root / "compiler.jsa"
         for jar in bundle.glob("*.jar"):
             shutil.copyfile(jar, self.library_dir / jar.name)
@@ -951,10 +956,61 @@ class _JobRuntime:
         if self.compiler_archive.is_file():
             self.compiler_archive.chmod(0o600)
 
+    def module_flags(self, module=None):
+        return [
+            "--module-path",
+            os.pathsep.join(map(str, (module or self.observer, self.junit))),
+            "--add-modules",
+            "org.prairielearn.feedback",
+        ]
+
+    def runtime_libs(self):
+        return os.pathsep.join(
+            sorted(str(p) for p in self.library_dir.glob("*.jar") if p != self.junit)
+        )
+
     def ensure_adapter(self, job, limits, durations, diagnostics):
         if self.compiled:
             durations["runnerCompilation"] = 0.0
             return
+        self.observer.mkdir()
+        self.transformer.mkdir()
+        feedback = self.bundle / "feedback"
+        for name, files, output, options in (
+            (
+                "observerCompilation",
+                sorted((feedback / "module").rglob("*.java")),
+                self.observer,
+                [
+                    "--module-path",
+                    str(self.junit),
+                    "-sourcepath",
+                    str(feedback / "module"),
+                ],
+            ),
+            (
+                "transformerCompilation",
+                [feedback / "Transform.java"],
+                self.transformer,
+                [],
+            ),
+        ):
+            start = time.monotonic()
+            code, text, reason = _run(
+                [*self.compiler(), *options, "-d", str(output), *map(str, files)],
+                job,
+                limits.get("compile-seconds", 15),
+                int(limits["max-output-bytes"]),
+            )
+            self.protect_archive()
+            durations[name] = time.monotonic() - start
+            diagnostics[name] = text.replace(str(job), "/grade").replace(
+                str(self.root), "/runtime"
+            )
+            if code or reason:
+                raise GraderError(
+                    "Trusted assertion runtime compilation failed: " + diagnostics[name]
+                )
         files = [
             str(self.bundle / "PlatformJUnitAdapter.java"),
             str(self.bundle / "PlatformApiPrecheck.java"),
@@ -962,7 +1018,15 @@ class _JobRuntime:
         ]
         start = time.monotonic()
         code, text, reason = _run(
-            [*self.compiler(), "-cp", self.libs, "-d", str(self.adapter), *files],
+            [
+                *self.compiler(),
+                *self.module_flags(),
+                "-cp",
+                self.runtime_libs(),
+                "-d",
+                str(self.adapter),
+                *files,
+            ],
             job,
             limits.get("compile-seconds", 15),
             int(limits["max-output-bytes"]),
@@ -980,10 +1044,159 @@ class _JobRuntime:
         self.compiled = True
         if os.environ.get("PL_CONTAINMENT") == "official":
             self.root.chmod(0o711)
-            for directory in (self.adapter, self.library_dir):
+            for directory in (
+                self.adapter,
+                self.library_dir,
+                self.observer,
+                self.transformer,
+            ):
                 directory.chmod(0o755)
                 for file in directory.rglob("*"):
                     file.chmod(0o755 if file.is_dir() else 0o644)
+
+    def prepare_observer(
+        self,
+        job,
+        config,
+        stage,
+        trusted,
+        student,
+        tests,
+        limits,
+        durations,
+        diagnostics,
+        source_hashes,
+    ):
+        """Sealed policy from fresh trusted compiler output; no student-written result."""
+        module = stage / "observer"
+        shutil.copytree(self.observer, module)
+        cp = (
+            os.pathsep.join(
+                map(
+                    str,
+                    (
+                        self.transformer,
+                        self.junit,
+                        self.adapter,
+                        trusted,
+                        student,
+                        self.observer,
+                    ),
+                )
+            )
+            + os.pathsep
+            + self.runtime_libs()
+        )
+        start = time.monotonic()
+
+        def transform(*args):
+            code, text, reason = _run(
+                [
+                    _grading_java(),
+                    "-Xmx128m",
+                    "-XX:TieredStopAtLevel=1",
+                    "-XX:ActiveProcessorCount=2",
+                    "-cp",
+                    cp,
+                    "Transform",
+                    *map(str, args),
+                ],
+                job,
+                limits.get("compile-seconds", 15),
+                int(limits["max-output-bytes"]),
+            )
+            if code or reason:
+                raise GraderError(
+                    "Trusted assertion admission failed: "
+                    + text.replace(str(stage), "/scratch")
+                )
+
+        admissions = json.loads(
+            (self.bundle / "feedback/projection-admissions.json").read_text()
+        )
+        if (
+            set(admissions) != {"schemaVersion", "types"}
+            or admissions["schemaVersion"] != 1
+        ):
+            raise GraderError("Invalid projection inventory")
+        qualified = []
+        for entry in admissions["types"]:
+            if set(entry) != {"binaryName", "sourceSha256"}:
+                raise GraderError("Invalid projection inventory entry")
+            matched = [
+                source
+                for source in tests
+                if source_hashes.get(str(source)) == entry["sourceSha256"]
+            ]
+            if any(
+                hashlib.sha256(Path(source).read_bytes()).hexdigest()
+                != source_hashes.get(str(source))
+                for source in tests
+            ):
+                raise GraderError("Trusted source changed after compilation")
+            if not matched:
+                continue
+            # Both matching input bytes and the actual fresh compiled binary are required.
+            binary = entry["binaryName"]
+            compiled = trusted / (binary.replace(".", "/") + ".class")
+            if len(matched) != 1 or not compiled.is_file():
+                raise GraderError("Qualified projection differs from compiler output")
+            qualified.append(binary)
+        facade = module / "org/prairielearn/feedback/Assertions.class"
+        transform(
+            trusted,
+            facade,
+            stage / "assertion-sites.properties",
+            *([",".join(qualified)] if qualified else []),
+        )
+        transform(self.adapter, facade, stage / "adapter-sites.properties", "adapter")
+        transform(
+            "reader",
+            module / "org/prairielearn/feedback/internal/State.class",
+            stage / "reader-site.properties",
+        )
+        policy = "\n".join(
+            (stage / name).read_text()
+            for name in (
+                "assertion-sites.properties",
+                "adapter-sites.properties",
+                "reader-site.properties",
+            )
+        )
+
+        # Java Properties escaping is deliberately explicit for private absolute roots.
+        def value(path):
+            return (
+                str(path).replace("\\", "\\\\").replace(":", "\\:").replace("=", "\\=")
+            )
+
+        policy += (
+            "\nadapterRoot="
+            + value(self.adapter.resolve())
+            + "\ntrustedRoot="
+            + value(trusted.resolve())
+        )
+        for entry in admissions["types"]:
+            if entry["binaryName"] in qualified:
+                policy += (
+                    "\nprojectionSource."
+                    + entry["binaryName"]
+                    + "="
+                    + entry["sourceSha256"]
+                )
+        policy += (
+            "\njunitHash="
+            + hashlib.sha256(self.junit.read_bytes()).hexdigest()
+            + "\nsnapshotBytes=32768\n"
+        )
+        (module / "org/prairielearn/feedback/internal/policy.properties").write_text(
+            policy
+        )
+        durations["trustedTransformation"] = time.monotonic() - start
+        diagnostics["trustedTransformation"] = (
+            "Trusted compiled assertion inventory sealed"
+        )
+        return module
 
 
 def _api_precheck(
@@ -1147,7 +1360,17 @@ def _execute(
         library_dir = runtime.library_dir
         libs = runtime.libs
 
+        trusted_input_hashes = {}
+
         def compile_phase(name, files, output, classpath):
+            before = (
+                {
+                    str(file): hashlib.sha256(Path(file).read_bytes()).hexdigest()
+                    for file in files
+                }
+                if name == "trustedCompilation"
+                else {}
+            )
             start = time.monotonic()
             code, text, reason = _run(
                 [*runtime.compiler(), "-cp", classpath, "-d", str(output), *files],
@@ -1155,6 +1378,14 @@ def _execute(
                 limits.get("compile-seconds", 15),
                 int(limits["max-output-bytes"]),
             )
+            if before:
+                after = {
+                    str(file): hashlib.sha256(Path(file).read_bytes()).hexdigest()
+                    for file in files
+                }
+                if before != after:
+                    raise GraderError("Trusted source changed across compilation")
+                trusted_input_hashes.update(before)
             runtime.protect_archive()
             durations[name] = time.monotonic() - start
             diagnostics[name] = text.replace(str(job), "/grade").replace(
@@ -1320,6 +1551,22 @@ def _execute(
             return unsafe("Submitted classes collide with trusted classes")
         if api_classes is None:
             runtime.ensure_adapter(job, limits, durations, diagnostics)
+        observer = (
+            runtime.prepare_observer(
+                job,
+                config,
+                stage,
+                trusted,
+                student,
+                tests,
+                limits,
+                durations,
+                diagnostics,
+                trusted_input_hashes,
+            )
+            if not student_tests
+            else runtime.observer
+        )
         reports = stage / "results"
         reports.mkdir()
         params = stage / "params"
@@ -1341,6 +1588,7 @@ def _execute(
                     "student_classes_root": str(student.resolve()),
                     "submission_mode": config["mode"],
                     "public_cases": config.get("publicCases", []),
+                    "observe_assertions": not student_tests,
                     **(
                         {"trusted_console_support_root": str(trusted.resolve())}
                         if "coursesupport.JavaProcess" in trusted_names
@@ -1367,7 +1615,7 @@ def _execute(
             runtime.root.chmod(0o711)
             reports.chmod(0o777)
             params.chmod(0o777)
-            for directory in (student, trusted, adapter, library_dir):
+            for directory in (student, trusted, adapter, library_dir, observer):
                 directory.chmod(0o755)
                 for file in directory.rglob("*"):
                     file.chmod(0o755 if file.is_dir() else 0o644)
@@ -1387,7 +1635,7 @@ def _execute(
         classpath = os.pathsep.join(
             [
                 str(adapter),
-                libs,
+                runtime.runtime_libs(),
                 str(trusted),
                 *([str(api_classes)] if api_classes else []),
                 str(student),
@@ -1402,6 +1650,9 @@ def _execute(
             "-XX:-UsePerfData",
             "-XX:+DisableAttachMechanism",
             "--illegal-native-access=deny",
+            *runtime.module_flags(observer),
+            "-Djunit.jupiter.extensions.autodetection.enabled="
+            + str(not student_tests).lower(),
             "-cp",
             classpath,
             "PlatformJUnitAdapter",
@@ -1459,6 +1710,10 @@ def _execute(
         ):
             raise GraderError("Invalid official JUnit report")
         _validate_junit_counts(counts, require_cases=not student_tests)
+        if counts.get("feedbackProtocolVersion") != (1 if student_tests else 2):
+            raise GraderError(
+                "Assertion feedback protocol differs from private execution mode"
+            )
         # Internal observations remain available to private verification; main()
         # applies the student boundary before writing native RESULTS.
         if "infrastructure" in counts.get("failureKinds", {}).values():

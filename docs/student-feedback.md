@@ -73,3 +73,5 @@ output-limit до TestReporter, подписанный adapter добавляе�
 
 Оценка runner остаётся долей от 0 до 1. Соотношение 80/20 задаётся native
 assessment через autoPoints/manualPoints; runner не умножает долю на 0.8.
+
+Исходный кандидат C3-1 добавляет [наблюдения настоящих JUnit assertions](junit-assertion-feedback.md) внутри тех же leaves и signed counts. Это отдельный source protocol2; прежний OCI image и полный census не получают автоматического PASS.
