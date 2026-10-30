@@ -22,6 +22,26 @@ class DeliveryPackage(unittest.TestCase):
   path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(value if isinstance(value,str) else json.dumps(value))
  def refresh(self):
   self.delivery['files']={p.relative_to(self.root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in self.root.rglob('*') if p.is_file()};self.delivery['deliveryHash']=g.digest({k:x for k,x in self.delivery.items() if k!='deliveryHash'})
+ def test_instance_names_match_exporter_grammar_and_keep_catalog_guards(self):
+  import shutil
+  original=copy.deepcopy(self.delivery)
+  for name in ['fixture','2026-2027-s1','7']:
+   with self.subTest(valid=name):
+    self.delivery=copy.deepcopy(original)
+    if name!='fixture':shutil.copytree(self.root/'courseInstances/fixture',self.root/'courseInstances'/name)
+    self.delivery['instances']={name:{'works':['lab'],'selfEnrollment':False}};self.refresh()
+    self.assertEqual(v.package_integrity(self.delivery,self.root,self.checks)['status'],'success')
+    if name!='fixture':shutil.rmtree(self.root/'courseInstances'/name)
+  for name in ['', '-bad','../escape','a/b','a_b','Upper',' bad','bad ']:
+   with self.subTest(invalid=name):
+    self.delivery=copy.deepcopy(original);self.delivery['instances']={name:{'works':['lab'],'selfEnrollment':False}};self.refresh()
+    with self.assertRaises(g.JobError):v.package_integrity(self.delivery,self.root,self.checks)
+  for catalog in [{'works':['lab','lab'],'selfEnrollment':False},{'works':['unknown'],'selfEnrollment':False},{'works':['lab'],'selfEnrollment':0},{'works':['lab'],'selfEnrollment':False,'extra':1}]:
+   with self.subTest(catalog=catalog):
+    self.delivery=copy.deepcopy(original);self.delivery['instances']={'fixture':catalog};self.refresh()
+    with self.assertRaises(g.JobError):v.package_integrity(self.delivery,self.root,self.checks)
+  self.delivery=copy.deepcopy(original);self.delivery['instances']={'missing':{'works':['lab'],'selfEnrollment':False}};self.refresh()
+  with self.assertRaises(g.JobError):v.package_integrity(self.delivery,self.root,self.checks)
  def test_wholly_manual_package_is_nonempty_without_auto_job_or_score(self):
   proof=v.package_integrity(self.delivery,self.root,self.checks);self.assertEqual(proof['status'],'success');self.assertEqual(proof['questionBindings'][0]['method'],'manual');self.assertNotIn('score',proof)
   with self.assertRaises(g.JobError):g.verify_results([],{},registry=unit_registry())
