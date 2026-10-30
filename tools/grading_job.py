@@ -1,6 +1,7 @@
 """Explicit source inventory -> private /grade jobs -> matching receipts."""
 
 import hashlib
+import functools
 import io
 import zipfile
 import stat
@@ -59,6 +60,13 @@ def safe(root, name):
     return p
 
 
+@functools.cache
+def _junit_result_helpers():
+    import runpy
+
+    return runpy.run_path(str(ROOT / "runtime/junit_result.py"))
+
+
 def validate(name, value):
     try:
         from referencing import Registry, Resource
@@ -73,6 +81,14 @@ def validate(name, value):
             json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text()),
             registry=registry,
         ).validate(value)
+        if name == "check-result" and value.get("runtime") in (
+            "java25-junit-v1",
+            "java25-gradle-junit-v1",
+            "java25-mutation-v1",
+        ):
+            _junit_result_helpers()["validate_outcome"](
+                value, student_tests=value["runtime"] == "java25-mutation-v1"
+            )
     except (jsonschema.ValidationError, OSError, ValueError) as error:
         raise JobError(f"Invalid {name}: {error}") from error
 
@@ -804,7 +820,10 @@ def run_job(job, backend="host", registry=None):
                 raise JobError("Outer Docker timeout; container removed") from error
             if p.returncode not in (0, 2):
                 raise JobError("Docker infrastructure failure: " + p.stderr)
-            result = json.loads((job.root / "results/results.json").read_text())
+            result = json.loads(
+                (job.root / "results/results.json").read_text(),
+                object_pairs_hook=_junit_result_helpers()["unique_json_object"],
+            )
         else:
             raise JobError("Unknown backend")
     except (JobError, OSError, ValueError, subprocess.TimeoutExpired) as error:

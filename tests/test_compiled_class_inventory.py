@@ -331,8 +331,13 @@ def execute(c, platform, output):
         if r.get("score") != 1 or not r.get("gradable"):
             errors.append("expected gradable score1")
     else:
-        if r.get("gradable") or "score" in r:
-            errors.append("unsafe/compile failure must be no-score")
+        if c["expected"] == "student-compilation-failure":
+            if r.get("gradable") is not True or r.get("score") != 0:
+                errors.append(
+                    "Собственная некомпиляция должна дать ноль текущей попытки"
+                )
+        elif r.get("gradable") or "score" in r:
+            errors.append("Защитный отказ остаётся без оценки")
         if r.get("studentCompilation") != (
             "failure" if c["expected"] == "student-compilation-failure" else "success"
         ):

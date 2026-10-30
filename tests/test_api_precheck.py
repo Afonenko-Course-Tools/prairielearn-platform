@@ -42,8 +42,8 @@ class ApiPrecheckTests(unittest.TestCase):
         self.assertEqual(r["dependentExecution"], "not-run")
         self.assertEqual(r["apiPrecheck"], "failure")
         self.assertEqual(r["infrastructure"], "complete")
-        self.assertFalse(r["gradable"])
-        self.assertNotIn("score", r)
+        self.assertTrue(r["gradable"])
+        self.assertEqual(r["score"], 0)
         self.assertTrue(r["apiDiagnostic"]["expected"])
         self.assertTrue(r["apiDiagnostic"]["observed"])
         self.assertNotIn("trustedCompilation", r["durations"])
@@ -381,7 +381,7 @@ class ApiDeliveryTests(unittest.TestCase):
                 self.assertEqual(
                     result["publicResult"]["classification"], "student-api-mismatch"
                 )
-                wrong = {**result, "score": 0}
+                wrong = {**result, "score": 1}
                 with self.assertRaises(m.JobError):
                     m.validate("check-result", wrong)
                 # Native delivery binds API descriptor and source bytes exactly like JUnit.

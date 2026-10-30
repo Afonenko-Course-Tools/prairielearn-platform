@@ -56,7 +56,8 @@ class MutationBuildReuse(unittest.TestCase):
         )
         result = self.run_job()
         self.assertEqual(result["classification"], "student-compilation-failure")
-        self.assertFalse(result["gradable"])
+        self.assertTrue(result["gradable"])
+        self.assertEqual(result["score"], 0)
 
     def test_new_job_does_not_reuse_compiled_adapter_from_previous_job(self):
         self.setup_mutation()

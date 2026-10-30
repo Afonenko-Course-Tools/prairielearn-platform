@@ -1,6 +1,7 @@
 """Synthetic host preparation boundaries; no Docker, JVM, downloads or installers."""
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -189,7 +190,9 @@ class PreparationBoundaries(unittest.TestCase):
             self.assertNotIn("image", profile)
             self.assertEqual(
                 profile["runnerSha256"],
-                "6971e911c88298ef04a7d0a71ab1fd96c80822d7676b520f88c5b3bfd68f3aef",
+                hashlib.sha256(
+                    (ROOT / "images/java25-grader/grade.py").read_bytes()
+                ).hexdigest(),
             )
         changed = json.loads(expected)
         changed["jdk"]["files"].pop("lib/libmanagement.so")

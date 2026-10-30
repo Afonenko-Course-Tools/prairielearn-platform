@@ -69,7 +69,8 @@ class JUnitJob(unittest.TestCase):
     def test_student_compile_error_is_not_infrastructure(self):
         (self.job / "student/Student.java").write_text("not java")
         r = self.run_job()
-        self.assertFalse(r["gradable"])
+        self.assertTrue(r["gradable"])
+        self.assertEqual(r["score"], 0)
         self.assertEqual(r["classification"], "student-compilation-failure")
 
     def test_trusted_compile_error_is_infrastructure(self):
@@ -124,21 +125,19 @@ class JUnitJob(unittest.TestCase):
         self.assertEqual(r["counts"]["passed"], 1)
         self.assertEqual(r["maxPoints"], 2)
 
-    def test_inner_timeout_is_student_failure(self):
+    def test_whole_executor_timeout_is_incomplete_infrastructure(self):
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){while(true){}}}"
         )
-        r = self.run_job()
-        self.assertEqual(r["classification"], "student-timeout")
-        self.assertEqual(r["score"], 0)
+        with self.assertRaises(grader.GraderError):
+            self.run_job()
 
-    def test_output_flood_is_bounded_student_failure(self):
+    def test_whole_executor_output_stop_is_incomplete_infrastructure(self):
         (self.job / "student/Student.java").write_text(
             'public class Student {public static int answer(){while(true){System.out.println("x".repeat(8192));}}}'
         )
-        r = self.run_job()
-        self.assertEqual(r["classification"], "student-output-overflow")
-        self.assertLessEqual(len(r["output"].encode()), 65536)
+        with self.assertRaises(grader.GraderError):
+            self.run_job()
 
     def test_missing_report_is_infrastructure(self):
         (self.job / "student/Student.java").write_text(

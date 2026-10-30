@@ -216,7 +216,7 @@ class ActualNativeFeedback(unittest.TestCase):
 public class AnswerTest {
  @Test void normal(TestReporter reporter){int actual=Student.sum(2,3);reporter.publishEntry(Map.of("public-case","normal","actual",String.valueOf(actual)));assertEquals(5,actual);}
  @Test void boundary(TestReporter reporter){int actual=Student.sum(0,0);reporter.publishEntry(Map.of("public-case","boundary","actual",String.valueOf(actual)));assertEquals(0,actual);}
- @Test void closed(){System.out.print("CLOSED_INPUT_CANARY");assertEquals("CLOSED_EXPECTED_CANARY","CLOSED_ACTUAL_CANARY","CLOSED_TRACE_CANARY");}
+ @Test void closed(){System.out.print("CLOSED_INPUT_CANARY");assertEquals(41,42,"CLOSED_TRACE_CANARY");}
 }"""
         )
         (fixture.job / "tests/grading-job.json").write_text(json.dumps(fixture.cfg))
@@ -280,10 +280,10 @@ class ActualFailureBoundary(unittest.TestCase):
                 0,
             ),
             (
-                "timeout",
+                "infrastructure",
                 'public class Student {public static int answer(){System.out.print("CLOSED_TIMEOUT_CANARY");while(true){}}}',
                 fixtures.TEST,
-                0,
+                2,
             ),
             (
                 "infrastructure",

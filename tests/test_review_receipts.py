@@ -41,6 +41,12 @@ def result(scenario="starter", image=IMAGE):
             "aborted": 0,
             "containerFailures": 0,
             "outcomes": {"T#t": "successful"},
+            "complete": True,
+            "eventErrors": 0,
+            "registered": ["T#t"],
+            "started": ["T#t"],
+            "failureKinds": {},
+            "cases": [{"id": "T#t", "name": "Проверка результата", "status": "passed"}],
         },
         "score": 1,
         "maxPoints": 1,
@@ -114,7 +120,8 @@ class ReviewReceipts(unittest.TestCase):
         ]:
             r.pop(k)
         r.update(
-            gradable=False,
+            gradable=True,
+            score=0,
             studentCompilation="failure",
             trustedCompilation="not-run",
             classification="student-compilation-failure",
@@ -453,7 +460,8 @@ class ReviewReceipts(unittest.TestCase):
         ]:
             r.pop(k)
         r.update(
-            gradable=False,
+            gradable=True,
+            score=0,
             studentCompilation="failure",
             trustedCompilation="not-run",
             classification="student-compilation-failure",

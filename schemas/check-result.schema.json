@@ -178,6 +178,35 @@
               "infrastructure"
             ]
           }
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "eventErrors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "registered": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "started": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/caseResult"
+          }
         }
       },
       "required": [
@@ -797,6 +826,35 @@
                   "output-limit",
                   "infrastructure"
                 ]
+              }
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "eventErrors": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "registered": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "started": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "cases": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/caseResult"
               }
             }
           },
@@ -1777,9 +1835,6 @@
             "infrastructure": {
               "const": "complete"
             },
-            "gradable": {
-              "const": false
-            },
             "studentCompilation": {
               "const": "failure"
             },
@@ -1802,11 +1857,6 @@
           },
           "not": {
             "anyOf": [
-              {
-                "required": [
-                  "score"
-                ]
-              },
               {
                 "required": [
                   "maxPoints"
@@ -1866,6 +1916,35 @@
                   ]
                 }
               }
+            },
+            {
+              "oneOf": [
+                {
+                  "properties": {
+                    "gradable": {
+                      "const": true
+                    },
+                    "score": {
+                      "const": 0
+                    }
+                  },
+                  "required": [
+                    "score"
+                  ]
+                },
+                {
+                  "properties": {
+                    "gradable": {
+                      "const": false
+                    }
+                  },
+                  "not": {
+                    "required": [
+                      "score"
+                    ]
+                  }
+                }
+              ]
             }
           ]
         },
@@ -2042,7 +2121,9 @@
                   "const": "student-timeout"
                 },
                 "score": {
-                  "const": 0
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
                 },
                 "timed_out": {
                   "const": true
@@ -2162,7 +2243,9 @@
                   "const": "student-output-overflow"
                 },
                 "score": {
-                  "const": 0
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
                 },
                 "output_limited": {
                   "const": true
@@ -2326,9 +2409,6 @@
             "infrastructure": {
               "const": "complete"
             },
-            "gradable": {
-              "const": false
-            },
             "studentCompilation": {
               "const": "success"
             },
@@ -2355,11 +2435,6 @@
           ],
           "not": {
             "anyOf": [
-              {
-                "required": [
-                  "score"
-                ]
-              },
               {
                 "required": [
                   "maxPoints"
@@ -2391,9 +2466,103 @@
                 ]
               }
             ]
-          }
+          },
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "properties": {
+                    "gradable": {
+                      "const": true
+                    },
+                    "score": {
+                      "const": 0
+                    }
+                  },
+                  "required": [
+                    "score"
+                  ]
+                },
+                {
+                  "properties": {
+                    "gradable": {
+                      "const": false
+                    }
+                  },
+                  "not": {
+                    "required": [
+                      "score"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
+    },
+    "caseResult": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "expected": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "actual": {
+          "type": "string",
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "javaAdmissionZero": {
+      "if": {
+        "properties": {
+          "classification": {
+            "enum": [
+              "student-compilation-failure",
+              "student-api-mismatch"
+            ]
+          }
+        },
+        "required": [
+          "classification"
+        ]
+      },
+      "then": {
+        "properties": {
+          "gradable": {
+            "const": true
+          },
+          "score": {
+            "const": 0
+          }
+        },
+        "required": [
+          "score"
+        ]
+      }
     }
   },
   "allOf": [
@@ -2657,6 +2826,41 @@
             "buildEvidence"
           ]
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "enum": [
+              "java25-junit-v1",
+              "java25-gradle-junit-v1",
+              "java25-mutation-v1"
+            ]
+          }
+        },
+        "required": [
+          "runtime"
+        ]
+      },
+      "then": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/javaAdmissionZero"
+          },
+          {
+            "properties": {
+              "publicResult": {
+                "$ref": "#/$defs/javaAdmissionZero"
+              },
+              "variants": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/javaAdmissionZero"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   ]

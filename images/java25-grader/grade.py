@@ -2,6 +2,7 @@
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
 
 import argparse
+import functools
 import errno
 import hashlib
 import stat
@@ -645,7 +646,9 @@ def _source_classes(files):
 
 def _invalid(message, output="", classification="student-compilation-failure"):
     return {
-        "gradable": False,
+        "gradable": classification == "student-compilation-failure",
+        **({"score": 0} if classification == "student-compilation-failure" else {}),
+        "dependentExecution": "not-run",
         "format_errors": message,
         "output": output,
         "classification": classification,
@@ -655,10 +658,28 @@ def _invalid(message, output="", classification="student-compilation-failure"):
     }
 
 
+@functools.cache
+def _junit_result_helpers():
+    import runpy
+
+    return runpy.run_path(str(PLATFORM / "runtime/junit_result.py"))
+
+
+def _unique_json_object(pairs):
+    return _junit_result_helpers()["unique_json_object"](pairs)
+
+
+def _validate_junit_counts(counts, require_cases=True):
+    try:
+        _junit_result_helpers()["validate_counts"](counts, require_cases=require_cases)
+    except ValueError as error:
+        raise GraderError(str(error)) from error
+
+
 def _score(raw, counts, policy):
     mode = policy.get("mode")
     if mode == "weighted":
-        return raw["score"]
+        return counts["passed"] / counts["executed"]
     if mode == "all-pass":
         return float(
             counts["failed"] == 0
@@ -1189,7 +1210,7 @@ def _execute(
             raise GraderError("Student compilation infrastructure limit: " + reason)
         if code:
             value = _invalid(
-                "Your submission could not be compiled",
+                "Исходники текущей попытки не скомпилированы. Исправьте ошибки компилятора и повторите отправку.",
                 diagnostics["studentCompilation"],
             )
             value.update(
@@ -1231,7 +1252,8 @@ def _execute(
                 return unsafe(value["message"])
             if value["status"] == "mismatch":
                 return {
-                    "gradable": False,
+                    "gradable": True,
+                    "score": 0,
                     "classification": "student-api-mismatch",
                     "studentCompilation": "success",
                     "trustedCompilation": "not-run",
@@ -1413,34 +1435,30 @@ def _execute(
                 apiContainment=api_containment,
             )
         if reason:
-            base.update(
-                score=0,
-                classification=(
-                    "student-timeout"
-                    if reason == "timeout"
-                    else "student-output-overflow"
-                ),
-                timed_out=reason == "timeout",
-                output_limited=reason == "output_limit",
+            raise GraderError(
+                "Полный отчёт JUnit не получен: исполнитель остановлен (" + reason + ")"
             )
-            base["message"] = (
-                f"Your code exceeded the execution time limit of {limits.get('run-seconds',10):g} seconds."
-                if reason == "timeout"
-                else f"Your code exceeded the output limit of {int(limits['max-output-bytes'])} bytes."
-            )
-            return base
         if code != 0 or not rawfile.is_file() or not countfile.is_file():
             raise GraderError("JUnit execution did not produce complete reports")
         try:
-            raw = json.loads(rawfile.read_text())
-            counts = json.loads(countfile.read_text())
+            raw = json.loads(rawfile.read_text(), object_pairs_hook=_unique_json_object)
+            counts = json.loads(
+                countfile.read_text(), object_pairs_hook=_unique_json_object
+            )
             if (
                 raw.pop("signature") != signature
                 or counts.pop("signature") != signature
             ):
                 raise ValueError("signature")
-        except (KeyError, ValueError, OSError) as error:
+        except (KeyError, ValueError, TypeError, OSError) as error:
             raise GraderError("Invalid JUnit report") from error
+        if (
+            not isinstance(raw, dict)
+            or type(raw.get("gradable")) is not bool
+            or not isinstance(raw.get("tests"), list)
+        ):
+            raise GraderError("Invalid official JUnit report")
+        _validate_junit_counts(counts, require_cases=not student_tests)
         # Internal observations remain available to private verification; main()
         # applies the student boundary before writing native RESULTS.
         if "infrastructure" in counts.get("failureKinds", {}).values():
@@ -1451,8 +1469,22 @@ def _execute(
             publicCaseObservations=counts.get("publicCaseObservations", []),
             rawResult=raw,
             counts=counts,
-            maxPoints=raw["max_points"],
-            tests=raw["tests"],
+            maxPoints=counts["executed"],
+            tests=(
+                [
+                    {
+                        "name": case["name"],
+                        "description": "",
+                        "message": "",
+                        "output": "",
+                        "points": int(case["status"] == "passed"),
+                        "max_points": 1,
+                    }
+                    for case in counts["cases"]
+                ]
+                if not student_tests
+                else raw["tests"]
+            ),
             message=raw.get("message", ""),
         )
         incomplete = (
@@ -1460,7 +1492,7 @@ def _execute(
             or counts["discovered"] == 0
             or counts["aborted"] > 0
             or counts["containerFailures"] > 0
-            or (counts["skipped"] > 0 and not config["discovery"]["allow-skipped"])
+            or counts["skipped"] > 0
         )
         if incomplete or not raw.get("gradable"):
             if not student_tests:
@@ -1471,7 +1503,7 @@ def _execute(
         if counts["failed"] and ("timeout" in kinds or "output-limit" in kinds):
             timed_out = "timeout" in kinds
             base.update(
-                score=0,
+                score=_score(raw, counts, config["scoring"]),
                 classification=(
                     "student-timeout" if timed_out else "student-output-overflow"
                 ),
@@ -2328,7 +2360,12 @@ def grade(job_dir, registry=None):
     try:
         sources = _primary_files(job, config)
     except ValueError:
-        return finish(_invalid("Upload all declared Java files"))
+        return finish(
+            _invalid(
+                "Представьте объявленные обычные Java-файлы без символических ссылок.",
+                classification="unsafe-submission",
+            )
+        )
     try:
         additional, additional_evidence = _additional_inventory(job, config)
     except _AdditionalSubmissionError as error:
@@ -2337,7 +2374,12 @@ def grade(job_dir, registry=None):
             result.update(apiPrecheck="not-run", dependentExecution="not-run")
         return finish(result)
     if not sources and not additional:
-        return finish(_invalid("Представьте хотя бы один Java source"))
+        return finish(
+            _invalid(
+                "Представьте хотя бы один Java source",
+                classification="unsafe-submission",
+            )
+        )
     with tempfile.TemporaryDirectory(prefix="java25-job-runtime-") as runtime_dir:
         extra_root = Path(runtime_dir) / "additional-sources"
         if additional:
@@ -2451,7 +2493,11 @@ def grade(job_dir, registry=None):
                 observations[variant] = _execute(
                     job, config, sources, selected, bundle, toolchain, runtime, True
                 )
-                if not observations[variant].get("gradable"):
+                if (
+                    not observations[variant].get("gradable")
+                    or observations[variant].get("classification")
+                    == "student-compilation-failure"
+                ):
                     return finish(observations[variant])
         quality = any(
             r["classification"] == "student-test-quality-failure"

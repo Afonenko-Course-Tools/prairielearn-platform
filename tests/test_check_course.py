@@ -86,9 +86,11 @@ class InventoryTests(unittest.TestCase):
     def test_starter_failure_is_characterization_without_expectation(self):
         m = self.module()
         r = review.result()
-        r.update(classification="behavior-failure", score=0.5)
+        r.update(classification="behavior-failure", score=0)
         r["counts"].update(passed=0, failed=1)
         r["counts"]["outcomes"] = {"T#t": "failed"}
+        r["counts"]["failureKinds"] = {"T#t": "wrong-answer"}
+        r["counts"]["cases"][0]["status"] = "failed"
         receipt = m.verify_results([r], {}, registry=unit_registry())
         self.assertEqual(receipt["status"], "success")
         self.assertEqual(receipt["exitCode"], 0)
@@ -267,6 +269,8 @@ class ReferenceReceiptTests(unittest.TestCase):
         result["score"] = 0
         result["counts"].update(passed=0, failed=1)
         result["counts"]["outcomes"] = {"T#t": "failed"}
+        result["counts"]["failureKinds"] = {"T#t": "wrong-answer"}
+        result["counts"]["cases"][0]["status"] = "failed"
         self.assertEqual(
             m.verify_results([result], {}, registry=unit_registry())["exitCode"], 1
         )

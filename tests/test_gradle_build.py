@@ -711,9 +711,13 @@ class NativeClosureTests(unittest.TestCase):
                 with self.assertRaises(grader.GraderError):
                     grader.preflight("java25-gradle-junit-v1", value)
 
-    def test_historical_default_and_unadmitted_toolchain_refuse_execution(self):
+    def test_stale_runner_and_unadmitted_toolchain_refuse_execution(self):
+        from gradle_unit_fixtures import registry
+
+        value = registry()
+        value["profiles"]["java25-junit-v1"]["runnerSha256"] = "0" * 64
         with self.assertRaisesRegex(grader.GraderError, "runner checksum"):
-            grader.preflight("java25-junit-v1")
+            grader.preflight("java25-junit-v1", value)
         with self.assertRaisesRegex(grader.GraderError, "admission is incomplete"):
             grader._verify_native_toolchain()
 

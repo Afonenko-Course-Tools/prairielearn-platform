@@ -25,6 +25,8 @@ def outcome(
         "format_errors": "guard",
         "output": "",
     }
+    if classification == "student-compilation-failure":
+        value.update(gradable=True, score=0)
     if student == "success" or trusted == "success":
         value.update(
             durations={"studentCompilation": 0.1},

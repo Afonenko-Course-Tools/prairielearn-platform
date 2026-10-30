@@ -531,7 +531,8 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.zip([("A.java", b"\xff")])
         r = self.run_job()
         self.assertEqual(r["classification"], "student-compilation-failure")
-        self.assertFalse(r["gradable"])
+        self.assertTrue(r["gradable"])
+        self.assertEqual(r["score"], 0)
 
     def test_public_schemas_accept_the_typed_policy_and_128_extras(self):
         import importlib.util

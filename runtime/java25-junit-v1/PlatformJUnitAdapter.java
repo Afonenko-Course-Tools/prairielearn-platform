@@ -10,6 +10,7 @@ import org.junit.platform.engine.*;
 import org.junit.platform.engine.reporting.ReportEntry;
 import org.junit.platform.engine.support.descriptor.MethodSource;
 import org.junit.platform.launcher.core.*;
+import org.opentest4j.AssertionFailedError;
 
 /** Adapts the unchanged official autograder's /grade main to explicit roots. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
@@ -92,19 +93,65 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       throw new IOException("Private class origin binding mismatch");
   }
   private int discovered, executed, passed, failed, skipped, aborted;
-  private int containerFailures;
+  private int containerFailures, eventErrors;
+  private boolean complete;
+  private final Set<String> registered = new TreeSet<>();
+  private final Set<String> started = new TreeSet<>();
+  private final Map<String, Map<String, String>> caseReports = new LinkedHashMap<>();
+
+  private void register(TestIdentifier test) {
+    if (!registered.add(test.getUniqueId()))
+      eventErrors++;
+    discovered = registered.size();
+  }
+
+  // Only data deliberately produced by a trusted check cross the feedback boundary.
+  // Throwable messages, stack traces, arbitrary object.toString() and stdout do not.
+  private static String bounded(String value) {
+    return value.substring(0, Math.min(8192, value.length()));
+  }
+
+  private static String scalar(Object value) {
+    if (value == null)
+      return "null";
+    if (value instanceof String || value instanceof Character || value instanceof Boolean
+        || value instanceof Byte || value instanceof Short || value instanceof Integer
+        || value instanceof Long || value instanceof Float || value instanceof Double)
+      return bounded(String.valueOf(value));
+    return null;
+  }
+
+  private Map<String, String> caseReport(TestIdentifier test) {
+    return caseReports.computeIfAbsent(test.getUniqueId(), id -> {
+      Map<String, String> report = new HashMap<>();
+      report.put("id", id);
+      report.put("name", bounded(test.getDisplayName()));
+      return report;
+    });
+  }
   private TestPlan plan;
   public synchronized void testPlanExecutionStarted(TestPlan plan) {
     this.plan = plan;
-    discovered = (int) plan.countTestIdentifiers(TestIdentifier::isTest);
+    if (this.complete || !registered.isEmpty())
+      eventErrors++;
+    for (TestIdentifier root : plan.getRoots()) {
+      if (root.isTest())
+        register(root);
+      for (TestIdentifier test : plan.getDescendants(root))
+        if (test.isTest())
+          register(test);
+    }
   }
   public synchronized void dynamicTestRegistered(TestIdentifier test) {
     if (test.isTest())
-      discovered++;
+      register(test);
   }
   public synchronized void executionStarted(TestIdentifier test) {
-    if (test.isTest())
+    if (test.isTest()) {
+      if (!registered.contains(test.getUniqueId()) || !started.add(test.getUniqueId()))
+        eventErrors++;
       executed++;
+    }
   }
   public synchronized void executionSkipped(TestIdentifier test, String reason) {
     Set<TestIdentifier> skippedTests = new HashSet<>();
@@ -125,10 +172,28 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       return;
     }
     String status = result.getStatus().name().toLowerCase(Locale.ROOT);
-    outcomes.put(test.getUniqueId(), status);
+    if (!registered.contains(test.getUniqueId()) || !started.contains(test.getUniqueId())
+        || outcomes.putIfAbsent(test.getUniqueId(), status) != null)
+      eventErrors++;
+    Map<String, String> report = caseReport(test);
+    report.put("status",
+        result.getStatus() == TestExecutionResult.Status.SUCCESSFUL ? "passed" : "failed");
     if (result.getStatus() == TestExecutionResult.Status.FAILED) {
       String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
       failures.put(test.getUniqueId(), kind);
+      if ("wrong-answer".equals(kind)
+          && result.getThrowable().orElse(null) instanceof AssertionFailedError failure) {
+        if (failure.isExpectedDefined()) {
+          String expected = scalar(failure.getExpected().getValue());
+          if (expected != null)
+            report.put("expected", expected);
+        }
+        if (failure.isActualDefined()) {
+          String actual = scalar(failure.getActual().getValue());
+          if (actual != null)
+            report.put("actual", actual);
+        }
+      }
       // A trusted public test can fail before publishing an actual value. Record
       // only its signed execution outcome, never Throwable text or private output.
       if (test.getSource().orElse(null) instanceof MethodSource method) {
@@ -140,7 +205,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
           default -> null;
         };
         if (observed != null)
-          for (Object entry : publicCases)if(entry instanceof Map<?,?> item&&binding.equals(item.get("test"))&&item.get("id") instanceof String id&&publicReports.stream().noneMatch(report->id.equals(report.get("id"))&&binding.equals(report.get("test"))))
+          for (Object entry : publicCases)if(entry instanceof Map<?,?> item&&binding.equals(item.get("test"))&&item.get("id") instanceof String id&&publicReports.stream().noneMatch(observation->id.equals(observation.get("id"))&&binding.equals(observation.get("test"))))
               publicReports.add(new HashMap<>(Map.of(
                   "id", id, "test", binding, "actual", observed, "uniqueId", test.getUniqueId())));
       }
@@ -156,6 +221,11 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         aborted++;
         break;
     }
+  }
+  public synchronized void testPlanExecutionFinished(TestPlan plan) {
+    if (this.plan != plan || complete)
+      eventErrors++;
+    complete = true;
   }
   private String failureKind(Throwable failure) {
     while (failure instanceof InvocationTargetException && failure.getCause() != null)
@@ -181,6 +251,13 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     return "infrastructure";
   }
   public synchronized void reportingEntryPublished(TestIdentifier test, ReportEntry entry) {
+    if (test.isTest() && "implementation".equals(submissionMode)) {
+      Map<String, String> report = caseReport(test);
+      Map<String, String> values = entry.getKeyValuePairs();
+      for (String key : List.of("expected", "actual"))
+        if (values.containsKey(key))
+          report.put(key, bounded(values.get(key)));
+    }
     if (test.getSource().orElse(null) instanceof MethodSource method) {
       Map<String, String> values = entry.getKeyValuePairs();
       if (values.containsKey("public-case") && values.containsKey("actual"))
@@ -232,6 +309,14 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     counts.put("aborted", listener.aborted);
     counts.put("containerFailures", listener.containerFailures);
     counts.put("outcomes", listener.outcomes);
+    counts.put("registered", new ArrayList<>(listener.registered));
+    counts.put("started", new ArrayList<>(listener.started));
+    counts.put("eventErrors", listener.eventErrors);
+    counts.put("complete", listener.complete);
+    counts.put("cases",
+        "implementation".equals(listener.submissionMode)
+            ? new ArrayList<>(listener.caseReports.values())
+            : List.of());
     counts.put("failureKinds", listener.failures);
     for (Map<String, String> report : listener.publicReports)
       report.put("status",

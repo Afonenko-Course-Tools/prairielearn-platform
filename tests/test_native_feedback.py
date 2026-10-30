@@ -44,39 +44,23 @@ class NativeFeedbackTests(unittest.TestCase):
         self.assertEqual(
             len(r.get("tests", [])), 1, "Native UI requires tests at the result root"
         )
-        self.assertIn("answer", r["tests"][0]["message"])
+        self.assertIn("answer", r["rawResult"]["tests"][0]["message"])
         self.assertEqual(r["tests"][0]["points"], 0)
         self.assertEqual(r["tests"][0]["max_points"], 1)
 
-    def test_silent_timeout_has_native_message(self):
-        r = self.result(
-            "timeout",
-            "public class Student {public static int answer(){while(true){}}}",
-        )
-        self.assertEqual(r["classification"], "student-timeout")
-        self.assertEqual(r["score"], 0)
-        self.assertTrue(r["timed_out"])
-        self.assertFalse(r["output_limited"])
-        self.assertIn(
-            "time",
-            r.get("message", "").lower(),
-            "Native UI must explain an inner timeout",
-        )
-        self.assertIn("3", r["message"])
-        self.assertNotIn("tests", r)
+    def test_whole_executor_timeout_is_infrastructure_without_fake_cases(self):
+        with self.assertRaises(fixtures.grader.GraderError):
+            self.result(
+                "timeout",
+                "public class Student {public static int answer(){while(true){}}}",
+            )
 
-    def test_output_overflow_has_native_message(self):
-        r = self.result(
-            "overflow",
-            'public class Student {public static int answer(){while(true){System.out.print("x".repeat(8192));}}}',
-        )
-        self.assertEqual(r["classification"], "student-output-overflow")
-        self.assertEqual(r["score"], 0)
-        self.assertTrue(r["output_limited"])
-        self.assertFalse(r["timed_out"])
-        self.assertIn("output", r.get("message", "").lower())
-        self.assertIn("65536", r["message"])
-        self.assertLessEqual(len(r["output"].encode()), 65536)
+    def test_whole_executor_output_stop_is_infrastructure_without_fake_cases(self):
+        with self.assertRaises(fixtures.grader.GraderError):
+            self.result(
+                "overflow",
+                'public class Student {public static int answer(){while(true){System.out.print("x".repeat(8192));}}}',
+            )
 
     def test_mutation_success_explains_expected_rejections(self):
         fixtures.MutationJob.setup_mutation(self)
