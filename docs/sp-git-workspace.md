@@ -19,7 +19,7 @@ identity также требует адресного восстановлени
 
 Передача сдачи принадлежит native host. Для раннего плоского Git-проекта
 exporter требует `gradedFiles` с `work/**`, `work/.git/**`, `work/.*`,
-`explanation.md`, `.pl-seed/identity.json`. ZIP студента в Workspace не требуется.
+`explanation.m[d]`, `.pl-seed/identity.jso[n]`. ZIP студента в Workspace не требуется.
 Эти шаблоны не обещают перенос произвольной вложенной структуры дополнительных
 скрытых каталогов; расширенная квалификация остаётся открытой.
 
