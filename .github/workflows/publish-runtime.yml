@@ -10,6 +10,10 @@ on:
         description: Exact independently reviewed merged main commit
         required: true
         type: string
+      exporter_commit:
+        description: Точный независимо проверенный commit Exporter для настоящих synthetic delivery4 packages
+        required: true
+        type: string
 permissions:
   contents: read
   packages: write
@@ -32,9 +36,11 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+          EXPORTER_COMMIT: ${{ inputs.exporter_commit }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$EXPORTER_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
           [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
           [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
@@ -43,13 +49,40 @@ jobs:
           echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
           echo "FISH_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fish-git-grader:${VERSION}" >> "$GITHUB_ENV"
           echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
+          echo "WORKSPACE_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sp-git-workspace:${VERSION}" >> "$GITHUB_ENV"
       - name: Authenticate with scoped package token
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - name: Подтвердить отсутствие всех трёх registry tags
+      - name: Подтвердить отсутствие всех четырёх registry tags
         run: |
-          for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE" "$FISH_IMAGE"; do bash tools/require-absent-image.sh "$IMAGE"; done
+          for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE" "$FISH_IMAGE" "$WORKSPACE_IMAGE"; do bash tools/require-absent-image.sh "$IMAGE"; done
+      - name: Получить точный Exporter для synthetic contract fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course-prairielearn
+          ref: ${{ inputs.exporter_commit }}
+          path: .ci-deps/exporter
+          persist-credentials: false
+      - name: Проверить исходник producer
+        env:
+          EXPORTER_COMMIT: ${{ inputs.exporter_commit }}
+        run: test "$(git -C .ci-deps/exporter rev-parse HEAD)" = "$EXPORTER_COMMIT"
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
+        with:
+          version: 1.11.5
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.7.14
+      - name: Создать настоящие synthetic delivery4 packages вне Git
+        env:
+          EXPORTER_COMMIT: ${{ inputs.exporter_commit }}
+        run: |
+          export PL_DELIVERY4_FIXTURES="$RUNNER_TEMP/delivery4-fixtures"
+          mkdir "$PL_DELIVERY4_FIXTURES"
+          (cd .ci-deps/exporter && deno test --no-config --no-lock -A tests/native-answer.test.ts tests/delivery4-workspace.test.ts)
+          printf '%s\n' "$EXPORTER_COMMIT" > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
+          echo "PL_DELIVERY4_FIXTURES=$PL_DELIVERY4_FIXTURES" >> "$GITHUB_ENV"
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
           python-version: '3.14.0'
@@ -76,7 +109,7 @@ jobs:
           python3 -m pip install --requirement requirements.txt
           DOCKER_BUILDKIT=0 timeout --signal=TERM --kill-after=5s 360s docker build --pull=false --network=none --no-cache --rm=true --force-rm --memory=2g --memory-swap=2g --cpu-period=100000 --cpu-quota=200000 --ulimit=nofile=4096:4096 --ulimit=core=0:0 --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" - < "$RUNNER_TEMP/native-build-context.tar"
           TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
-          PL_TEST_IMAGE="$TEST_IMAGE_ID" PL_API_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -v
+          PL_TEST_IMAGE="$TEST_IMAGE_ID" PL_API_TEST_IMAGE="$TEST_IMAGE_ID" PL_NATIVE_PREPARED_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -v
       - name: Собрать и проверить Community
         run: |
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
@@ -88,18 +121,26 @@ jobs:
         run: |
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/fish-git-grader/Dockerfile -t "$FISH_IMAGE" .
           PL_FISH_TEST_IMAGE="$(docker image inspect "$FISH_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -p 'test_fish*.py' -v
+      - name: Собрать и проверить Workspace
+        run: |
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$WORKSPACE_IMAGE" images/sp-git-workspace
+          WORKSPACE_TEST_IMAGE="$(docker image inspect "$WORKSPACE_IMAGE" --format '{{.Id}}')"
+          PYTHONPATH=tests/sp-git-workspace python3 tests/sp-git-workspace/container_smoke.py "$WORKSPACE_TEST_IMAGE" | tee "$RUNNER_TEMP/workspace-smoke.json"
       - name: Опубликовать Java
         run: docker push "$RUNTIME_IMAGE"
       - name: Опубликовать Community
         run: docker push "$COMMUNITY_IMAGE"
       - name: Опубликовать fish
         run: docker push "$FISH_IMAGE"
-      - name: Проверить загрузку digest и сохранить receipt v2
+      - name: Опубликовать Workspace
+        run: docker push "$WORKSPACE_IMAGE"
+      - name: Проверить загрузку digest и сохранить receipt v3
         run: |
           export JAVA_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
           export COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
           export FISH_DIGEST="$(docker image inspect "$FISH_IMAGE" --format '{{index .RepoDigests 0}}')"
-          for IMAGE in "$JAVA_DIGEST" "$COMMUNITY_DIGEST" "$FISH_DIGEST"; do docker pull "$IMAGE"; done
+          export WORKSPACE_DIGEST="$(docker image inspect "$WORKSPACE_IMAGE" --format '{{index .RepoDigests 0}}')"
+          for IMAGE in "$JAVA_DIGEST" "$COMMUNITY_DIGEST" "$FISH_DIGEST" "$WORKSPACE_DIGEST"; do docker pull "$IMAGE"; done
           python3 tools/publish-receipt.py
           cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -109,4 +150,11 @@ jobs:
             runtime-image.json
             published-runtime-profiles.json
             published-toolchain-lock.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-synthetic-native4-evidence-${{ inputs.version }}
+          path: |
+            ${{ runner.temp }}/delivery4-fixtures/
+            ${{ runner.temp }}/workspace-smoke.json
           if-no-files-found: error

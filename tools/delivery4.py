@@ -99,13 +99,13 @@ def seed_proof(native,prefix,b):
  for n,data in entries.items():
   if '/.git/' not in '/'+n and file_bytes(native,prefix+'clientFilesQuestion/starter/'+n)!=data:raise JobError('Seed/source common file differs')
  if file_bytes(native,prefix+'clientFilesQuestion/starter.zip')!=raw:raise JobError('Workspace public ZIP differs from seed')
- required={'work/.git/HEAD','work/.git/config','work/.git/index','work/README.md','work/notes.txt'}
+ required={'work/.git/HEAD','work/.git/config','work/.git/index'}
  if not required<=entries.keys() or entries['work/.git/HEAD']!=b'ref: refs/heads/main\n':raise JobError('Initial Git main state required')
  import configparser
  config=configparser.ConfigParser(interpolation=None)
  try:config.read_string(entries['work/.git/config'].decode())
  except (ValueError,configparser.Error) as e:raise JobError('Invalid Git config') from e
- if set(config.sections())!={'core'} or set(config['core'])-{'repositoryformatversion','filemode','bare','logallrefupdates'} or config['core'].get('bare')!='false' or config['core'].get('repositoryformatversion')!='0':raise JobError('Unsafe initial Git config')
+ if set(config.sections())!={'core'} or set(config['core'])-{'repositoryformatversion','filemode','bare','logallrefupdates','autocrlf'} or config['core'].get('bare')!='false' or config['core'].get('repositoryformatversion')!='0' or config['core'].get('autocrlf','false')!='false':raise JobError('Unsafe initial Git config')
  if any(n.startswith('work/.git/refs/') and n!='work/.git/refs/heads/main' or n in ('work/.git/commondir','work/.git/objects/info/alternates','work/.git/packed-refs') for n in entries):raise JobError('External Git state refused')
  ref=entries.get('work/.git/refs/heads/main',b'').decode().strip()
  if not re.fullmatch('[a-f0-9]{40}',ref):raise JobError('Initial Git commit missing')
@@ -119,7 +119,7 @@ def seed_proof(native,prefix,b):
   if head!=kind.encode()+b' '+str(len(body)).encode():raise JobError('Git object kind/length differs')
   seen.add(name);return body
  commit=obj(ref,'commit');headers,message=commit.split(b'\n\n',1)
- if message.strip()!=b'A' or any(x.startswith(b'parent ') for x in headers.splitlines()) or not re.fullmatch(b'tree [a-f0-9]{40}',headers.splitlines()[0]):raise JobError('Initial Git A required')
+ if any(x.startswith(b'parent ') for x in headers.splitlines()) or not re.fullmatch(b'tree [a-f0-9]{40}',headers.splitlines()[0]):raise JobError('Initial Git root commit required')
  tracked={}
  def tree(oid,path=''):
   value=obj(oid,'tree');offset=0

@@ -689,4 +689,45 @@ public final class Assertions {
       throw error;
     }
   }
+  public static void assertNotEquals(int a, int b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(Object a, Object b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(long[] a, long[] b) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static <T> T assertInstanceOf(Class<T> expectedType, Object actual) {
+    var token = State.begin("тип значения", expectedType, actual, null);
+    try {
+      T result = org.junit.jupiter.api.Assertions.assertInstanceOf(expectedType, actual);
+      State.end(token, "returned");
+      return result;
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
 }

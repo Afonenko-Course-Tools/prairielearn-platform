@@ -8,7 +8,7 @@ permissions:
 jobs:
   contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -17,6 +17,26 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course-prairielearn
+          ref: c41486739de77ab1e0ccef29f01ad08c49816a96
+          path: .ci-deps/exporter
+          persist-credentials: false
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
+        with:
+          version: '1.11.5'
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.7.14
+      - name: Создать настоящие synthetic delivery4 packages вне Git
+        run: |
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = c41486739de77ab1e0ccef29f01ad08c49816a96
+          export PL_DELIVERY4_FIXTURES="$RUNNER_TEMP/delivery4-fixtures"
+          mkdir "$PL_DELIVERY4_FIXTURES"
+          (cd .ci-deps/exporter && deno test --no-config --no-lock -A tests/native-answer.test.ts tests/delivery4-workspace.test.ts)
+          printf '%s\n' c41486739de77ab1e0ccef29f01ad08c49816a96 > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
+          echo "PL_DELIVERY4_FIXTURES=$PL_DELIVERY4_FIXTURES" >> "$GITHUB_ENV"
       - name: Установить fish для проверки текстового runtime
         run: |
           sudo apt-get update

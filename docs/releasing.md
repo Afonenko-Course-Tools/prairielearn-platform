@@ -8,7 +8,8 @@
 указывать на тот же source commit, что и новый runtime-image receipt.
 Принятые Root84 publication updates a42728c3534a65d77a5e7ca55ae4a81f83d3a36e
 включены локально; remote merge/publisher/actual image приёмка ещё не выполнены.
-Ниже сохранены исторические сведения и порядок runtime-выпуска2.3.0.
+Ниже сохранены исторические сведения о runtime-выпусках2.2.0/2.3.0;
+последовательность публикации относится к текущему кандидату2.4.0.
 
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
@@ -76,27 +77,37 @@ Candidate не допускается к staging независимо от ус�
 
 ## Проверенная последовательность публикации
 
-1. Независимо проверить точную вершину PR, три Dockerfile и publisher workflow;
+1. Независимо проверить точную вершину PR, четыре Dockerfile и publisher workflow;
    выполнить owner suites. После merge зафиксировать actual merged SHA и сравнить
    дерево с проверенной кандидатурой.
 2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=2.3.0 \
-     -f reviewed_commit=ACTUAL_MERGED_SHA
+   gh workflow run publish-runtime.yml --ref main -f version=2.4.0 \
+     -f reviewed_commit=ACTUAL_MERGED_SHA \
+     -f exporter_commit=REVIEWED_EXPORTER_SHA
    ```
 
    Workflow проверяет branch/commit/version и использует scoped GITHUB_TOKEN
    contents:read/packages:write. Package должен предоставлять этому repository
    Actions access. Authentication/network ошибки не доказывают отсутствие tag.
-3. Publisher требует доказанного отсутствия всех трёх registry tags. Отдельно
-   собирает Java, Community и fish из точного checkout и закреплённых bases;
-   отдельно проверяет каждый образ, Java/fish фактически в контейнерах. Все checks
-   заканчиваются до pushes. Затем отдельно публикует три образа и получает их
+   `exporter_commit` — точный независимо проверенный commit репозитория Exporter.
+   Workflow получает этот checkout с отключёнными Git credentials и создаёт
+   настоящие synthetic packages пяти форм ответа и Workspace через его обычные
+   native tests. `PL_DELIVERY4_FIXTURES` указывает на новый каталог в
+   `RUNNER_TEMP`: данные исполнения не добавляются в Git. Обычный contracts CI
+   также создаёт эти fixtures из закреплённого producer commit перед всей suite.
+   Сам source pin не подтверждает независимую приёмку или публикацию producer:
+   соответствующие проверки выполняются перед merge и dispatch.
+3. Publisher требует доказанного отсутствия всех четырёх registry tags. Отдельно
+   собирает Java, Community, fish и Workspace из точного checkout и закреплённых bases;
+   отдельно проверяет каждый образ, Java/fish/Workspace фактически в контейнерах. Все checks
+   заканчиваются до pushes. Затем отдельно публикует четыре образа и получает их
    repository@sha256 digests; каждый digest проверяется docker pull.
-4. Receipt schemaVersion2 содержит sourceCommit/version, три images,
-   deliverySchemaVersion3, resultsSchemaVersion2 и runtimeProfilesSha256. published-runtime-profiles.json
-   связывает три Java профиля с java25-grader, fish с fish-git-grader. Producer проверяет
+4. Receipt schemaVersion3 содержит sourceCommit/version, четыре images,
+   deliverySchemaVersion4, resultsSchemaVersion2 и runtimeProfilesSha256. published-runtime-profiles.json
+   связывает три Java профиля с java25-grader, fish с fish-git-grader и отдельную
+   `workspaceImages.sp-git-workspace-v1` с Workspace digest. Producer проверяет
    clean source HEAD/version и весь prepared context; Java pins берёт из его
    проверенного baked view, fish pins — из фактических файлов того же source HEAD.
    Скачать artifact
@@ -120,7 +131,7 @@ Candidate не допускается к staging независимо от ус�
 6. После проверки pin commit поставить source tag и выпустить source/receipt/registry
    вместе. Downstream использует наблюдённые digests и точные source refs.
 
-Три pushes не атомарны. При частичной публикации сохранить логи и перейти к новому
+Четыре pushes не атомарны. При частичной публикации сохранить логи и перейти к новому
 номеру для повторной проверенной публикации; существующий номер не перезаписывается.
 GHCR tags изменяемы, deployment использует digests. Новая публикация сама по себе
 не доказывает public visibility: нужный доступ подтверждается фактическим pull.

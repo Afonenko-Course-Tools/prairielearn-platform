@@ -143,6 +143,24 @@ class PublishedMetadata(unittest.TestCase):
     def test_wrong_repository_digest_is_refused(self):
         self.assert_refused({'JAVA_DIGEST': IMAGES['fish']})
 
+    def test_workspace_digest_is_published_as_separate_authority(self):
+        self.require_context()
+        workspace = 'ghcr.io/example/sp-git-workspace@sha256:' + '4' * 64
+        process, files = self.run_producer({'WORKSPACE_DIGEST': workspace})
+        self.assertEqual(process.returncode, 0, process.stderr.decode())
+        receipt = json.loads(files['runtime-image.json'])
+        registry = json.loads(files['published-runtime-profiles.json'])
+        self.assertEqual(receipt['images'], dict(IMAGES, workspace=workspace))
+        self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion']), (3, 4))
+        self.assertEqual(registry['schemaVersion'], 2)
+        self.assertEqual(registry['workspaceImages']['sp-git-workspace-v1']['image'], workspace)
+        self.assertEqual(set(registry['profiles']), {
+            'java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1', 'fish-git-v1'})
+
+    def test_workspace_local_id_or_other_role_cannot_be_published(self):
+        self.assert_refused({'WORKSPACE_DIGEST': 'sha256:' + '4' * 64})
+        self.assert_refused({'WORKSPACE_DIGEST': IMAGES['java']})
+
     def test_local_image_id_is_not_a_published_digest(self):
         self.assert_refused({'JAVA_DIGEST': 'sha256:' + '1' * 64})
 
