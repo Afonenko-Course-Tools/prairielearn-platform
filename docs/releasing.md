@@ -1,15 +1,15 @@
 # Версии Platform и публикация образов
 
-`VERSION` содержит **2.4.0** — локальную кандидатуру optional-primary Java с Core/Exporter 8.3.0. Новый runner source pin обновлён; новый OCI digest, actual image admission и assets ещё не получены.
+`VERSION` содержит **2.5.0** — локальную кандидатуру optional-primary Java с Core/Exporter 8.3.0. Новый runner source pin обновлён; новый OCI digest, actual image admission и assets ещё не получены.
 
-Далее сохранён порядок существующего runtime publisher. Для 2.4.0 используются
+Далее сохранён порядок существующего runtime publisher. Для 2.5.0 используются
 новый versioned source commit и его actual merged main SHA после review;
 старые 2.2.0/2.3.0 receipts не подтверждают этот runner. Source tag должен
 указывать на тот же source commit, что и новый runtime-image receipt.
 Принятые Root84 publication updates a42728c3534a65d77a5e7ca55ae4a81f83d3a36e
 включены локально; remote merge/publisher/actual image приёмка ещё не выполнены.
 Ниже сохранены исторические сведения о runtime-выпусках2.2.0/2.3.0;
-последовательность публикации относится к текущему кандидату2.4.0.
+последовательность публикации относится к текущему кандидату2.5.0.
 
 Действующие образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
@@ -83,7 +83,7 @@ Candidate не допускается к staging независимо от ус�
 2. Запустить Publish reviewed Platform images на main с новым номером из VERSION:
 
    ```sh
-   gh workflow run publish-runtime.yml --ref main -f version=2.4.0 \
+   gh workflow run publish-runtime.yml --ref main -f version=2.5.0 \
      -f reviewed_commit=ACTUAL_MERGED_SHA \
      -f exporter_commit=REVIEWED_EXPORTER_SHA
    ```

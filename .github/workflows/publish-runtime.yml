@@ -122,6 +122,7 @@ jobs:
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/fish-git-grader/Dockerfile -t "$FISH_IMAGE" .
           PL_FISH_TEST_IMAGE="$(docker image inspect "$FISH_IMAGE" --format '{{.Id}}')" python3 -m unittest discover -s tests -p 'test_fish*.py' -v
       - name: Собрать и проверить Workspace
+        shell: bash
         run: |
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$WORKSPACE_IMAGE" images/sp-git-workspace
           WORKSPACE_TEST_IMAGE="$(docker image inspect "$WORKSPACE_IMAGE" --format '{{.Id}}')"
