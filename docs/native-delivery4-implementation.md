@@ -33,7 +33,7 @@ whole135, OCI, installed и release остаются открыты. Publish с�
 ## Адресная коррекция index/build reader
 
 Workspace index v2 сравнивается с initial A tree по точным path/mode/OID и stage0.
-Количество, encoded UTF-8 pathname length и порядок записей должны совпадать с
+Количество и encoded UTF-8 pathname length должны совпадать с
 читаемым bounded index. Stat cache (ctime/mtime/dev/inode/uid/gid) не является
 содержимым Git дерева и не закрепляется произвольными timestamp-проверками.
 Подтверждённые mode/type и pathname-length mutants отвергаются до proof. Reader
