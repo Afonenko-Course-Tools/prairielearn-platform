@@ -29,3 +29,21 @@ whole135, OCI, installed и release остаются открыты. Publish с�
 `PL.NATIVE_RELEASE_UNQUALIFIED`. Ordinary/injected builder fixtures не заменяют
 эти gates. Standalone Figure с RawBlock/RawInline по-прежнему явно отвергается;
 произвольный HTML не разрешён и узлы не удаляются молча.
+
+## Адресная коррекция index/build reader
+
+Workspace index v2 сравнивается с initial A tree по точным path/mode/OID и stage0.
+Количество, encoded UTF-8 pathname length и порядок записей должны совпадать с
+читаемым bounded index. Stat cache (ctime/mtime/dev/inode/uid/gid) не является
+содержимым Git дерева и не закрепляется произвольными timestamp-проверками.
+Подтверждённые mode/type и pathname-length mutants отвергаются до proof. Reader
+не запускает Git; реальный `git diff --cached --raw HEAD` используется только на
+собственном тестовом seed для различающего контроля.
+
+`build-course.py` применяет существующий `package_integrity` к закрытым3/4 после
+export и до provenance/атомарной выдачи candidate. Это проверяет реальные native
+project/Internal/Workspace semantics, не создавая фиктивный code Job. Source-bound
+release capability проверяется отдельно; legacy receipt2(public3) не допускает4.
+Clean-source, final/recheck и no-replacement fences сохранены. Legacy3 положительный
+fixture теперь содержит полный closed3 пакет вместо UUID-only stub. Выдача
+локального UNIT candidate не является release/assignment/image qualification.

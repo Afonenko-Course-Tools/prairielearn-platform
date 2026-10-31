@@ -130,20 +130,24 @@ def seed_proof(native,prefix,b):
    elif mode in (b'100644',b'100755'):
     blob=obj(oid,'blob')
     if entries.get('work/'+name)!=blob or name in tracked:raise JobError('Git worktree differs')
-    tracked[name]=oid
+    tracked[name]=(int(mode,8),oid)
    else:raise JobError('Unsafe Git tree mode')
  tree(headers.splitlines()[0][5:].decode())
  if {n[5:] for n in entries if n.startswith('work/') and not n.startswith('work/.git/')}!=set(tracked):raise JobError('Untracked initial worktree files')
  if not tracked or any(n.startswith('work/.git/objects/') and n not in seen for n in entries):raise JobError('Unbound Git objects')
  index=entries['work/.git/index']
  if len(index)<32 or index[:4]!=b'DIRC' or struct.unpack('>I',index[4:8])[0]!=2 or hashlib.sha1(index[:-20]).digest()!=index[-20:]:raise JobError('Invalid Git index')
- count=struct.unpack('>I',index[8:12])[0];offset=12;indexed={}
+ count=struct.unpack('>I',index[8:12])[0];offset=12;indexed={};previous=None
+ if count!=len(tracked):raise JobError('Git index/tree entry count differs')
  for _ in range(count):
   start=offset
   if offset+62>len(index)-20:raise JobError('Truncated Git index')
-  oid=index[offset+40:offset+60].hex();flags=struct.unpack('>H',index[offset+60:offset+62])[0];end=index.index(b'\0',offset+62);name=index[offset+62:end].decode()
-  if flags&0xf000 or not relative_name(name) or name in indexed:raise JobError('Unsafe Git index entry')
-  indexed[name]=oid;offset=start+((end+1-start+7)//8)*8
+  mode=struct.unpack('>I',index[offset+24:offset+28])[0];oid=index[offset+40:offset+60].hex();flags=struct.unpack('>H',index[offset+60:offset+62])[0]
+  try:end=index.index(b'\0',offset+62,len(index)-20);raw_name=index[offset+62:end];name=raw_name.decode('utf-8')
+  except (ValueError,UnicodeError) as e:raise JobError('Invalid Git index pathname') from e
+  if flags&0xf000 or (flags&0xfff)!=min(len(raw_name),0xfff) or not relative_name(name) or name in indexed or previous is not None and raw_name<=previous:raise JobError('Unsafe Git index entry')
+  previous=raw_name;indexed[name]=(mode,oid);offset=start+((end+1-start+7)//8)*8
+  if offset>len(index)-20:raise JobError('Truncated Git index entry')
  if indexed!=tracked:raise JobError('Git index/tree differs')
  return {'archiveSha256':seed['archiveSha256'],'manifestSha256':seed['manifestSha256'],'filesHash':digest(expected),'initialCommit':ref}
 
