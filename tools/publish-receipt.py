@@ -26,7 +26,7 @@ def assign_images(registry,images):
         profile['image']=images[PROFILE_IMAGES[name]]
     return result
 
-def derive_release_registry(root,images,read=None):
+def derive_release_registry(root,images,read=None,delivery_version=3):
     """Одна чистая derivation для publisher и reader pinned Git metadata."""
     read=read or preparation.read_regular
     historical=json.loads(read(root/'runtime-profiles.json'))
@@ -34,23 +34,33 @@ def derive_release_registry(root,images,read=None):
     expected,_=preparation.generated_locks(json.loads(read(root/'runtime/gradle-jar-v1/toolchain-lock.json')))
     registry=preparation.baked_view(root,expected,read)
     registry['profiles']['fish-git-v1']=preparation._fish_view(root,read)['profiles']['fish-git-v1']
-    return assign_images(registry,images),expected
+    workspace=images.get('workspace')
+    if delivery_version==3 and workspace is not None:raise ValueError('Legacy3 cannot carry Workspace image role')
+    if delivery_version not in (3,4) or set(images) not in (set(REPOSITORIES),set(REPOSITORIES)|{'workspace'}):raise ValueError('Closed release image roles required')
+    result=assign_images(registry,{k:v for k,v in images.items() if k!='workspace'})
+    if delivery_version==4:
+        result['schemaVersion']=2;result['workspaceImages']={}
+        if workspace is not None:
+            if not isinstance(workspace,str) or not re.fullmatch(r'ghcr\.io/[a-z0-9-]+/sp-git-workspace@sha256:[a-f0-9]{64}',workspace):raise ValueError('Exact qualified Workspace image role required')
+            result['workspaceImages']['sp-git-workspace-v1']={'image':workspace}
+    return result,expected
 
 def release_registry(root,images,source_commit,version):
     # Publisher сохраняет прежние authenticated preparation/clean-source guards.
     manifest=preparation.verify_context(root)
     preparation.require(manifest['source']['commit']==source_commit,'Published source must equal prepared clean HEAD')
     preparation.require(manifest['version']==version,'Published version must equal prepared VERSION')
-    registry,lock=derive_release_registry(root,images)
+    registry,lock=derive_release_registry(root,images,delivery_version=4)
     preparation.require(preparation.verify_context(root)==manifest,'Prepared inputs changed during publication metadata generation')
     return registry,lock
 
 def main():
     try:
         images={key:os.environ[key.upper()+'_DIGEST'] for key in REPOSITORIES}
+        if 'WORKSPACE_DIGEST' in os.environ:images['workspace']=os.environ['WORKSPACE_DIGEST']
         registry,lock=release_registry(ROOT,images,os.environ['GITHUB_SHA'],os.environ['VERSION'])
         data=preparation.encode(registry)
-        receipt={'schemaVersion':2,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':3,'resultsSchemaVersion':2,'runtimeProfilesSha256':preparation.digest_bytes(data)}
+        receipt={'schemaVersion':3,'sourceCommit':os.environ['GITHUB_SHA'],'version':os.environ['VERSION'],'images':images,'deliverySchemaVersion':4,'resultsSchemaVersion':2,'runtimeProfilesSha256':preparation.digest_bytes(data)}
         # Release assembly supplies this generated lock at the existing runtime
         # path. The canonical prepared-status source lock remains unchanged.
         Path('published-runtime-profiles.json').write_bytes(data)

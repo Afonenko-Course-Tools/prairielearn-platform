@@ -1,6 +1,6 @@
 """Точный Core inventory становится чистым приватным snapshot без remote."""
 from gradle_unit_fixtures import write_registry as unit_registry_file
-import hashlib,importlib.util,json,os,subprocess,tempfile,unittest
+import hashlib,importlib.util,json,os,subprocess,sys,tempfile,unittest
 from unittest.mock import patch
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('private_source',Path(__file__).resolve().parents[1]/'tools/prepare-private-source.py');stage=importlib.util.module_from_spec(spec);spec.loader.exec_module(stage)
@@ -39,8 +39,10 @@ delivery={'schemaVersion':3,'deliveryHash':'c'*64,'sourceSnapshotHash':'a'*64,'i
 (out/'delivery.json').write_text(json.dumps(delivery));checks.write_text(json.dumps({'sourceSnapshotHash':'a'*64,'inventoryHash':'b'*64}))
 if os.environ.get('ALTER_SEED'):pathlib.Path('tasks/projects/demo/student/.git/EXTRA').write_text('POST_EXPORT_DRIFT')
 """);script.chmod(0o755)
-   with patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}):
+   # Exporter здесь синтетический: проверяется исходный private stage, реальные пакеты — отдельными controls.
+   with patch.object(sys,'path',[str(Path(__file__).resolve().parents[1]/'tools'),*sys.path]),patch.dict(os.environ,{'PATH':str(binary)+os.pathsep+os.environ['PATH']}),patch('delivery_verification.package_integrity',return_value=None) as package_guard:
     builder.build_course(output,'tasks','pilot',root/'candidate',staging_receipt=receipt,runtime_registry=unit_registry_file(root))
+    package_guard.assert_called_once()
     provenance=json.loads((root/'candidate/provenance.json').read_text())['source']
     self.assertEqual(provenance['mode'],'private-stage');self.assertNotIn('commit',provenance);self.assertEqual(provenance['publicBase']['commit'],git(public,'rev-parse','HEAD'))
     with patch.dict(os.environ,{'ALTER_SEED':'1'}):

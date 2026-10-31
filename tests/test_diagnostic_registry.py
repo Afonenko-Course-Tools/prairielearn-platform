@@ -56,8 +56,8 @@ class DiagnosticRegistry(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);(root/'manifest.json').write_text('{}');(root/'registry.json').write_text('{"profiles":{"diagnostic":{}}}')
    registry={'profiles':{'diagnostic':{}}};project={'qualifiedId':'demo/exr-a','projectRoot':'p','check':{'runtime':'diagnostic'}}
-   job={'expectations':{}};jobtype=type('Job',(dict,),{});job=jobtype(job);job.root=root/'job';job.root.mkdir()
+   job={'expectations':{},'qualifiedId':project['qualifiedId'],'scenario':'starter','schemaVersion':1,'sourceHashes':{},'testsHashes':{}};jobtype=type('Job',(dict,),{});job=jobtype(job);job.root=root/'job';job.root.mkdir()
    args=['check-course.py','--manifest',str(root/'manifest.json'),'--snapshot',str(root),'--runtime-registry',str(root/'registry.json'),'--output',str(root/'result.json')]
    with patch.object(sys,'argv',args),patch.object(cli,'inventory',return_value=[project]),patch.object(cli,'scenario_inventory',return_value=[{'qualifiedId':'demo/exr-a','scenario':'starter'}]),patch.object(cli,'prepare_job',return_value=job) as prepare,patch.object(cli,'run_job',return_value={}) as execute,patch.object(cli,'verify_results',return_value={'exitCode':0}) as receipt:
     self.assertEqual(cli.main(),0)
-   self.assertEqual(prepare.call_args.args[-1],registry);self.assertEqual(execute.call_args.args[-1],registry);self.assertEqual(receipt.call_args.args[-1],registry)
+   self.assertEqual(prepare.call_args.args[-1],registry);self.assertEqual(execute.call_args.args[-1],registry);self.assertEqual(receipt.call_args.args[-2],registry);self.assertEqual(receipt.call_args.args[-1],{('demo/exr-a','starter'):{'sourceHashes':{},'testsHashes':{}}})

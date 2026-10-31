@@ -165,7 +165,14 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         files=tree(native)
         if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
         delivery=read_json(native/'delivery.json');manifest=read_json(checks)
-        if delivery.get('schemaVersion')!=3 or not delivery.get('deliveryHash') or delivery.get('sourceSnapshotHash')!=manifest.get('sourceSnapshotHash') or delivery.get('inventoryHash')!=manifest.get('inventoryHash'):raise BuildError('Delivery/check inventory identity mismatch')
+        from delivery_verification import package_integrity
+        from grading_job import JobError
+        try:
+            # Closed3/4 kind-specific package checks; no fake code Job for Internal/Workspace.
+            package_integrity(delivery,native,manifest)
+        except (JobError,OSError,ValueError,KeyError,TypeError) as error:
+            raise BuildError('Delivery/check package validation failed: '+str(error)) from error
+        if assembly and delivery.get('schemaVersion',999)>assembly.delivery_schema_version:raise BuildError('Delivery exceeds source-bound release protocol')
         validate_uuids_and_assessments(native,delivery['questions'])
         provenance={'schema':'pl-provenance-v2' if assembly else 'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':assembly.builder if assembly else {'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':assembly.images if assembly else read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
         if staging:

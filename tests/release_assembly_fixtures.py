@@ -1,7 +1,8 @@
 """Вымышленные UNIT-образы/тег: реальные локальные Git/bytes, не release evidence."""
 from pathlib import Path
-import copy,hashlib,importlib.util,io,json,os,subprocess,tarfile
+import copy,hashlib,importlib.util,io,json,os,subprocess,sys,tarfile
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
 REPOSITORY='https://github.com/Afonenko-Course-Tools/prairielearn-platform'
 IMAGES={'java':'ghcr.io/unit-example/java25-grader@sha256:'+'1'*64,'fish':'ghcr.io/unit-example/fish-git-grader@sha256:'+'2'*64,'community':'ghcr.io/unit-example/prairielearn-community-gateway@sha256:'+'3'*64}
 def load(name,path):

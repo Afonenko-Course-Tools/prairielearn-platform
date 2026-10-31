@@ -250,7 +250,9 @@
     "additionalJavaSources": {
       "type": "object",
       "properties": {
-        "primaryRequired": {"type": "boolean"},
+        "primaryRequired": {
+          "type": "boolean"
+        },
         "archive": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
@@ -382,7 +384,7 @@
         },
         "mainClass": {
           "type": "string",
-          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$"
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$(?![\\s\\S])"
         },
         "artifact": {
           "type": "string",
@@ -391,7 +393,6 @@
       },
       "required": [
         "kind",
-        "mainClass",
         "artifact"
       ],
       "additionalProperties": false

@@ -98,13 +98,21 @@ class Context:
   payloads={name:read_asset(assets_root/name) for name in ASSETS}
   require({n:digest(b) for n,b in payloads.items()}==d['assets'],'published asset bytes differ from trusted pins')
   receipt=json.loads(payloads['runtime-image.json']);closed(receipt,['schemaVersion','sourceCommit','version','images','deliverySchemaVersion','resultsSchemaVersion','runtimeProfilesSha256'])
-  require(receipt['schemaVersion']==2 and receipt['deliverySchemaVersion']==3 and receipt['resultsSchemaVersion']==2 and receipt['sourceCommit']==d['sourceCommit'] and receipt['version']==d['version'],'receipt2 source/version/protocol mismatch')
-  registry,lock=publication.derive_release_registry(source.root,receipt['images'],source.read)
+  require((receipt['schemaVersion'],receipt['deliverySchemaVersion']) in ((2,3),(3,4)) and receipt['resultsSchemaVersion']==2 and receipt['sourceCommit']==d['sourceCommit'] and receipt['version']==d['version'],'receipt2 source/version/protocol mismatch')
+  if receipt['schemaVersion']==3:
+   from grading_job import validate
+   validate('runtime-image-v3',receipt)
+  registry,lock=publication.derive_release_registry(source.root,receipt['images'],source.read,receipt['deliverySchemaVersion'])
   require(publication.preparation.encode(registry)==payloads['published-runtime-profiles.json'] and lock==payloads['published-toolchain-lock.json'],'full source-derived registry/generated lock differs')
   require(receipt['runtimeProfilesSha256']==digest(payloads['published-runtime-profiles.json']),'receipt registry hash differs')
   canonical=json.loads(source.read(source.root/'images.lock.json'));require(set(images)==set(canonical)|{'releaseAssembly'} and images['schema']=='pl-images-v1','closed actual image view required')
-  for key in set(canonical)-{'schema','javaGrader','fishGrader','communityGateway'}:require(images[key]==canonical[key],'unchanged image/source records differ')
-  for role,key in [('java','javaGrader'),('fish','fishGrader'),('community','communityGateway')]:
+  workspace=receipt['images'].get('workspace')
+  if workspace is not None:require(receipt['schemaVersion']==3 and 'spGitWorkspace' in canonical,'Workspace requires source-declared release role')
+  for key in set(canonical)-{'schema','javaGrader','fishGrader','communityGateway','spGitWorkspace'}:require(images[key]==canonical[key],'unchanged image/source records differ')
+  roles=[('java','javaGrader'),('fish','fishGrader'),('community','communityGateway')]
+  if workspace is not None:roles.append(('workspace','spGitWorkspace'))
+  elif 'spGitWorkspace' in canonical:require(images['spGitWorkspace']==canonical['spGitWorkspace'],'Unqualified Workspace role changed')
+  for role,key in roles:
    record=images[key];require(isinstance(record,dict) and set(canonical[key])<=set(record) and set(record)<=set(canonical[key])|{'localImage','localImageId'},'unknown image record field')
    for name,value in canonical[key].items():
     if name not in ('image','sourceCommit','version','localImage','localImageId','status'):require(record.get(name)==value,'image base/source metadata differs')
@@ -116,7 +124,7 @@ class Context:
   inventory_hash,source_stamps=source.physical(replacements)
   overlays={target:{'sourceSha256':source.records[target]['sha256'],'sha256':digest(data),'mode':source.records[target]['mode']} for target,data in replacements.items()}
   require(all(v['mode']=='100644' for v in overlays.values()),'fixed overlay source modes required')
-  self._images=images;self.registry=registry;self.registry_path=assets_root/'published-runtime-profiles.json'
+  self.delivery_schema_version=receipt["deliverySchemaVersion"];self._images=images;self.registry=registry;self.registry_path=assets_root/'published-runtime-profiles.json'
   self.builder={'repository':REPOSITORY,'commit':source.commit,'dirty':True,'mode':'release-assembly','releaseAssembly':{'schema':'pl-platform-release-assembly-v1','sourceTree':source.tree,'version':d['version'],'assets':copy.deepcopy(d['assets']),'imagesManifestSha256':digest(raw),'overlays':overlays,'inventoryHash':inventory_hash}}
   self._snapshot={'builder':copy.deepcopy(self.builder),'sourceStamps':source_stamps,'assetStamps':{n:stamp(assets_root/n) for n in (*ASSETS,'images.lock.json')}}
  @property

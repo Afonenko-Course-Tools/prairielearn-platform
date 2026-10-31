@@ -1,6 +1,8 @@
-# Host validation2.4.1
+# Проверка целевой среды Platform 2.5.0
 
-Это исходный выпуск host-tools, совместимый с digit-first instance именами Exporter. Runtime images/assets и Native provenance сохраняют фактическую Platform2.4.0 M3 identity; новый runtime build не требуется.
+Этот исходный кандидат объединяет изменения host-tools 2.4.1, обычный библиотечный JAR без Main-Class, отчёт JUnit и SP Workspace. Он меняет runtime и требует нового закрытого контекста, настоящей сборки образа и независимой квалификации. Проверка исходников и локальные диагностические JUnit-запуски не подтверждают готовность образа либо выпуска.
+
+Исторические комплекты M3 сохраняют свои точные images/assets и provenance; их идентичность не переносится на новый кандидат автоматически. Поддержка digit-first instance имён Exporter сохранена.
 
 Для отдельного host-tools checkout используйте штатный `tools/stage_courses.py REGISTRY --storage STORAGE --compose-output FRESH --images M3_ASSETS/images.lock.json --assembly-root ORIGINAL_M3_ASSEMBLY`. Параметр выбирает только источник исходного Context; его закрытые assets, source/tree, provenance equality и recheck не ослаблены. Без параметра сохраняется прежний source-root default. Native IDs, route IDs и DB IDs не взаимозаменяемы.
 

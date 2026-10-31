@@ -422,7 +422,7 @@
             },
             "mainClass": {
               "type": "string",
-              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$"
+              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$(?![\\s\\S])"
             },
             "artifact": {
               "type": "string",
@@ -431,7 +431,6 @@
           },
           "required": [
             "kind",
-            "mainClass",
             "artifact"
           ],
           "additionalProperties": false

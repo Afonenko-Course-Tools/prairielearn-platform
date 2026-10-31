@@ -3,6 +3,8 @@ from gradle_unit_fixtures import write_registry as unit_registry_file
 import importlib.util,json,os,shutil,subprocess,tempfile,unittest,zipfile,hashlib,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+# Прямой запуск теста должен видеть соседние модули builder без порядка unittest discovery.
+sys.path.insert(0,str(ROOT/'tools'))
 
 sys.dont_write_bytecode=True
 PUBLIC_RUNTIME='c0208e16d2480b45d0cf0ef3c44ed706aee293f0'
@@ -63,7 +65,6 @@ class NativePrivateSource(unittest.TestCase):
    self.assertEqual(provenance['mode'],'private-stage');self.assertTrue(provenance['runtimeInventory']);self.assertTrue((candidate/'questions/native-java-demo/exr-add/info.json').exists())
    question=candidate/'questions/native-java-demo/exr-add'
    descriptor=json.loads((question/'tests/grading-job.json').read_text());self.assertEqual([c['name'] for c in descriptor['publicCases']],['Сложение обычных чисел','Сложение нулей']);self.assertEqual(descriptor['feedback']['requirement'],'Сложить числа с расширением до long')
-   import sys;sys.path.insert(0,str(ROOT/'tools'))
    import delivery_verification as verification
    delivery=json.loads((candidate/'delivery.json').read_text());verification.package_integrity(delivery,candidate)
    html=(question/'question.html').read_text()

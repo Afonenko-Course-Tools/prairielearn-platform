@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 from delivery_verification import classification,package_integrity,delivery_receipt
+from delivery4 import code_ids
 from grading_job import JobError,ProjectDefect,inventory,prepare_job,run_job,verify_results,safe,validate,scenario_inventory,preserve_build_logs
 
 def main():
@@ -16,7 +17,7 @@ def main():
   delivery=json.loads(a.delivery.read_text()) if a.delivery else None
   if a.scope=='delivery':
    if not delivery:raise JobError('--delivery is required for delivery scope')
-   methods=classification(delivery);auto_ids={q for q,method in methods.items() if method!='manual'}
+   methods=classification(delivery);auto_ids=code_ids(delivery)
    report['packageIntegrity']=package_integrity(delivery,a.delivery.parent,m)
    if a.id and set(a.id)-set(methods):raise JobError('Unknown selected delivery ID')
    projects=[x for x in projects if x['qualifiedId'] in auto_ids]
@@ -30,7 +31,7 @@ def main():
    if not a.snapshot:raise JobError('--snapshot is required for verify')
    job_delivery=dict(delivery,_root=str(a.delivery.parent.resolve())) if delivery is not None else None
    required=scenario_inventory(m,a.snapshot,auto_ids if a.scope=='delivery' and delivery else {x['qualifiedId'] for x in selected})
-   results=[];expectations={};unavailable=[]
+   results=[];expectations={};unavailable=[];expected_jobs={}
    for project in selected:
     scenarios=a.scenario or [x['scenario'] for x in required if x['qualifiedId']==project['qualifiedId']]
     for scenario in scenarios:
@@ -38,18 +39,18 @@ def main():
      except JobError as error:
       if str(error).startswith('reference-unavailable:'):unavailable.append({'qualifiedId':project['qualifiedId'],'scenario':scenario,'status':'reference-unavailable'});continue
       raise
-     try:results.append(run_job(job,a.backend,registry));expectations[project['qualifiedId']+':'+scenario]=job['expectations']
+     try:expected_jobs[(job['qualifiedId'],job['scenario'])]={**{field:dict(job[field]) for field in ('sourceHashes','testsHashes')},**({'jobSchemaVersion':2,'nativeSelectionScopeHash':job['nativeSelectionScopeHash']} if job['schemaVersion']==2 else {})};results.append(run_job(job,a.backend,registry));expectations[project['qualifiedId']+':'+scenario]=job['expectations']
      finally:
       try:preserve_build_logs(job,a.output)
       finally:shutil.rmtree(job.root)
    if a.scope=='delivery' and not auto_ids:
-    report.update(automatic={'state':'not-applicable','reason':'all-questions-manual'},results=[])
+    report.update(automatic={'state':'not-applicable','reason':'all-questions-manual' if delivery['schemaVersion']==3 else 'no-project-automatic'},results=[])
     if a.scenario or a.id and set(a.id)!=set(methods):report.update(coverage='partial');status=1
     else:report['receipt']=delivery_receipt(delivery,a.delivery.parent,m,registry=registry);status=0
    elif not results:
     report.update(coverage='partial',automatic={'state':'not-verified','reason':'partial-selection'},results=[]);status=1
    else:
-    receipt=verify_results(results,expectations,required,unavailable,registry);report.update(results=results,receipt=receipt,unavailable=unavailable);status=receipt['exitCode']
+    receipt=verify_results(results,expectations,required,unavailable,registry,expected_jobs);report.update(results=results,receipt=receipt,unavailable=unavailable);status=receipt['exitCode']
     if a.scope=='delivery' and status==0 and receipt['coverage']=='complete' and a.backend=='container' and (not a.id or set(a.id)==set(methods)):
      report['receipt']=delivery_receipt(delivery,a.delivery.parent,m,receipt,registry)
     elif a.scope=='delivery':report['coverage']='partial'

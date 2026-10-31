@@ -41,7 +41,7 @@ def upload_values(attrs,key,paths=True):
 
 
 def classification(delivery):
- if not isinstance(delivery,dict) or delivery.get('schemaVersion')!=3:raise JobError('Unsupported native delivery; v3 required')
+ if not isinstance(delivery,dict) or type(delivery.get('schemaVersion')) is not int or delivery.get('schemaVersion') not in (3,4):raise JobError('Unsupported native delivery; v3 required')
  required={'schemaVersion','courseId','bookRoot','sourceSnapshotHash','inventoryHash','verificationInventoryHash','questions','gradingPayloads','works','instances','files','deliveryHash'}
  if not required<=delivery.keys() or set(delivery)-required-{'candidate'} or not isinstance(delivery.get('courseId'),str) or not re.fullmatch(r'[a-z][a-z0-9-]*',delivery['courseId']):raise JobError('Closed canonical delivery v3 required')
  if any(not isinstance(delivery.get(k),str) or not HASH.fullmatch(delivery[k]) for k in ('sourceSnapshotHash','inventoryHash','verificationInventoryHash','deliveryHash')):raise JobError('Invalid delivery hash binding')
@@ -53,7 +53,17 @@ def classification(delivery):
  methods={};uuids=set()
  for q in questions:
   binding=bindings[q]
-  if not isinstance(binding,dict) or not {'uuid','grading','submission','sourceRoot'}<=binding.keys():raise JobError('Canonical grading/submission binding required')
+  if delivery['schemaVersion']==4:
+   from delivery4 import binding4
+   if not isinstance(binding,dict):raise JobError('Closed delivery4 binding required')
+   if binding.get('kind')!='project':
+    method=binding4(binding)
+    try:valid_uuid=isinstance(binding['uuid'],str) and str(uuid.UUID(binding['uuid']))==binding['uuid'].lower()
+    except (ValueError,TypeError):valid_uuid=False
+    if not valid_uuid or binding['uuid'] in uuids:raise JobError('Unique canonical question UUIDs required')
+    uuids.add(binding['uuid']);methods[q]=method;continue
+   binding={k:v for k,v in binding.items() if k!='kind'}
+  if not isinstance(binding,dict) or not {'uuid' ,'grading','submission','sourceRoot'}<=binding.keys():raise JobError('Canonical grading/submission binding required')
   grading=binding['grading'];submission=binding['submission']
   if not isinstance(grading,dict) or set(grading)!={'method'} or grading['method'] not in ('external','mixed','manual'):raise JobError('Explicit canonical grading method required')
   method=grading['method'];allowed={'uuid','grading','submission','sourceRoot'}|({'projectCheck','runtime','sources'} if method!='manual' else set())
@@ -62,7 +72,7 @@ def classification(delivery):
   if 'aceMode' in submission and (not isinstance(submission['aceMode'],str) or not submission['aceMode']):raise JobError('Invalid editor mode')
   if method=='manual' and submission['mode']!='upload':raise JobError('Manual requires actual native upload')
   try:valid_uuid=isinstance(binding['uuid'],str) and str(uuid.UUID(binding['uuid']))==binding['uuid'].lower()
-  except ValueError:valid_uuid=False
+  except (ValueError,TypeError,AttributeError):valid_uuid=False
   if not valid_uuid or binding['uuid'] in uuids:raise JobError('Unique canonical question UUIDs required')
   if not relative_name(binding['sourceRoot']):raise JobError('Invalid owner-relative project source root')
   if method!='manual':
@@ -77,9 +87,15 @@ def classification(delivery):
 
 def package_integrity(delivery,native,checks=None):
  native=Path(native);methods=classification(delivery)
- if all(method=='manual' for method in methods.values()) and delivery['verificationInventoryHash']!=digest([]):raise JobError('Wholly manual delivery cannot declare automatic scenarios')
+ from delivery4 import code_ids,native_proof,seed_proof
+ automatic_ids=code_ids(delivery)
+ if not automatic_ids and delivery['verificationInventoryHash']!=digest([]):raise JobError('Wholly manual delivery cannot declare automatic scenarios')
  if digest({k:v for k,v in delivery.items() if k!='deliveryHash'})!=delivery.get('deliveryHash'):raise JobError('Canonical delivery identity mismatch')
  if checks is not None and any(delivery.get(k)!=checks.get(k) for k in ('sourceSnapshotHash','inventoryHash')):raise JobError('Package/check source identity differs')
+ if checks is not None and checks.get('schemaVersion')==2:
+  from grading_job import inventory
+  inventory(checks);scope=checks['selectionScope']
+  if scope['automaticIds']!=sorted(automatic_ids) or sorted(a['id'] for a in scope['assessments'])!=sorted(work['id'] for work in delivery['works']):raise JobError('Native selected scope differs from delivery')
  files=delivery.get('files')
  if not isinstance(files,dict) or not files or not all(isinstance(sha,str) and HASH.fullmatch(sha) for sha in files.values()):raise JobError('Nonempty canonical native inventory required')
  for name,sha in files.items():
@@ -150,8 +166,21 @@ def package_integrity(delivery,native,checks=None):
    if path.is_file():actual.add(path.relative_to(folder).as_posix())
   if actual!=set(question_files):raise JobError('Question file inventory differs from canonical delivery')
   info=read(prefix+'info.json');native_schema('infoQuestion.json',info)
-  if info['uuid']!=binding['uuid'] or info.get('gradingMethod')!=('Manual' if method=='manual' else 'External'):raise JobError('Native method/UUID differs from canonical binding')
+  expected_method=binding.get('upstreamGradingMethod', 'Manual' if method=='manual' else 'External')
+  if info['uuid']!=binding['uuid'] or info.get('gradingMethod')!=expected_method:raise JobError('Native method/UUID differs from canonical binding')
   controls=Controls(file_bytes(native,prefix+'question.html').decode('utf-8')).elements
+  if delivery['schemaVersion']==4 and binding['kind']!='project':
+   if q in facts or 'externalGradingOptions' in info:raise JobError('Non-project cannot accept code Job')
+   if binding['kind']=='native-answer':
+    if info.get('showCorrectAnswer') is not False:raise JobError('Native answer key visibility differs')
+    proof=native_proof(q,binding,question_files,controls)
+    if info.get('partialCredit') is not (method!='manual'):raise JobError('Native partial-credit policy differs')
+    mode='native-answer'
+   else:
+    if info.get('workspaceOptions')!=binding['submission']['workspaceOptions'] or info.get('singleVariant') is not True or not any(t=='pl-workspace' for t,_ in controls) or any(n.startswith('tests/') or n in ('server.py','server.js','server.ts') for n in question_files):raise JobError('Workspace native controls differ')
+    proof=seed_proof(native,prefix,binding);mode='workspace'
+   result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':mode,'questionFilesHash':digest(question_files)})
+   continue
   uploads=[attrs for tag,attrs in controls if tag=='pl-file-upload'];editors=[attrs for tag,attrs in controls if tag=='pl-file-editor']
   descriptor=None
   if method!='manual':
@@ -193,9 +222,13 @@ def package_integrity(delivery,native,checks=None):
 def delivery_receipt(delivery,native,checks,automatic=None,registry=None):
  from grading_job import TOOL_VERSION,validate_release_receipt
  package=package_integrity(delivery,native,checks);methods=classification(delivery)
- auto={q for q,method in methods.items() if method!='manual'}
+ from delivery4 import code_ids,internal_proof
+ auto=code_ids(delivery)
  if auto and automatic is None:raise JobError('Automatic proof missing')
  if not auto and automatic is not None:raise JobError('Wholly manual does not accept grading results')
- proof={'state':'verified','receipt':automatic} if auto else {'state':'not-applicable','reason':'all-questions-manual'}
- result={'schemaVersion':3,'kind':'delivery-verification','scope':'delivery','toolVersion':TOOL_VERSION,**{k:delivery[k] for k in ('deliveryHash','sourceSnapshotHash','inventoryHash')},'packageIntegrity':package,'automatic':proof}
+ if auto and checks.get('schemaVersion')==2 and (automatic is None or automatic.get('jobSchemaVersion')!=2 or automatic.get('nativeSelectionScopeHash')!=checks['selectionScopeHash']):raise JobError('Native automatic scope binding differs')
+ proof={'state':'verified','receipt':automatic} if auto else {'state':'not-applicable','reason':'all-questions-manual' if delivery['schemaVersion']==3 else 'no-project-automatic'}
+ result={'schemaVersion':delivery['schemaVersion'],'kind':'delivery-verification','scope':'delivery','toolVersion':TOOL_VERSION,**{k:delivery[k] for k in ('deliveryHash','sourceSnapshotHash','inventoryHash')},'packageIntegrity':package,'automatic':proof}
+ if delivery['schemaVersion']==4:result['nativeAnswers']=internal_proof(delivery,native)
  result['identityHash']=digest(result);validate_release_receipt(result,delivery,native,registry);return result
+

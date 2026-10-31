@@ -1,0 +1,999 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/grading-job-v2.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "scope": {
+      "enum": [
+        "declared",
+        "delivery"
+      ]
+    },
+    "qualifiedId": {
+      "type": "string"
+    },
+    "scenario": {
+      "type": "string"
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "runtime": {
+      "type": "string"
+    },
+    "imageDigest": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
+        }
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "projectRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "projectRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ownerRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "ownerRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "trustedTests": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "projectRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "projectRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ownerRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "ownerRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "verificationTests": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "projectRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "projectRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ownerRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "submissionRelativePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              }
+            },
+            "required": [
+              "ownerRelativePath",
+              "sha256",
+              "submissionRelativePath"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 0
+    },
+    "grading": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/grading-descriptor.schema.json",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "sourceFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "minItems": 1
+        },
+        "testFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+          },
+          "minItems": 1
+        },
+        "mode": {
+          "enum": [
+            "implementation",
+            "student-tests"
+          ]
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "java": {
+          "type": "object",
+          "properties": {
+            "release": {
+              "const": 25
+            },
+            "encoding": {
+              "const": "UTF-8"
+            },
+            "compiler-options": {
+              "const": [
+                "-proc:none",
+                "-Xmaxerrs",
+                "5"
+              ]
+            }
+          },
+          "required": [
+            "release",
+            "encoding",
+            "compiler-options"
+          ],
+          "additionalProperties": false
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "outer-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "compile-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "run-seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "networking": {
+              "const": false
+            },
+            "max-output-bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65536
+            }
+          },
+          "required": [
+            "outer-seconds",
+            "compile-seconds",
+            "run-seconds",
+            "networking",
+            "max-output-bytes"
+          ],
+          "additionalProperties": false
+        },
+        "scoring": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "weighted"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "all-pass"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "contract-groups"
+                },
+                "groups": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "weight": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "tests": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "weight",
+                      "tests"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "mode",
+                "groups"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "threshold"
+                },
+                "basis": {
+                  "enum": [
+                    "score",
+                    "passed-tests"
+                  ]
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "mode",
+                "basis",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "discovery": {
+          "type": "object",
+          "properties": {
+            "min-executed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "allow-skipped": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "min-executed",
+            "allow-skipped"
+          ],
+          "additionalProperties": false
+        },
+        "variants": {
+          "type": "object",
+          "properties": {
+            "correct": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "mutants": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "correct",
+            "mutants"
+          ],
+          "additionalProperties": false
+        },
+        "apiPrecheck": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+              },
+              "minItems": 1,
+              "maxItems": 64,
+              "uniqueItems": true
+            },
+            "entry": {
+              "type": "string",
+              "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+            }
+          },
+          "required": [
+            "files",
+            "entry"
+          ],
+          "additionalProperties": false
+        },
+        "additionalJavaSources": {
+          "type": "object",
+          "properties": {
+            "primaryRequired": {
+              "type": "boolean"
+            },
+            "archive": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+            },
+            "maxFiles": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128
+            },
+            "maxFileBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "maxTotalBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4194304
+            },
+            "maxArchiveBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2097152
+            }
+          },
+          "required": [
+            "archive",
+            "maxFiles",
+            "maxFileBytes",
+            "maxTotalBytes",
+            "maxArchiveBytes"
+          ],
+          "additionalProperties": false
+        },
+        "javaBuild": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "gradle-jar-v1"
+            },
+            "mainClass": {
+              "type": "string",
+              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$(?![\\s\\S])"
+            },
+            "artifact": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact"
+          ],
+          "additionalProperties": false
+        },
+        "publicCases": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              },
+              "test": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8192
+              },
+              "input": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8192
+              },
+              "state": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8192
+              },
+              "action": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8192
+              },
+              "expected": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8192
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "\\S"
+              }
+            },
+            "required": [
+              "id",
+              "test",
+              "expected",
+              "name"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "input"
+                ]
+              },
+              {
+                "required": [
+                  "state"
+                ]
+              },
+              {
+                "required": [
+                  "action"
+                ]
+              }
+            ],
+            "additionalProperties": false
+          }
+        },
+        "feedback": {
+          "type": "object",
+          "properties": {
+            "requirement": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            },
+            "whatCheck": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            }
+          },
+          "required": [
+            "requirement",
+            "whatCheck"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "sourceFiles",
+        "testFiles",
+        "mode",
+        "runtime",
+        "limits",
+        "scoring",
+        "discovery"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "student-tests"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "variants"
+            ],
+            "properties": {
+              "runtime": {
+                "const": "java25-mutation-v1"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "fish-git-v1",
+                  "java25-gradle-junit-v1"
+                ]
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "variants"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "java25-mutation-v1",
+                  "java25-gradle-junit-v1"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "java"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "java"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "apiPrecheck"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "java25-gradle-junit-v1"
+                ]
+              },
+              "mode": {
+                "const": "implementation"
+              }
+            },
+            "required": [
+              "java"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "additionalJavaSources"
+            ]
+          },
+          "then": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "java25-gradle-junit-v1"
+                ]
+              },
+              "mode": {
+                "const": "implementation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "const": "java25-gradle-junit-v1"
+              }
+            },
+            "required": [
+              "runtime"
+            ]
+          },
+          "then": {
+            "required": [
+              "javaBuild"
+            ],
+            "properties": {
+              "mode": {
+                "const": "implementation"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "javaBuild"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "expectations": {
+      "type": "object",
+      "properties": {
+        "student-compilation": {
+          "enum": [
+            "success",
+            "failure"
+          ]
+        },
+        "job": {
+          "enum": [
+            "complete",
+            "failure"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "success",
+            "behavior-failure",
+            "student-compilation-failure",
+            "student-test-quality-failure",
+            "student-timeout",
+            "student-output-overflow",
+            "unsafe-submission",
+            "infrastructure-failure",
+            "student-api-mismatch"
+          ]
+        },
+        "required-tests": {
+          "const": "all-pass"
+        },
+        "failed-tests": {
+          "type": "object",
+          "properties": {
+            "at-least": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "executed-tests": {
+          "type": "object",
+          "properties": {
+            "at-least": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "test-ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 0
+        },
+        "score": {
+          "type": "object",
+          "properties": {
+            "less-than": {
+              "type": "number",
+              "minimum": 0
+            },
+            "at-least": {
+              "type": "number",
+              "minimum": 0
+            },
+            "exactly": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "sourceHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "testsHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "nativeSelectionScopeHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scope",
+    "qualifiedId",
+    "scenario",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "runtime",
+    "imageDigest",
+    "sources",
+    "trustedTests",
+    "grading",
+    "nativeSelectionScopeHash"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "deliveryHash"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "deliveryHash"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-junit-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "java25-junit-v1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-mutation-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "java25-mutation-v1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "java25-gradle-junit-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "java25-gradle-junit-v1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "const": "fish-git-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grading": {
+            "properties": {
+              "runtime": {
+                "const": "fish-git-v1"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/delivery-verification-receipt-v4.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 4
+    },
+    "kind": {
+      "const": "delivery-verification"
+    },
+    "scope": {
+      "const": "delivery"
+    },
+    "toolVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "deliveryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "packageIntegrity": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "success"
+        },
+        "coverage": {
+          "const": "complete"
+        },
+        "filesHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "questionBindings": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "qualifiedId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "method": {
+                "enum": [
+                  "external",
+                  "mixed",
+                  "manual"
+                ]
+              },
+              "uuid": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "submissionMode": {
+                "enum": [
+                  "upload",
+                  "editor",
+                  "native-answer",
+                  "workspace"
+                ]
+              },
+              "questionFilesHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "qualifiedId",
+              "method",
+              "uuid",
+              "submissionMode",
+              "questionFilesHash"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "status",
+        "coverage",
+        "filesHash",
+        "questionBindings"
+      ],
+      "additionalProperties": false
+    },
+    "automatic": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "verified"
+            },
+            "receipt": {
+              "$ref": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/verification-receipt.schema.json"
+            }
+          },
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "not-applicable"
+            },
+            "reason": {
+              "const": "no-project-automatic"
+            }
+          },
+          "required": [
+            "state",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "identityHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nativeAnswers": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "native-answer-package-v1"
+        },
+        "deliveryHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "qualifiedId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uuid": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "answerType": {
+                "enum": [
+                  "manual",
+                  "numeric",
+                  "single-choice",
+                  "multipart",
+                  "matching"
+                ]
+              },
+              "responseSlotsHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "controlsHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "serverSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "qualifiedId",
+              "uuid",
+              "answerType",
+              "responseSlotsHash",
+              "controlsHash",
+              "serverSha256"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        },
+        "inventoryHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "kind",
+        "deliveryHash",
+        "bindings",
+        "inventoryHash"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "scope",
+    "toolVersion",
+    "deliveryHash",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "packageIntegrity",
+    "automatic",
+    "identityHash",
+    "nativeAnswers"
+  ],
+  "additionalProperties": false
+}

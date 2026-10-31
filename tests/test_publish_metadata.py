@@ -53,7 +53,7 @@ class PublishedMetadata(unittest.TestCase):
             profile = registry['profiles'][name]
             self.assertEqual(profile['image'], IMAGES['java'])
             self.assertEqual(profile['runnerSha256'],
-                             '6971e911c88298ef04a7d0a71ab1fd96c80822d7676b520f88c5b3bfd68f3aef')
+                             hashlib.sha256((ROOT / 'images/java25-grader/grade.py').read_bytes()).hexdigest())
             self.assertEqual(profile['sharedFiles']['runtime/gradle-jar-v1/toolchain-lock.json'],
                              'c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca')
         native = registry['profiles']['java25-gradle-junit-v1']
@@ -69,7 +69,7 @@ class PublishedMetadata(unittest.TestCase):
         receipt = json.loads(files['runtime-image.json'])
         self.assertEqual(receipt['runtimeProfilesSha256'], hashlib.sha256(files['published-runtime-profiles.json']).hexdigest())
         self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion'],
-                          receipt['resultsSchemaVersion']), (2, 3, 2))
+                          receipt['resultsSchemaVersion']), (3, 4, 2))
         # Bind the emitted protocol to the actual current delivery consumer,
         # rather than deriving the expected version from the publisher itself.
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -80,7 +80,7 @@ class PublishedMetadata(unittest.TestCase):
             'verificationInventoryHash': 'c' * 64, 'deliveryHash': 'd' * 64,
             'questions': ['synthetic/exr-manual'],
             'gradingPayloads': {'synthetic/exr-manual': {
-                'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
+                'kind': 'project', 'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
                 'grading': {'method': 'manual'}, 'submission': {'mode': 'upload'},
                 'sourceRoot': 'projects/manual'}},
             'works': [{'id': 'unit'}],
@@ -129,7 +129,7 @@ class PublishedMetadata(unittest.TestCase):
         self.assertEqual(registry,publication.assign_images(expected,IMAGES));self.assertEqual(actual_lock,lock)
         manifest={'source':{'commit':'a'*40},'version':'2.3.0'}
         with patch.object(prep,'verify_context',return_value=manifest) as verify:
-            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),(registry,lock));self.assertEqual(verify.call_count,2)
+            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),publication.derive_release_registry(ROOT,IMAGES,delivery_version=4));self.assertEqual(verify.call_count,2)
         with patch.object(prep,'verify_context',side_effect=[manifest,{'changed':True}]),self.assertRaisesRegex(ValueError,'Prepared inputs changed'):
             publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0')
         def extra_profile(path):
@@ -142,6 +142,24 @@ class PublishedMetadata(unittest.TestCase):
 
     def test_wrong_repository_digest_is_refused(self):
         self.assert_refused({'JAVA_DIGEST': IMAGES['fish']})
+
+    def test_workspace_digest_is_published_as_separate_authority(self):
+        self.require_context()
+        workspace = 'ghcr.io/example/sp-git-workspace@sha256:' + '4' * 64
+        process, files = self.run_producer({'WORKSPACE_DIGEST': workspace})
+        self.assertEqual(process.returncode, 0, process.stderr.decode())
+        receipt = json.loads(files['runtime-image.json'])
+        registry = json.loads(files['published-runtime-profiles.json'])
+        self.assertEqual(receipt['images'], dict(IMAGES, workspace=workspace))
+        self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion']), (3, 4))
+        self.assertEqual(registry['schemaVersion'], 2)
+        self.assertEqual(registry['workspaceImages']['sp-git-workspace-v1']['image'], workspace)
+        self.assertEqual(set(registry['profiles']), {
+            'java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1', 'fish-git-v1'})
+
+    def test_workspace_local_id_or_other_role_cannot_be_published(self):
+        self.assert_refused({'WORKSPACE_DIGEST': 'sha256:' + '4' * 64})
+        self.assert_refused({'WORKSPACE_DIGEST': IMAGES['java']})
 
     def test_local_image_id_is_not_a_published_digest(self):
         self.assert_refused({'JAVA_DIGEST': 'sha256:' + '1' * 64})

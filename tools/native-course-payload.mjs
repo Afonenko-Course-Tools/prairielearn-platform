@@ -15,7 +15,7 @@ export async function readNativeCoursePayload(path) {
  }
  const delivery=JSON.parse(await containedFile('delivery.json'));
  const info=JSON.parse(await containedFile('infoCourse.json'));
- if(!delivery||delivery.schemaVersion!==3||!delivery.files||typeof delivery.files!=='object'||Array.isArray(delivery.files)||!Object.hasOwn(delivery.files,'infoCourse.json'))throw new Error('Course metadata absent from native v3 inventory');
+ if(!delivery||![3,4].includes(delivery.schemaVersion)||!delivery.files||typeof delivery.files!=='object'||Array.isArray(delivery.files)||!Object.hasOwn(delivery.files,'infoCourse.json'))throw new Error('Course metadata absent from native v3 inventory');
  bridgeDeliverySchema.parse(delivery);
  const {deliveryHash,...payload}=delivery;
  if(createHash('sha256').update(canonicalJSONString(payload)).digest('hex')!==deliveryHash||basename(path)!==deliveryHash)throw new Error('Delivery hash mismatch');

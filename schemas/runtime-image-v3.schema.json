@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/runtime-image-v3.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 3
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "images": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "java": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/java25-grader@sha256:[a-f0-9]{64}$"
+            },
+            "fish": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/fish-git-grader@sha256:[a-f0-9]{64}$"
+            },
+            "community": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/prairielearn-community-gateway@sha256:[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "java",
+            "fish",
+            "community"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "java": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/java25-grader@sha256:[a-f0-9]{64}$"
+            },
+            "fish": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/fish-git-grader@sha256:[a-f0-9]{64}$"
+            },
+            "community": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/prairielearn-community-gateway@sha256:[a-f0-9]{64}$"
+            },
+            "workspace": {
+              "type": "string",
+              "pattern": "^ghcr\\.io/[a-z0-9-]+/sp-git-workspace@sha256:[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "java",
+            "fish",
+            "community",
+            "workspace"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "deliverySchemaVersion": {
+      "const": 4
+    },
+    "resultsSchemaVersion": {
+      "const": 2
+    },
+    "runtimeProfilesSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "sourceCommit",
+    "version",
+    "images",
+    "deliverySchemaVersion",
+    "resultsSchemaVersion",
+    "runtimeProfilesSha256"
+  ],
+  "additionalProperties": false
+}

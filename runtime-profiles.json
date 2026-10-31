@@ -9,18 +9,29 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformJUnitAdapter.java": "ed96bd916c9ab12f24982b84a863848271b9d56e7910b8844a60ff5d671a90d0",
+        "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
+        "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
+        "feedback/Transform.java": "8402ce259566f48194c7bb06d4a0bd36f94ffb5e340b44a59642ef25ed60ab7d",
+        "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",
+        "feedback/module/org/prairielearn/feedback/Assertions.java": "77488ffbcb3582ac12d5e741960a4b348cf9f609e0f749fd0752d3d9d8a0cbe2",
+        "feedback/module/org/prairielearn/feedback/Gate.java": "e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69",
+        "feedback/module/org/prairielearn/feedback/ProjectionAccess.java": "4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a",
+        "feedback/module/org/prairielearn/feedback/internal/Scope.java": "523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b",
+        "feedback/module/org/prairielearn/feedback/internal/State.java": "48d2fbc5a3603a661bd4d2429d247aca8366649667e30122b53f8cdb8f49b231",
+        "feedback/module/org/prairielearn/feedback/internal/Timeouts.java": "00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516",
+        "feedback/projection-admissions.json": "20284e097d697f411b97d1a354aae5ac103815dbd2e4191b7071672cb11241d4",
         "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
-        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
-        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "9af42367df4fcec733e5c9c2f19fdaa4e520b4758fc24c7fe6752e3309fbea33",
+      "runnerSha256": "9c1f720ea1beddd35054e9a8f4b26d9897e4a7fff5e4c62bfb2141f561f8aaa0",
       "sharedFiles": {
-        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4"
-      }
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
+        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
+      },
+      "assertionFeedbackProtocol": 2
     },
     "java25-mutation-v1": {
       "javaRelease": 25,
@@ -30,18 +41,29 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformJUnitAdapter.java": "ed96bd916c9ab12f24982b84a863848271b9d56e7910b8844a60ff5d671a90d0",
+        "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
+        "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
+        "feedback/Transform.java": "8402ce259566f48194c7bb06d4a0bd36f94ffb5e340b44a59642ef25ed60ab7d",
+        "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",
+        "feedback/module/org/prairielearn/feedback/Assertions.java": "77488ffbcb3582ac12d5e741960a4b348cf9f609e0f749fd0752d3d9d8a0cbe2",
+        "feedback/module/org/prairielearn/feedback/Gate.java": "e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69",
+        "feedback/module/org/prairielearn/feedback/ProjectionAccess.java": "4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a",
+        "feedback/module/org/prairielearn/feedback/internal/Scope.java": "523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b",
+        "feedback/module/org/prairielearn/feedback/internal/State.java": "48d2fbc5a3603a661bd4d2429d247aca8366649667e30122b53f8cdb8f49b231",
+        "feedback/module/org/prairielearn/feedback/internal/Timeouts.java": "00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516",
+        "feedback/projection-admissions.json": "20284e097d697f411b97d1a354aae5ac103815dbd2e4191b7071672cb11241d4",
         "json-simple-1.1.1.jar": "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
         "junit-platform-console-standalone-1.14.1.jar": "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
         "upstream/JUnitAutograder.java": "86defff16f0f174c8ace6ccb080f73f434997efd40c6bca8f7048610b4227b72",
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
-        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f",
-        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa"
+        "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "9af42367df4fcec733e5c9c2f19fdaa4e520b4758fc24c7fe6752e3309fbea33",
+      "runnerSha256": "9c1f720ea1beddd35054e9a8f4b26d9897e4a7fff5e4c62bfb2141f561f8aaa0",
       "sharedFiles": {
-        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4"
-      }
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
+        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
+      },
+      "assertionFeedbackProtocol": 2
     },
     "fish-git-v1": {
       "mode": "implementation",
@@ -57,8 +79,8 @@
         "supervisor.py": "d7aa7ab5e721b4b55cb604d77a633c41fb294b540420dfc8230a47d52ccb2ee3"
       },
       "sharedFiles": {
-        "runtime/student_feedback.py": "5a64aa6b03a7cc78993469c5c77c2ab6051e793a094e7faa9492fa144e40bdd4",
-        "schemas/grading-descriptor.schema.json": "e0a5fda735739aef38de0c967107cd60b1d55ba5807fc388013eb5afb57f9423"
+        "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
+        "schemas/grading-descriptor.schema.json": "94944d3fccb9ec8f19468056e8289738cf60d4c0728529ff5e786a48b6e9fd68"
       }
     }
   }

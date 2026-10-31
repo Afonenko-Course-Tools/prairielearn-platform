@@ -24,7 +24,7 @@ TOOLCHAIN='images/java25-grader/toolchain'
 FINGERPRINT='F6ECB3762474EDA9D21B7022871920D1991BC93C'
 EXPECTED_LOCK='c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca'
 HARDENED_LOCK='bcde4c1c54c4c11cc6e55381a6bbf53df97968e644c986d3aa32676c552f231f'
-RUNNER='6971e911c88298ef04a7d0a71ab1fd96c80822d7676b520f88c5b3bfd68f3aef'
+RUNNER='9c1f720ea1beddd35054e9a8f4b26d9897e4a7fff5e4c62bfb2141f561f8aaa0'
 COMPONENTS={'lib/libmanagement.so','lib/libmanagement_ext.so','lib/libmanagement_agent.so'}
 
 def require(value,message):

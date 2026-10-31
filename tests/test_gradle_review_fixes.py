@@ -200,6 +200,11 @@ class GradingRuntimeTransitionTests(unittest.TestCase):
     runtime.compiled=True;runtime.root.chmod(0o711);phases.append('api711');p=stage/'precheck';p.mkdir();return {'status':'success'},p,'synthetic-official'
    def build(stage,*args):
     stage.chmod(0o700);runtime.root.chmod(0o700);phases.append('build700');return {'status':'success'},lambda:None
+   def observer(job,config,stage,*args):
+    # Синтетический checkpoint; настоящий observer проверяется отдельно в native image.
+    self.assertEqual(stat.S_IMODE(runtime.root.stat().st_mode),0o700)
+    self.assertEqual(stat.S_IMODE(private.stat().st_mode),0o700)
+    module=stage/'observer';module.mkdir(mode=0o700);phases.append('observer700');return module
    def child(command,*args,**kwargs):
     if 'PlatformJUnitAdapter' in command:
      self.assertEqual(stat.S_IMODE(runtime.root.stat().st_mode),0o711)
@@ -210,6 +215,6 @@ class GradingRuntimeTransitionTests(unittest.TestCase):
     return 0,'',None
    real_is_file=Path.is_file
    def files(path):return True if str(path)=='/usr/local/bin/landlock_sandbox' else real_is_file(path)
-   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',files),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_api_precheck',side_effect=api),patch.object(grader,'_run',side_effect=child):
+   with patch.dict(os.environ,PL_CONTAINMENT='official'),patch.object(os,'geteuid',return_value=0),patch.object(Path,'is_file',files),patch.object(grader,'_protect_input_identity'),patch.object(grader,'_api_precheck',side_effect=api),patch.object(runtime,'prepare_observer',side_effect=observer),patch.object(grader,'_run',side_effect=child):
     with self.assertRaises(ReachedJUnitCheckpoint):grader._execute(self.job,cfg,sources,tests,bundle,'synthetic JDK25',runtime,native_context={'build':build})
-   self.assertEqual(phases,['api711','build700','junit711'])
+   self.assertEqual(phases,['api711','build700','observer700','junit711'])
