@@ -9,7 +9,7 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa",
+        "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
         "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
         "feedback/Transform.java": "8402ce259566f48194c7bb06d4a0bd36f94ffb5e340b44a59642ef25ed60ab7d",
         "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",
@@ -41,7 +41,7 @@
       "upstreamCommit": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
       "bundle": "runtime/java25-junit-v1",
       "files": {
-        "PlatformApiPrecheck.java": "2d12c5c210123a4621819a102928d54f51d4ce7e1d7064547c80e25c283b89aa",
+        "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
         "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
         "feedback/Transform.java": "8402ce259566f48194c7bb06d4a0bd36f94ffb5e340b44a59642ef25ed60ab7d",
         "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",

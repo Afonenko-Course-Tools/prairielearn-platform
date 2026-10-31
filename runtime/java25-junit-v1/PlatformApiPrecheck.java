@@ -28,7 +28,7 @@ public final class PlatformApiPrecheck {
             loader = new URLClassLoader(new URL[]{classes.toUri().toURL()}, ClassLoader.getPlatformClassLoader());
         }
         /**
-         * Имена кандидатов из compiled student directory, без loading/initialization.
+         * Имена кандидатов из compiled student directory/JAR, без loading/initialization.
          * Для member classes binary name содержит '$'; точный getSimpleName и API
          * проверяет вызывающий после отдельного type(name). Classpath не сканируется.
          */
@@ -36,8 +36,22 @@ public final class PlatformApiPrecheck {
             if (simpleName == null || !javax.lang.model.SourceVersion.isIdentifier(simpleName)
                     || javax.lang.model.SourceVersion.isKeyword(simpleName))
                 throw new IllegalArgumentException("Нужно простое имя Java-типа");
+            if (Files.isRegularFile(classes, LinkOption.NOFOLLOW_LINKS)) {
+                var names = new TreeSet<String>();
+                try (var jar = new java.util.jar.JarFile(classes.toFile(), true,
+                        java.util.zip.ZipFile.OPEN_READ, Runtime.version())) {
+                    for (var entry : jar.versionedStream().toList()) {
+                        String path = entry.getName();
+                        if (entry.isDirectory() || path.startsWith("META-INF/")) continue;
+                        String leaf = path.substring(path.lastIndexOf('/') + 1);
+                        if (!leaf.equals(simpleName + ".class") && !leaf.endsWith("$" + simpleName + ".class")) continue;
+                        names.add(path.substring(0, path.length() - ".class".length()).replace('/', '.'));
+                    }
+                }
+                return List.copyOf(names);
+            }
             if (!Files.isDirectory(classes, LinkOption.NOFOLLOW_LINKS))
-                throw new java.io.IOException("Compiled student directory отсутствует или является ссылкой");
+                throw new java.io.IOException("Compiled student directory/JAR отсутствует или является ссылкой");
             var names = new TreeSet<String>();
             try (var paths = Files.walk(classes)) {
                 for (Path path : paths.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS)).toList()) {
