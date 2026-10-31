@@ -278,6 +278,8 @@ class ApiDeliveryTests(unittest.TestCase):
 
     def test_prepare_maps_private_public_prechecks_and_validates_mismatch_result(self):
         import tempfile
+        import sys
+        from unittest.mock import patch
 
         root = Path(__file__).parents[1]
         spec = importlib.util.spec_from_file_location(
@@ -285,7 +287,8 @@ class ApiDeliveryTests(unittest.TestCase):
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
-        with tempfile.TemporaryDirectory() as directory:
+        # Загруженный по пути tool получает тот же sibling search path, что и CLI.
+        with patch.object(sys, "path", [str(root / "tools"), *sys.path]), tempfile.TemporaryDirectory() as directory:
             snapshot = Path(directory)
             p = snapshot / "tasks/p"
             files = {
@@ -405,6 +408,21 @@ class ApiDeliveryTests(unittest.TestCase):
                 }
                 delivery = {
                     "schemaVersion": 3,
+                    "courseId": "demo",
+                    "bookRoot": "tasks",
+                    "works": [{"id": "sec-api"}],
+                    "instances": {"unit": {"works": ["sec-api"]}},
+                    "gradingPayloads": {
+                        "demo/exr-api": {
+                            "uuid": "00000000-0000-4000-8000-000000000001",
+                            "grading": {"method": "external"},
+                            "submission": {"mode": "upload"},
+                            "sourceRoot": fact["projectRoot"],
+                            "projectCheck": "unit-api",
+                            "runtime": fact["check"]["runtime"],
+                            "sources": fact["sources"],
+                        }
+                    },
                     "sourceSnapshotHash": "a" * 64,
                     "inventoryHash": "b" * 64,
                     "questions": ["demo/exr-api"],
