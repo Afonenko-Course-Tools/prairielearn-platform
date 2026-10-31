@@ -602,10 +602,12 @@ def prepare_job(
     if scope == "delivery":
         if (
             not delivery
-            or delivery.get("schemaVersion") != 3
+            or delivery.get("schemaVersion") not in (3, 4)
             or id not in delivery.get("questions", [])
         ):
             raise JobError("ID absent from delivery")
+        from delivery4 import code_ids
+        if id not in code_ids({k:v for k,v in delivery.items() if k!="_root"}):raise JobError("Non-project cannot accept grading Job")
         job["deliveryHash"] = delivery["deliveryHash"]
         expected_scenarios = scenario_inventory(
             manifest, snapshot, set(delivery["questions"])
@@ -1454,7 +1456,7 @@ def validate_receipt_integrity(receipt):
 
 
 def _validate_automatic_release_receipt(receipt, delivery, native, registry=None):
-    if delivery.get("schemaVersion") != 3:
+    if delivery.get("schemaVersion") not in (3, 4):
         raise JobError("Unsupported native delivery; v3 required")
     validate_receipt_integrity(receipt)
     if receipt["identityHash"] != digest(
@@ -1508,7 +1510,8 @@ def _validate_automatic_release_receipt(receipt, delivery, native, registry=None
         raise JobError("Required scenario coverage is incomplete")
     from delivery_verification import classification
 
-    ids = {q for q, method in classification(delivery).items() if method != "manual"}
+    from delivery4 import code_ids
+    ids = code_ids(delivery)
     if set(receipt["checkedIds"]) != ids or {q for q, s in expected} != ids:
         raise JobError("Question coverage differs from delivery")
     bindings = {r["qualifiedId"]: r for r in receipt["questionBindings"]}
@@ -1572,7 +1575,8 @@ def _validate_automatic_release_receipt(receipt, delivery, native, registry=None
 def validate_release_receipt(receipt, delivery, native, registry=None):
     from delivery_verification import classification, package_integrity
 
-    validate("delivery-verification-receipt", receipt)
+    validate("delivery-verification-receipt" if delivery.get("schemaVersion")==3 else "delivery-verification-receipt-v4", receipt)
+    if receipt["schemaVersion"]!=delivery.get("schemaVersion"):raise JobError("Receipt/delivery version differs")
     methods = classification(delivery)
     if receipt["identityHash"] != digest(
         {k: v for k, v in receipt.items() if k != "identityHash"}
@@ -1583,9 +1587,15 @@ def validate_release_receipt(receipt, delivery, native, registry=None):
     for key in ("deliveryHash", "sourceSnapshotHash", "inventoryHash"):
         if receipt[key] != delivery.get(key):
             raise JobError("Outer receipt source/delivery identity differs")
+    if delivery.get("schemaVersion")==4:
+        from delivery4 import workspace_image_authority
+        if registry is not None and registry.get("schemaVersion")==2:validate("published-runtime-profiles-v2",registry)
+        workspace_image_authority(delivery,registry or load_runtime_registry())
     if receipt["packageIntegrity"] != package_integrity(delivery, native):
         raise JobError("Actual package differs from receipt")
-    automatic = {q for q, method in methods.items() if method != "manual"}
+    from delivery4 import code_ids, internal_proof
+    automatic = code_ids(delivery)
+    if delivery["schemaVersion"]==4 and receipt["nativeAnswers"]!=internal_proof(delivery,native):raise JobError("Native answer proof coverage differs")
     if automatic:
         if receipt["automatic"]["state"] != "verified":
             raise JobError("Automatic questions require nonempty executed proof")
@@ -1594,6 +1604,7 @@ def validate_release_receipt(receipt, delivery, native, registry=None):
         )
     elif receipt["automatic"] != {
         "state": "not-applicable",
-        "reason": "all-questions-manual",
+        "reason": "all-questions-manual" if delivery["schemaVersion"]==3 else "no-project-automatic",
     }:
         raise JobError("Wholly manual proof cannot fabricate automatic execution")
+

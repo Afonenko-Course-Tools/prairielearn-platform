@@ -89,6 +89,7 @@ def validate_checkout(path,course,assembly=None,admission_policy=None,admission_
                     raise StorageError('Accepted native deliveries require clean source and builder commits')
         elif assembly is None:raise StorageError('v2 requires trusted external release assets')
         delivery=builder.read_json(path/'delivery.json')
+        if assembly and delivery.get('schemaVersion',999)>assembly.delivery_schema_version:raise StorageError('Delivery exceeds source-bound release protocol')
         if provenance['schema']=='pl-provenance-v2':builder._assembly.validate_provenance(provenance,delivery,assembly)
         admission=None
         if policy is not None and policy['routeId']==course['id']:

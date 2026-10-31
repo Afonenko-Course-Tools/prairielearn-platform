@@ -69,7 +69,7 @@ class PublishedMetadata(unittest.TestCase):
         receipt = json.loads(files['runtime-image.json'])
         self.assertEqual(receipt['runtimeProfilesSha256'], hashlib.sha256(files['published-runtime-profiles.json']).hexdigest())
         self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion'],
-                          receipt['resultsSchemaVersion']), (2, 3, 2))
+                          receipt['resultsSchemaVersion']), (3, 4, 2))
         # Bind the emitted protocol to the actual current delivery consumer,
         # rather than deriving the expected version from the publisher itself.
         sys.path.insert(0, str(ROOT / 'tools'))
@@ -80,7 +80,7 @@ class PublishedMetadata(unittest.TestCase):
             'verificationInventoryHash': 'c' * 64, 'deliveryHash': 'd' * 64,
             'questions': ['synthetic/exr-manual'],
             'gradingPayloads': {'synthetic/exr-manual': {
-                'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
+                'kind': 'project', 'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
                 'grading': {'method': 'manual'}, 'submission': {'mode': 'upload'},
                 'sourceRoot': 'projects/manual'}},
             'works': [{'id': 'unit'}],

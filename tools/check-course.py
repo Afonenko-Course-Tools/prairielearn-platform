@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 from delivery_verification import classification,package_integrity,delivery_receipt
+from delivery4 import code_ids
 from grading_job import JobError,ProjectDefect,inventory,prepare_job,run_job,verify_results,safe,validate,scenario_inventory,preserve_build_logs
 
 def main():
@@ -16,7 +17,7 @@ def main():
   delivery=json.loads(a.delivery.read_text()) if a.delivery else None
   if a.scope=='delivery':
    if not delivery:raise JobError('--delivery is required for delivery scope')
-   methods=classification(delivery);auto_ids={q for q,method in methods.items() if method!='manual'}
+   methods=classification(delivery);auto_ids=code_ids(delivery)
    report['packageIntegrity']=package_integrity(delivery,a.delivery.parent,m)
    if a.id and set(a.id)-set(methods):raise JobError('Unknown selected delivery ID')
    projects=[x for x in projects if x['qualifiedId'] in auto_ids]
