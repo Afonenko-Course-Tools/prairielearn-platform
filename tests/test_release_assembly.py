@@ -3,7 +3,6 @@ from pathlib import Path
 import json,os,tempfile,unittest,subprocess,sys
 from unittest.mock import patch
 from release_assembly_fixtures import AssemblyFixture,load,ROOT,git,write_json
-sys.path.insert(0,str(ROOT/'tools'))
 class ReleaseAssembly(unittest.TestCase):
  def test_exact_two_overlay_build_records_dirty_v2_and_actual_external_images(self):
   with tempfile.TemporaryDirectory() as name:
