@@ -149,6 +149,11 @@ def seed_proof(native,prefix,b):
   indexed[name]=(mode,oid);offset=start+((end+1-start+7)//8)*8
   if offset>len(index)-20:raise JobError('Truncated Git index entry')
  if indexed!=tracked:raise JobError('Git index/tree differs')
+ # Git определяет optional extension по первой uppercase ASCII букве.
+ # Не ужесточаем игнорируемые Git optional payload/короткий tail.
+ while len(index)-20-offset>=8:
+  if not 65<=index[offset]<=90:raise JobError('Unsupported mandatory Git index extension')
+  offset+=8+struct.unpack('>I',index[offset+4:offset+8])[0]
  return {'archiveSha256':seed['archiveSha256'],'manifestSha256':seed['manifestSha256'],'filesHash':digest(expected),'initialCommit':ref}
 
 

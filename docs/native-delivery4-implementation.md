@@ -47,3 +47,12 @@ release capability проверяется отдельно; legacy receipt2(publ
 Clean-source, final/recheck и no-replacement fences сохранены. Legacy3 положительный
 fixture теперь содержит полный closed3 пакет вместо UUID-only stub. Выдача
 локального UNIT candidate не является release/assignment/image qualification.
+
+## Обязательное расширение index tail
+
+После index entries reader разбирает extension headers до SHA1 footer. Неизвестное
+mandatory расширение (первая буква signature вне ASCII A–Z) получает отказ до
+package/receipt proof. Uppercase optional пропускается по declared size, как в
+проверенном Git. Доказанное игнорирование oversized TEST без payload и короткого
+остатка сохранено; дополнительных length/order ограничений не добавлено. Это
+data-only проверка: Git запускается только над собственным UNIT seed в тесте.
