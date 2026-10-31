@@ -1,0 +1,1509 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/native-checks.schema.json",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "courseId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "bookRoot": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+    },
+    "sourceSnapshotHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "inventoryHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "exerciseId": {
+            "type": "string",
+            "pattern": "^exr-"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+          },
+          "projectRoot": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+          },
+          "bankMember": {
+            "type": "boolean"
+          },
+          "purpose": {
+            "enum": [
+              "demonstration",
+              "discussion",
+              "independent-study",
+              "control"
+            ]
+          },
+          "statementVisibility": {
+            "enum": [
+              "open",
+              "restricted"
+            ]
+          },
+          "artifactPolicy": {
+            "type": "object",
+            "properties": {
+              "student": {
+                "enum": [
+                  "starter",
+                  "full"
+                ]
+              },
+              "full": {
+                "const": "full"
+              },
+              "conditions": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "full",
+              "conditions"
+            ],
+            "additionalProperties": false
+          },
+          "materialization": {
+            "type": "object",
+            "properties": {
+              "commonFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "target": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "audience": {
+                      "enum": [
+                        "student",
+                        "grading"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "target",
+                    "audience"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "includeGit": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "commonFiles"
+            ]
+          },
+          "qualifiedId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "check": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://afonenko-course-tools.github.io/prairielearn-platform/schemas/project-check.schema.json",
+            "type": "object",
+            "properties": {
+              "profile": {
+                "type": "string"
+              },
+              "source-profile": {
+                "type": "string"
+              },
+              "sourceProfile": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "implementation",
+                      "student-tests"
+                    ]
+                  },
+                  "root": {
+                    "type": "string",
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                  },
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "mode",
+                  "root",
+                  "include"
+                ],
+                "additionalProperties": false
+              },
+              "mode": {
+                "enum": [
+                  "implementation",
+                  "student-tests"
+                ]
+              },
+              "runtime": {
+                "enum": [
+                  "java25-junit-v1",
+                  "java25-mutation-v1",
+                  "fish-git-v1",
+                  "java25-gradle-junit-v1"
+                ]
+              },
+              "java": {
+                "type": "object",
+                "properties": {
+                  "release": {
+                    "const": 25
+                  },
+                  "encoding": {
+                    "const": "UTF-8"
+                  },
+                  "compiler-options": {
+                    "const": [
+                      "-proc:none",
+                      "-Xmaxerrs",
+                      "5"
+                    ]
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "outer-seconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "compile-seconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "run-seconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "networking": {
+                    "const": false
+                  },
+                  "max-output-bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65536
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "scoring": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "weighted"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "all-pass"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "contract-groups"
+                      },
+                      "groups": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "weight": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "tests": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "minItems": 1
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "weight",
+                            "tests"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "groups"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "const": "threshold"
+                      },
+                      "basis": {
+                        "enum": [
+                          "score",
+                          "passed-tests"
+                        ]
+                      },
+                      "value": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "basis",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "discovery": {
+                "type": "object",
+                "properties": {
+                  "min-executed": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "allow-skipped": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "root": {
+                      "type": "string",
+                      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "root"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0
+              },
+              "tests": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                },
+                "minItems": 0
+              },
+              "verification-tests": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+                },
+                "minItems": 0
+              },
+              "contract-cases": {
+                "type": "string",
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
+              },
+              "verification-expectations": {
+                "type": "object",
+                "properties": {
+                  "reference": {
+                    "type": "object",
+                    "properties": {
+                      "student-compilation": {
+                        "enum": [
+                          "success",
+                          "failure"
+                        ]
+                      },
+                      "job": {
+                        "enum": [
+                          "complete",
+                          "failure"
+                        ]
+                      },
+                      "classification": {
+                        "enum": [
+                          "success",
+                          "behavior-failure",
+                          "student-compilation-failure",
+                          "student-test-quality-failure",
+                          "student-timeout",
+                          "student-output-overflow",
+                          "unsafe-submission",
+                          "infrastructure-failure",
+                          "student-api-mismatch"
+                        ]
+                      },
+                      "required-tests": {
+                        "const": "all-pass"
+                      },
+                      "failed-tests": {
+                        "type": "object",
+                        "properties": {
+                          "at-least": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      },
+                      "executed-tests": {
+                        "type": "object",
+                        "properties": {
+                          "at-least": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      },
+                      "test-ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 0
+                      },
+                      "score": {
+                        "type": "object",
+                        "properties": {
+                          "less-than": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "at-least": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false
+                  },
+                  "starter": {
+                    "type": "object",
+                    "properties": {
+                      "student-compilation": {
+                        "enum": [
+                          "success",
+                          "failure"
+                        ]
+                      },
+                      "job": {
+                        "enum": [
+                          "complete",
+                          "failure"
+                        ]
+                      },
+                      "classification": {
+                        "enum": [
+                          "success",
+                          "behavior-failure",
+                          "student-compilation-failure",
+                          "student-test-quality-failure",
+                          "student-timeout",
+                          "student-output-overflow",
+                          "unsafe-submission",
+                          "infrastructure-failure",
+                          "student-api-mismatch"
+                        ]
+                      },
+                      "required-tests": {
+                        "const": "all-pass"
+                      },
+                      "failed-tests": {
+                        "type": "object",
+                        "properties": {
+                          "at-least": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      },
+                      "executed-tests": {
+                        "type": "object",
+                        "properties": {
+                          "at-least": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      },
+                      "test-ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "minItems": 0
+                      },
+                      "score": {
+                        "type": "object",
+                        "properties": {
+                          "less-than": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "at-least": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "exactly": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "variants": {
+                "type": "object",
+                "properties": {
+                  "correct": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "mutants": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "correct",
+                  "mutants"
+                ],
+                "additionalProperties": false
+              },
+              "api-precheck": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "uniqueItems": true
+                  },
+                  "entry": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+                  }
+                },
+                "required": [
+                  "files",
+                  "entry"
+                ],
+                "additionalProperties": false
+              },
+              "verification-api-precheck": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+\\.java$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "uniqueItems": true
+                  },
+                  "entry": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
+                  }
+                },
+                "required": [
+                  "files",
+                  "entry"
+                ],
+                "additionalProperties": false
+              },
+              "additional-java-sources": {
+                "type": "object",
+                "properties": {
+                  "primary-required": {
+                    "type": "boolean"
+                  },
+                  "archive": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
+                  },
+                  "max-files": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 128
+                  },
+                  "max-file-bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1048576
+                  },
+                  "max-total-bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4194304
+                  },
+                  "max-archive-bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2097152
+                  }
+                },
+                "required": [
+                  "archive",
+                  "max-files",
+                  "max-file-bytes",
+                  "max-total-bytes",
+                  "max-archive-bytes"
+                ],
+                "additionalProperties": false
+              },
+              "public-cases": {
+                "type": "array",
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "test": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8192
+                    },
+                    "input": {
+                      "type": "string",
+                      "minLength": 0,
+                      "maxLength": 8192
+                    },
+                    "state": {
+                      "type": "string",
+                      "minLength": 0,
+                      "maxLength": 8192
+                    },
+                    "action": {
+                      "type": "string",
+                      "minLength": 0,
+                      "maxLength": 8192
+                    },
+                    "expected": {
+                      "type": "string",
+                      "minLength": 0,
+                      "maxLength": 8192
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "test",
+                    "expected",
+                    "name"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "input"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "state"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "action"
+                      ]
+                    }
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "feedback": {
+                "type": "object",
+                "properties": {
+                  "requirement": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  },
+                  "what-check": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8192
+                  }
+                },
+                "required": [
+                  "requirement",
+                  "what-check"
+                ],
+                "additionalProperties": false
+              },
+              "java-build": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "gradle-jar-v1"
+                  },
+                  "artifact": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
+                  },
+                  "main-class": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$(?![\\s\\S])"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "artifact"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "runtime"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "api-precheck"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "verification-api-precheck"
+                      ]
+                    }
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "runtime": {
+                      "enum": [
+                        "java25-junit-v1",
+                        "java25-gradle-junit-v1"
+                      ]
+                    },
+                    "mode": {
+                      "const": "implementation"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "additional-java-sources"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "runtime": {
+                      "enum": [
+                        "java25-junit-v1",
+                        "java25-gradle-junit-v1"
+                      ]
+                    },
+                    "sourceProfile": {
+                      "properties": {
+                        "mode": {
+                          "const": "implementation"
+                        }
+                      }
+                    },
+                    "mode": {
+                      "const": "implementation"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "runtime": {
+                      "const": "java25-gradle-junit-v1"
+                    }
+                  },
+                  "required": [
+                    "runtime"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "java-build",
+                    "sourceProfile"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "const": "implementation"
+                    },
+                    "sourceProfile": {
+                      "properties": {
+                        "mode": {
+                          "const": "implementation"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "not": {
+                    "required": [
+                      "java-build"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "selectionOriginVersion": {
+            "const": 2
+          },
+          "nativePlanGroups": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "projectRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownerRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "ownerRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "trustedTests": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "projectRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownerRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "ownerRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "verificationTests": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "projectRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownerRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "ownerRelativePath",
+                    "sha256",
+                    "submissionRelativePath"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "root": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "optional": {
+                  "type": "boolean"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "group": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "targets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                  },
+                  "uniqueItems": true
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "projectRelativePath": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "submissionRelativePath": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                          }
+                        },
+                        "required": [
+                          "projectRelativePath",
+                          "sha256",
+                          "submissionRelativePath"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ownerRelativePath": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "submissionRelativePath": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                          }
+                        },
+                        "required": [
+                          "ownerRelativePath",
+                          "sha256",
+                          "submissionRelativePath"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "root",
+                "optional",
+                "available",
+                "group",
+                "targets",
+                "sources"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "contractFixtures": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "projectRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "logicalTarget": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "projectRelativePath",
+                    "sha256",
+                    "submissionRelativePath",
+                    "logicalTarget"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "ownerRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "submissionRelativePath": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    },
+                    "logicalTarget": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                    }
+                  },
+                  "required": [
+                    "ownerRelativePath",
+                    "sha256",
+                    "submissionRelativePath",
+                    "logicalTarget"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "contractCasesHash": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "projectRelativePath": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "logicalTarget": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                  }
+                },
+                "required": [
+                  "projectRelativePath",
+                  "sha256",
+                  "logicalTarget"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "ownerRelativePath": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "logicalTarget": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                  }
+                },
+                "required": [
+                  "ownerRelativePath",
+                  "sha256",
+                  "logicalTarget"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "readiness": {
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "boolean"
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "ready",
+              "missing"
+            ],
+            "additionalProperties": false
+          },
+          "apiPrecheck": {
+            "type": "object",
+            "properties": {
+              "entry": {
+                "type": "string",
+                "minLength": 1
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "entry",
+              "files"
+            ],
+            "additionalProperties": false
+          },
+          "verificationApiPrecheck": {
+            "type": "object",
+            "properties": {
+              "entry": {
+                "type": "string",
+                "minLength": 1
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "entry",
+              "files"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "qualifiedId",
+          "projectRoot",
+          "source",
+          "exerciseId",
+          "check",
+          "selectionOriginVersion",
+          "nativePlanGroups",
+          "sources",
+          "trustedTests",
+          "verificationTests",
+          "references",
+          "contractFixtures",
+          "readiness"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "selectionScope": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": "pl-native-selected-checks-v1"
+        },
+        "identity": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "projection": {
+              "enum": [
+                "author",
+                "student"
+              ]
+            },
+            "runtime": {
+              "const": "quarto-1.11.5"
+            },
+            "profiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "operation",
+            "projection",
+            "runtime",
+            "profiles"
+          ],
+          "additionalProperties": false
+        },
+        "assessments": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^sec-"
+              }
+            },
+            "required": [
+              "source",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "source",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "automaticIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "identity",
+        "assessments",
+        "sources",
+        "automaticIds"
+      ],
+      "additionalProperties": false
+    },
+    "selectionScopeHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "courseId",
+    "bookRoot",
+    "sourceSnapshotHash",
+    "inventoryHash",
+    "projects",
+    "selectionScope",
+    "selectionScopeHash"
+  ],
+  "additionalProperties": false
+}

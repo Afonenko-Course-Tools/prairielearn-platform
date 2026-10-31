@@ -693,6 +693,13 @@
           }
         }
       ]
+    },
+    "nativeSelectionScopeHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "jobSchemaVersion": {
+      "const": 2
     }
   },
   "required": [
@@ -2952,5 +2959,13 @@
         ]
       }
     }
-  ]
+  ],
+  "dependentRequired": {
+    "jobSchemaVersion": [
+      "nativeSelectionScopeHash"
+    ],
+    "nativeSelectionScopeHash": [
+      "jobSchemaVersion"
+    ]
+  }
 }

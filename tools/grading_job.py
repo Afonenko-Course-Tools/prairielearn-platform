@@ -68,6 +68,8 @@ def _junit_result_helpers():
 
 
 def validate(name, value):
+    if name == "grading-job" and value.get("schemaVersion") == 2:
+        name = "grading-job-v2"
     try:
         from referencing import Registry, Resource
 
@@ -97,8 +99,36 @@ def validate_profile(check):
     validate("project-check", check)
 
 
+def _legacy_check_project(value):
+    project = {k:v for k,v in value.items() if k not in ("selectionOriginVersion","nativePlanGroups","selectionScopeHash")}
+    project["references"]=[{k:v for k,v in ref.items() if k not in ("group","targets")} for ref in project["references"]]
+    project["contractFixtures"]=[{k:v for k,v in row.items() if k!="logicalTarget"} for row in project["contractFixtures"]]
+    if "contractCasesHash" in project:project["contractCasesHash"]={k:v for k,v in project["contractCasesHash"].items() if k!="logicalTarget"}
+    return project
+
+
 def inventory(manifest):
-    if manifest.get("schemaVersion") != 1 or not isinstance(
+    version = manifest.get("schemaVersion")
+    if version == 2:
+        validate("native-checks", manifest)
+        scope = manifest["selectionScope"]
+        projects = manifest["projects"]
+        if scope["automaticIds"] != sorted(p["qualifiedId"] for p in projects) or len(set(scope["automaticIds"])) != len(projects):
+            raise JobError("Native selected automatic scope mismatch")
+        if len({(a["source"],a["id"]) for a in scope["assessments"]}) != len(scope["assessments"]) or len({a["source"] for a in scope["sources"]}) != len(scope["sources"]):
+            raise JobError("Native selected scope repeats binding")
+        if scope["sources"] != sorted(scope["sources"],key=lambda row:row["source"]) or projects != sorted(projects,key=lambda row:row["qualifiedId"]):
+            raise JobError("Native selected scope order")
+        if manifest["selectionScopeHash"] != digest(scope):
+            raise JobError("Native selection scope hash changed")
+        for project in projects:_native_references(project)
+        normalized = [_legacy_check_project(p) for p in projects]
+        if manifest["inventoryHash"] != digest(normalized) or manifest["sourceSnapshotHash"] != digest({"sources":scope["sources"],"projects":normalized}):
+            raise JobError("Native normalized scope hashes changed")
+    elif version == 1:
+        if any("selectionOriginVersion" in p or "nativePlanGroups" in p or "selectionScopeHash" in p for p in manifest.get("projects", [])):
+            raise JobError("Native checks cannot be downgraded")
+    if version not in (1, 2) or not isinstance(
         manifest.get("projects"), list
     ):
         raise JobError("Expected checks manifest version1")
@@ -145,6 +175,78 @@ def runtime_evidence(runtime, registry=None):
     return {"dependencyHashes": files, "dependencyHash": digest(files)}
 
 
+
+def _origin_path(book, project, item, version):
+    if version == 1:
+        return safe(project, item["projectRelativePath"])
+    if version != 2 or ("projectRelativePath" in item) == ("ownerRelativePath" in item):
+        raise JobError("Native selection requires exactly one origin")
+    field = "projectRelativePath" if "projectRelativePath" in item else "ownerRelativePath"
+    value = item[field]
+    if not isinstance(value, str) or __import__("re").match(r"^[A-Za-z]:", value) or any(ord(c)<32 or ord(c)==127 for c in value):
+        raise JobError("Invalid native origin")
+    return safe(project if field == "projectRelativePath" else book, value)
+
+
+def _origin_key(item, version):
+    if version == 1:
+        return item["projectRelativePath"]
+    field = "projectRelativePath" if "projectRelativePath" in item else "ownerRelativePath"
+    return ("project:" if field == "projectRelativePath" else "owner:") + item[field]
+
+
+def _origin_hashes(items, version):
+    result = {}
+    for item in items:
+        key = _origin_key(item, version)
+        if version == 2 and key in result and result[key] != item["sha256"]:
+            raise JobError("Conflicting SHA for one native origin")
+        result[key] = item["sha256"]
+    return result
+
+
+def _assert_job_maps(job):
+    if job["schemaVersion"] != 2:
+        return
+    sources = _origin_hashes(job["sources"], 2)
+    archive = job["grading"].get("additionalJavaSources", {}).get("archive")
+    marker = "$generated/" + archive if archive else None
+    if marker and safe(job.root / "student", archive).is_file() and not any(row["submissionRelativePath"] == archive for row in job["sources"]):
+        sources[marker] = hashlib.sha256(safe(job.root / "student", archive).read_bytes()).hexdigest()
+    if sources != job["sourceHashes"] or _origin_hashes([*job["trustedTests"], *job.get("verificationTests", [])], 2) != job["testsHashes"]:
+        raise JobError("Native Job2 opaque source/test maps changed")
+
+
+def _native_references(project):
+    declared = project["check"].get("references", [])
+    refs = project["references"]
+    if len({r["name"] for r in declared}) != len(declared) or len({r["name"] for r in refs}) != len(refs) or {r["name"] for r in declared} != {r["name"] for r in refs}:
+        raise JobError("Exact named native reference inventory required")
+    groups = project["nativePlanGroups"]
+    for ref in refs:
+        policy = next(r for r in declared if r["name"] == ref["name"])
+        if any(ref[k] != policy.get(k,False) for k in ("name", "root", "optional")) or not ref["root"].startswith("author/" + ref["group"] + "/"):
+            raise JobError("Native reference declaration/group mismatch")
+        exists = ref["group"] in groups
+        if ref["available"] != exists:
+            raise JobError("Fabricated native reference availability")
+        if not exists:
+            if ref["sources"] or ref["targets"] or not ref["optional"] or project["readiness"]["ready"] is False:
+                raise ProjectDefect("Missing required/inconsistent native reference " + ref["name"])
+            continue
+        if not ref["sources"] or len(ref["sources"]) != len(ref["targets"]) or ref["targets"] != [ref["root"] + "/" + x["submissionRelativePath"] for x in ref["sources"]]:
+            raise ProjectDefect("Native reference targets do not match live plan group")
+
+
+def _native_case_file(book, project, record, logical, version):
+    if version == 2 and record.get("logicalTarget") != logical:
+        raise JobError("Contract logical target differs from selected A1 target")
+    path = _origin_path(book, project, record, version)
+    if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
+        raise JobError("Contract selected bytes changed")
+    return path
+
+
 def scenario_inventory(manifest, snapshot, ids=None):
     snapshot = Path(os.path.abspath(snapshot))
     if snapshot.resolve() != snapshot or not snapshot.is_dir():
@@ -166,11 +268,15 @@ def scenario_inventory(manifest, snapshot, ids=None):
             )
         if check.get("contract-cases"):
             project = safe(safe(Path(snapshot), manifest["bookRoot"]), p["projectRoot"])
-            file = safe(project, check["contract-cases"])
             expected = p.get("contractCasesHash")
+            if manifest["schemaVersion"] == 2:
+                if not expected: raise JobError("Missing native contract inventory")
+                file = _native_case_file(safe(snapshot, manifest["bookRoot"]), project, expected, check["contract-cases"], 2)
+            else:
+                file = safe(project, check["contract-cases"])
             if (
                 not expected
-                or expected["projectRelativePath"] != check["contract-cases"]
+                or (manifest["schemaVersion"] == 1 and expected["projectRelativePath"] != check["contract-cases"])
                 or hashlib.sha256(file.read_bytes()).hexdigest() != expected["sha256"]
             ):
                 raise JobError("Contract cases inventory checksum missing or changed")
@@ -191,18 +297,18 @@ def scenario_inventory(manifest, snapshot, ids=None):
     return records
 
 
-def _selection(project, items):
+def _selection(project, items, book=None, version=1):
     out = []
     names = set()
     for x in items:
-        path = safe(project, x["projectRelativePath"])
+        path = _origin_path(book, project, x, version)
         target = x["submissionRelativePath"]
         safe(project, target)
         if (
             not path.is_file()
             or hashlib.sha256(path.read_bytes()).hexdigest() != x["sha256"]
         ):
-            raise JobError("Source snapshot changed: " + x["projectRelativePath"])
+            raise JobError("Source snapshot changed: " + _origin_key(x, version))
         if target in names:
             raise JobError("Duplicate output source " + target)
         names.add(target)
@@ -227,21 +333,22 @@ def prepare_job(
         raise JobError("Snapshot root must be an absolute real directory")
     book = safe(Path(snapshot), manifest["bookRoot"])
     project = safe(book, p["projectRoot"])
-    sources = _selection(project, p.get("sources", []))
-    tests = _selection(project, p.get("trustedTests", []))
-    public = _selection(project, p.get("verificationTests", []))
+    version = manifest["schemaVersion"]
+    sources = _selection(project, p.get("sources", []), book, version)
+    tests = _selection(project, p.get("trustedTests", []), book, version)
+    public = _selection(project, p.get("verificationTests", []), book, version)
     if p.get("readiness", {}).get("ready") is False or not sources or not tests:
         raise ProjectDefect("Selected project is incomplete: " + id)
     if p.get("contractCasesHash"):
         x = p["contractCasesHash"]
-        f = safe(project, x["projectRelativePath"])
+        f = _origin_path(book, project, x, version)
         if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != x["sha256"]:
             raise JobError("Contract cases snapshot changed")
     for x in p.get("contractFixtures", []):
-        f = safe(project, x["projectRelativePath"])
+        f = _origin_path(book, project, x, version)
         if not f.is_file() or hashlib.sha256(f.read_bytes()).hexdigest() != x["sha256"]:
             raise JobError(
-                "Contract fixture snapshot changed: " + x["projectRelativePath"]
+                "Contract fixture snapshot changed: " + _origin_key(x, version)
             )
     selected = sources
     extra_policy = check.get("additional-java-sources")
@@ -272,17 +379,16 @@ def prepare_job(
         refs = [r for r in check.get("references", []) if r["name"] == name]
         if len(refs) != 1:
             raise JobError("Undeclared reference " + name)
-        root = safe(project, refs[0]["root"])
-        if not root.is_dir():
-            raise JobError(
-                "reference-unavailable:" + name
-                if refs[0].get("optional", False)
-                else "Missing required reference " + name
-            )
+        if version == 1:
+            root = safe(project, refs[0]["root"])
+            if not root.is_dir():
+                raise JobError("reference-unavailable:" + name if refs[0].get("optional", False) else "Missing required reference " + name)
         declared = [r for r in p.get("references", []) if r["name"] == name]
         if len(declared) != 1:
             raise JobError("Named reference inventory missing " + name)
-        selected = _selection(project, declared[0].get("sources", []))
+        if version == 2 and not declared[0]["available"]:
+            raise JobError("reference-unavailable:" + name)
+        selected = _selection(project, declared[0].get("sources", []), book, version)
         reference_names = {x["submissionRelativePath"] for x in selected}
         if (not extra_policy and reference_names != primary_names) or (
             not optional_primary and not primary_names <= reference_names
@@ -306,25 +412,26 @@ def prepare_job(
                     info.external_attr = (stat.S_IFREG | 0o644) << 16
                     info.compress_type = zipfile.ZIP_DEFLATED
                     archive.writestr(
-                        info, safe(project, x["projectRelativePath"]).read_bytes()
+                        info, _origin_path(book, project, x, version).read_bytes()
                     )
             generated_archive = buffer.getvalue()
-        for x in selected:
-            f = safe(root, x["submissionRelativePath"])
-            if not f.is_file():
-                raise JobError(
-                    "Reference source mapping missing " + x["submissionRelativePath"]
-                )
-            if not any(
-                y["projectRelativePath"] == f.relative_to(project).as_posix()
-                for y in selected
-            ):
-                raise JobError("Reference selection does not match declared root")
+        if version == 1:
+            for x in selected:
+                f = safe(root, x["submissionRelativePath"])
+                if not f.is_file():
+                    raise JobError(
+                        "Reference source mapping missing " + x["submissionRelativePath"]
+                    )
+                if not any(
+                    y["projectRelativePath"] == f.relative_to(project).as_posix()
+                    for y in selected
+                ):
+                    raise JobError("Reference selection does not match declared root")
     elif scenario.startswith("contract:"):
         path = check.get("contract-cases")
         if not path:
             raise JobError("No declared contract cases")
-        cases = json.loads(safe(project, path).read_text())
+        cases = json.loads((safe(project, path) if version == 1 else _native_case_file(book, project, p["contractCasesHash"], path, version)).read_text())
         validate("contract-cases", cases)
         if len({c["id"] for c in cases["cases"]}) != len(cases["cases"]):
             raise JobError("Duplicate contract case ID")
@@ -337,16 +444,19 @@ def prepare_job(
                 "submission"
             ] not in primary_names | ({archive_name} if archive_name else set()):
                 raise JobError("Unauthorized contract fixture/submission")
-            f = safe(project, x["fixture"])
+            if version == 2:
+                bound = [f for f in p["contractFixtures"] if f["logicalTarget"] == x["fixture"] and f["submissionRelativePath"] == x["submission"]]
+                if len(bound) != 1: raise JobError("Native contract fixture inventory missing/ambiguous")
+                f = _native_case_file(book, project, bound[0], x["fixture"], version)
+            else:
+                f = safe(project, x["fixture"])
             if not f.is_file():
                 raise JobError("Missing contract fixture")
             if x["submission"] in replacements:
                 raise JobError("Duplicate fixture submission")
-            replacements[x["submission"]] = {
-                "projectRelativePath": x["fixture"],
-                "submissionRelativePath": x["submission"],
-                "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
-            }
+            replacements[x["submission"]] = ({k:v for k,v in bound[0].items() if k != "logicalTarget"} if version == 2 else {
+                "projectRelativePath": x["fixture"], "submissionRelativePath": x["submission"], "sha256": hashlib.sha256(f.read_bytes()).hexdigest(),
+            })
         selected = (
             list(replacements.values())
             if optional_primary
@@ -469,7 +579,7 @@ def prepare_job(
         )
     )
     job = GradingJob(
-        schemaVersion=1,
+        schemaVersion=version,
         scope=scope,
         qualifiedId=id,
         scenario=scenario,
@@ -482,8 +592,8 @@ def prepare_job(
         verificationTests=public,
         grading=grading,
         expectations=expectations,
-        sourceHashes={x["projectRelativePath"]: x["sha256"] for x in selected},
-        testsHashes={x["projectRelativePath"]: x["sha256"] for x in [*tests, *public]},
+        sourceHashes=_origin_hashes(selected, version),
+        testsHashes=_origin_hashes([*tests, *public], version),
     )
     if generated_archive is not None:
         job["sourceHashes"]["$generated/" + archive_name] = hashlib.sha256(
@@ -549,6 +659,7 @@ def prepare_job(
                 or hashlib.sha256(f.read_bytes()).hexdigest() != x["sha256"]
             ):
                 raise JobError("Exported starter differs from snapshot")
+    if version == 2:job["nativeSelectionScopeHash"] = manifest["selectionScopeHash"]
     validate("grading-job", job)
     job.root = Path(tempfile.mkdtemp(prefix="grading-job-"))
     for folder, selection in [("student", selected), ("tests", tests)]:
@@ -562,7 +673,7 @@ def prepare_job(
                 continue
             target = safe(job.root, folder + "/" + x["submissionRelativePath"])
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(safe(project, x["projectRelativePath"]).read_bytes())
+            target.write_bytes(_origin_path(book, project, x, version).read_bytes())
     if generated_archive is not None:
         safe(job.root, "student/" + archive_name).write_bytes(generated_archive)
     (job.root / "tests/grading-job.json").write_text(
@@ -578,7 +689,7 @@ def prepare_job(
         for x in public:
             target = safe(publicroot, "tests/" + x["submissionRelativePath"])
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(safe(project, x["projectRelativePath"]).read_bytes())
+            target.write_bytes(_origin_path(book, project, x, version).read_bytes())
         cfg = dict(
             grading,
             testFiles=[x["submissionRelativePath"] for x in public],
@@ -740,6 +851,7 @@ def run_job(job, backend="host", registry=None):
     validate("grading-job", job)
     if not getattr(job, "root", None):
         raise JobError("Prepared private job root required")
+    _assert_job_maps(job)
     common = {
         k: job[k]
         for k in (
@@ -754,6 +866,8 @@ def run_job(job, backend="host", registry=None):
             "testsHashes",
         )
     }
+    if job["schemaVersion"] == 2:
+        common.update(jobSchemaVersion=2,nativeSelectionScopeHash=job["nativeSelectionScopeHash"])
     if "deliveryHash" in job:
         common["deliveryHash"] = job["deliveryHash"]
     native = job["runtime"] == NATIVE_RUNTIME
@@ -873,6 +987,8 @@ def run_job(job, backend="host", registry=None):
                 "imageDigest",
                 "sourceHashes",
                 "testsHashes",
+                "jobSchemaVersion",
+                "nativeSelectionScopeHash",
                 "backend",
             }
         }
@@ -907,6 +1023,8 @@ def run_job(job, backend="host", registry=None):
         raise JobError(
             "Executed image dependency closure differs from prepared runtime"
         )
+    if any(key in result and result[key] != value for key, value in common.items()):
+        raise JobError("Runtime result attempted to replace trusted job bindings")
     value = {"schemaVersion": 1, "backend": backend, **common, **result}
     validate("check-result", value)
     return value
@@ -1031,7 +1149,7 @@ def _matches(result, expected):
 
 
 def verify_results(
-    results, expectations, required_scenarios=None, unavailable=None, registry=None
+    results, expectations, required_scenarios=None, unavailable=None, registry=None, expected_jobs=None
 ):
     if not results:
         raise JobError("No results; empty receipt forbidden")
@@ -1050,6 +1168,8 @@ def verify_results(
             "inventoryHash",
             "deliveryHash",
             "backend",
+            "jobSchemaVersion",
+            "nativeSelectionScopeHash",
         ):
             if r.get(k) != first.get(k):
                 raise JobError("Mixed snapshot/scope receipts forbidden")
@@ -1057,6 +1177,10 @@ def verify_results(
         image = r["imageDigest"]
         q = r["qualifiedId"]
         key = (q, r["scenario"])
+        if expected_jobs is not None:
+            expected = expected_jobs.get(key)
+            if expected is None or any(r.get(field) != expected[field] for field in expected):
+                raise JobError("Result opaque maps differ from prepared Job")
         if key in observed:
             raise JobError("Duplicate scenario result")
         observed.add(key)
@@ -1216,6 +1340,8 @@ def verify_results(
         receipt["buildEvidence"] = sorted(
             native_builds, key=lambda r: (r["qualifiedId"], r["scenario"])
         )
+    if first.get("jobSchemaVersion") == 2:
+        receipt.update(jobSchemaVersion=2,nativeSelectionScopeHash=first["nativeSelectionScopeHash"])
     if "deliveryHash" in first:
         receipt["deliveryHash"] = first["deliveryHash"]
     receipt["identityHash"] = digest(receipt)

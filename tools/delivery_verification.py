@@ -80,6 +80,10 @@ def package_integrity(delivery,native,checks=None):
  if all(method=='manual' for method in methods.values()) and delivery['verificationInventoryHash']!=digest([]):raise JobError('Wholly manual delivery cannot declare automatic scenarios')
  if digest({k:v for k,v in delivery.items() if k!='deliveryHash'})!=delivery.get('deliveryHash'):raise JobError('Canonical delivery identity mismatch')
  if checks is not None and any(delivery.get(k)!=checks.get(k) for k in ('sourceSnapshotHash','inventoryHash')):raise JobError('Package/check source identity differs')
+ if checks is not None and checks.get('schemaVersion')==2:
+  from grading_job import inventory
+  inventory(checks);scope=checks['selectionScope']
+  if scope['automaticIds']!=sorted(q for q,method in methods.items() if method!='manual') or sorted(a['id'] for a in scope['assessments'])!=sorted(work['id'] for work in delivery['works']):raise JobError('Native selected scope differs from delivery')
  files=delivery.get('files')
  if not isinstance(files,dict) or not files or not all(isinstance(sha,str) and HASH.fullmatch(sha) for sha in files.values()):raise JobError('Nonempty canonical native inventory required')
  for name,sha in files.items():
@@ -196,6 +200,7 @@ def delivery_receipt(delivery,native,checks,automatic=None,registry=None):
  auto={q for q,method in methods.items() if method!='manual'}
  if auto and automatic is None:raise JobError('Automatic proof missing')
  if not auto and automatic is not None:raise JobError('Wholly manual does not accept grading results')
+ if auto and checks.get('schemaVersion')==2 and (automatic is None or automatic.get('jobSchemaVersion')!=2 or automatic.get('nativeSelectionScopeHash')!=checks['selectionScopeHash']):raise JobError('Native automatic scope binding differs')
  proof={'state':'verified','receipt':automatic} if auto else {'state':'not-applicable','reason':'all-questions-manual'}
  result={'schemaVersion':3,'kind':'delivery-verification','scope':'delivery','toolVersion':TOOL_VERSION,**{k:delivery[k] for k in ('deliveryHash','sourceSnapshotHash','inventoryHash')},'packageIntegrity':package,'automatic':proof}
  result['identityHash']=digest(result);validate_release_receipt(result,delivery,native,registry);return result

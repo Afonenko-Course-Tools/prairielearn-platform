@@ -30,7 +30,7 @@ def main():
    if not a.snapshot:raise JobError('--snapshot is required for verify')
    job_delivery=dict(delivery,_root=str(a.delivery.parent.resolve())) if delivery is not None else None
    required=scenario_inventory(m,a.snapshot,auto_ids if a.scope=='delivery' and delivery else {x['qualifiedId'] for x in selected})
-   results=[];expectations={};unavailable=[]
+   results=[];expectations={};unavailable=[];expected_jobs={}
    for project in selected:
     scenarios=a.scenario or [x['scenario'] for x in required if x['qualifiedId']==project['qualifiedId']]
     for scenario in scenarios:
@@ -38,7 +38,7 @@ def main():
      except JobError as error:
       if str(error).startswith('reference-unavailable:'):unavailable.append({'qualifiedId':project['qualifiedId'],'scenario':scenario,'status':'reference-unavailable'});continue
       raise
-     try:results.append(run_job(job,a.backend,registry));expectations[project['qualifiedId']+':'+scenario]=job['expectations']
+     try:expected_jobs[(job['qualifiedId'],job['scenario'])]={**{field:dict(job[field]) for field in ('sourceHashes','testsHashes')},**({'jobSchemaVersion':2,'nativeSelectionScopeHash':job['nativeSelectionScopeHash']} if job['schemaVersion']==2 else {})};results.append(run_job(job,a.backend,registry));expectations[project['qualifiedId']+':'+scenario]=job['expectations']
      finally:
       try:preserve_build_logs(job,a.output)
       finally:shutil.rmtree(job.root)
@@ -49,7 +49,7 @@ def main():
    elif not results:
     report.update(coverage='partial',automatic={'state':'not-verified','reason':'partial-selection'},results=[]);status=1
    else:
-    receipt=verify_results(results,expectations,required,unavailable,registry);report.update(results=results,receipt=receipt,unavailable=unavailable);status=receipt['exitCode']
+    receipt=verify_results(results,expectations,required,unavailable,registry,expected_jobs);report.update(results=results,receipt=receipt,unavailable=unavailable);status=receipt['exitCode']
     if a.scope=='delivery' and status==0 and receipt['coverage']=='complete' and a.backend=='container' and (not a.id or set(a.id)==set(methods)):
      report['receipt']=delivery_receipt(delivery,a.delivery.parent,m,receipt,registry)
     elif a.scope=='delivery':report['coverage']='partial'
