@@ -201,9 +201,10 @@ class GradingRuntimeTransitionTests(unittest.TestCase):
    def build(stage,*args):
     stage.chmod(0o700);runtime.root.chmod(0o700);phases.append('build700');return {'status':'success'},lambda:None
    def observer(job,config,stage,*args):
-    # Синтетический checkpoint: настоящий допуск observer проверяется отдельно.
+    # Синтетический checkpoint; настоящий observer проверяется отдельно в native image.
     self.assertEqual(stat.S_IMODE(runtime.root.stat().st_mode),0o700)
-    module=stage/'observer';module.mkdir();phases.append('observer700');return module
+    self.assertEqual(stat.S_IMODE(private.stat().st_mode),0o700)
+    module=stage/'observer';module.mkdir(mode=0o700);phases.append('observer700');return module
    def child(command,*args,**kwargs):
     if 'PlatformJUnitAdapter' in command:
      self.assertEqual(stat.S_IMODE(runtime.root.stat().st_mode),0o711)
