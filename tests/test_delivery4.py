@@ -24,6 +24,17 @@ class Delivery4(unittest.TestCase):
     for mutate in (lambda r:r['nativeAnswers']['bindings'].clear(),lambda r:r['nativeAnswers']['bindings'].append(copy.deepcopy(r['nativeAnswers']['bindings'][0])),lambda r:r['nativeAnswers']['bindings'][0].update(uuid='00000000-0000-0000-0000-000000000000'),lambda r:r['nativeAnswers']['bindings'][0].update(serverSha256='f'*64),lambda r:r.update(automatic={'state':'verified','receipt':{}})):
      bad=copy.deepcopy(receipt);mutate(bad);bad['nativeAnswers']['inventoryHash']=g.digest(bad['nativeAnswers']['bindings']);bad['identityHash']=g.digest({k:x for k,x in bad.items() if k!='identityHash'})
      with self.assertRaises(g.JobError):g.validate_release_receipt(bad,d,root)
+ def test_unbound_internal_controls_and_key_visibility_refuse(self):
+  source,original=self.load('numeric');q=original['questions'][0];prefix='questions/'+q+'/'
+  for mode in ('extra-control','secret-attribute','show-answer'):
+   with tempfile.TemporaryDirectory() as tmp:
+    root=Path(tmp)/'native';shutil.copytree(source,root);d=copy.deepcopy(original)
+    name=prefix+('info.json' if mode=='show-answer' else 'question.html');path=root/name
+    if mode=='show-answer':
+     info=json.loads(path.read_text());info['showCorrectAnswer']=True;path.write_text(json.dumps(info))
+    else:path.write_text(path.read_text()+('<pl-checkbox answers-name="unbound"></pl-checkbox>' if mode=='extra-control' else '<pl-string-input answers-name="unbound" correct-answer="PRIVATE_SENTINEL"></pl-string-input>'))
+    d['files'][name]=hashlib.sha256(path.read_bytes()).hexdigest();rehash(d)
+    with self.assertRaises(g.JobError):v.package_integrity(d,root)
  def test_closed_kind_slots_grading_uuid_downgrade(self):
   root,d=self.load('numeric');q=d['questions'][0]
   changes=[lambda x:x['gradingPayloads'][q].pop('kind'),lambda x:x['gradingPayloads'][q].update(kind='unknown'),lambda x:x['gradingPayloads'][q].update(runtime='fake'),lambda x:x['gradingPayloads'][q].update(upstreamGradingMethod='External'),lambda x:x['gradingPayloads'][q]['grading'].update(method='manual'),lambda x:x['gradingPayloads'][q]['responseSlots'][0].update(name='foreign'),lambda x:x['gradingPayloads'][q]['responseSlots'][0].update(key=17),lambda x:x['gradingPayloads'][q].update(uuid='bad'),lambda x:x.update(schemaVersion=3),lambda x:x.update(schemaVersion=5)]

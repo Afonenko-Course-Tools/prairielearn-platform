@@ -129,7 +129,7 @@ class PublishedMetadata(unittest.TestCase):
         self.assertEqual(registry,publication.assign_images(expected,IMAGES));self.assertEqual(actual_lock,lock)
         manifest={'source':{'commit':'a'*40},'version':'2.3.0'}
         with patch.object(prep,'verify_context',return_value=manifest) as verify:
-            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),(registry,lock));self.assertEqual(verify.call_count,2)
+            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),publication.derive_release_registry(ROOT,IMAGES,delivery_version=4));self.assertEqual(verify.call_count,2)
         with patch.object(prep,'verify_context',side_effect=[manifest,{'changed':True}]),self.assertRaisesRegex(ValueError,'Prepared inputs changed'):
             publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0')
         def extra_profile(path):

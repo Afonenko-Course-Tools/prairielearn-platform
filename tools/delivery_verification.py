@@ -172,6 +172,7 @@ def package_integrity(delivery,native,checks=None):
   if delivery['schemaVersion']==4 and binding['kind']!='project':
    if q in facts or 'externalGradingOptions' in info:raise JobError('Non-project cannot accept code Job')
    if binding['kind']=='native-answer':
+    if info.get('showCorrectAnswer') is not False:raise JobError('Native answer key visibility differs')
     proof=native_proof(q,binding,question_files,controls)
     if info.get('partialCredit') is not (method!='manual'):raise JobError('Native partial-credit policy differs')
     mode='native-answer'

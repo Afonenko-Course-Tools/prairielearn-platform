@@ -65,7 +65,8 @@ def native_proof(q,b,question_files,controls):
  for tag,attrs in controls:
   if tag in ('pl-string-input','pl-rich-text-editor'):
    key='file-name' if tag=='pl-rich-text-editor' else 'answers-name';actual.append((tag,key,attrs.get(key)))
-  elif tag in ('pl-file-upload','pl-file-editor','pl-workspace','pl-external-grader-results'):raise JobError('Native answer contains project controls')
+  elif tag!='pl-question-panel':raise JobError('Native answer contains unbound controls')
+  if tag=='pl-string-input' and set(attrs)!={'answers-name','allow-blank'} or tag=='pl-string-input' and attrs.get('allow-blank')!='true' or tag=='pl-rich-text-editor' and set(attrs)!={'file-name','placeholder'}:raise JobError('Native answer control attributes differ')
  if actual!=expected or any('correct' in a for _,a in controls):raise JobError('Native controls differ from public response slots')
  if 'server.py' not in question_files or any(n.startswith('tests/') or n in ('server.js','server.ts') for n in question_files):raise JobError('Native answer cannot contain code Job')
  return {'qualifiedId':q,'uuid':b['uuid'],'answerType':b['answerType'],'responseSlotsHash':digest(b['responseSlots']),'controlsHash':digest(controls),'serverSha256':question_files['server.py']}

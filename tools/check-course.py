@@ -44,7 +44,7 @@ def main():
       try:preserve_build_logs(job,a.output)
       finally:shutil.rmtree(job.root)
    if a.scope=='delivery' and not auto_ids:
-    report.update(automatic={'state':'not-applicable','reason':'all-questions-manual'},results=[])
+    report.update(automatic={'state':'not-applicable','reason':'all-questions-manual' if delivery['schemaVersion']==3 else 'no-project-automatic'},results=[])
     if a.scenario or a.id and set(a.id)!=set(methods):report.update(coverage='partial');status=1
     else:report['receipt']=delivery_receipt(delivery,a.delivery.parent,m,registry=registry);status=0
    elif not results:
