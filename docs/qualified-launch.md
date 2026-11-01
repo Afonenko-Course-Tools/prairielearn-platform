@@ -49,6 +49,10 @@ Builder удерживает parent/stage directory FDs и nonblocking exclusive
 перед consume/publication. Публикация использует fd-relative
 `renameat2(RENAME_NOREPLACE)` и сохраняет даже существующий пустой output.
 
+Перед каждым перечислением cleanup открывает свежий directory stream через
+`os.open('.', dir_fd=held_fd)`, проверяет тот же inode и закрывает reader.
+Это учитывает entries, добавленные после открытия пустого stage, не меняя
+владение и не разрешая исходный путь заново.
 Cleanup рекурсивно адресует только удержанный stage FD; symlinks не
 обходятся. Он не делает `stat(path)` → `rmtree(path)` с повторным
 разрешением имени. При обнаруженной смене parent/stage он отказывает;

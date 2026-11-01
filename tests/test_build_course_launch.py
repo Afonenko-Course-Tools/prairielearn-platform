@@ -17,8 +17,9 @@ spec=importlib.util.spec_from_file_location('launch_builder',ROOT/'tools/build-c
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
 class LaunchContract(unittest.TestCase):
+ scratch_parent=None
  def setUp(self):
-  self.tmp=tempfile.TemporaryDirectory(prefix='platform252-unit-');self.addCleanup(self.tmp.cleanup)
+  self.tmp=tempfile.TemporaryDirectory(prefix='platform252-unit-',dir=self.scratch_parent);self.addCleanup(self.tmp.cleanup)
   self.root=Path(self.tmp.name);self.source=self.root/'source';self.source.mkdir();self.owner=self.source/'tasks';self.entry=self.owner/'_extensions/course-prairielearn/entrypoints/export-course.ts';self.entry.parent.mkdir(parents=True);self.entry.write_text('// INERT UNIT never executed\n')
   for args in [('init','-q'),('config','user.name','UNIT'),('config','user.email','unit@example.invalid'),('remote','add','origin','https://example.invalid/source.git'),('add','.'),('commit','-qm','UNIT')]:subprocess.run(['git',*args],cwd=self.source,check=True)
   self.output=self.root/'native-output';self.stage=self.root/'known-stage';self.registry=self.root/'registry.json';self.registry.write_text('{}')
@@ -237,8 +238,33 @@ class LaunchContract(unittest.TestCase):
   self.assertEqual(result.returncode,1,result.stderr);self.assertIn(b'Invalid export product type',result.stderr)
   self.assertFalse(self.output.exists());self.assertFalse(self.stage.exists())
 
+
+class WorkspaceLaunchContract(LaunchContract):
+ # Тот же lifecycle на файловой системе checkout, а не только /tmp.
+ scratch_parent=ROOT.parent
+ def test_actual_cli_success_cleans_fresh_stage_after_producer_exit0(self):
+  from test_delivery_verification import DeliveryPackage
+  fixture=DeliveryPackage();fixture.setUp()
+  try:
+   payload=self.root/'payload';shutil.copytree(fixture.root,payload)
+   (payload/'delivery.json').write_text(json.dumps(fixture.delivery))
+   checks=self.root/'checks.json';checks.write_text(json.dumps(fixture.checks))
+  finally:fixture.doCleanups()
+  binary=self.root/'bin';binary.mkdir();spy=binary/'quarto'
+  spy.write_text('#!'+sys.executable+' -B\nimport shutil,sys\nshutil.copytree('+repr(str(payload))+',sys.argv[4])\nshutil.copyfile('+repr(str(checks))+',sys.argv[sys.argv.index("--checks-output")+1])\n');spy.chmod(0o755)
+  env={**os.environ,'PATH':str(binary)+os.pathsep+os.environ['PATH'],'PYTHONDONTWRITEBYTECODE':'1'}
+  result=subprocess.run([sys.executable,'-B',str(ROOT/'tools/build-course.py'),'--source',str(self.source),'--book','tasks','--instance','test','--output',str(self.output),'--runtime-registry',str(self.registry),'--export-stage',str(self.stage)],cwd=self.root,env=env,capture_output=True,timeout=15)
+  self.assertEqual(result.returncode,0,result.stderr)
+  self.assertTrue((self.output/'provenance.json').is_file());self.assertTrue(self.output.with_name(self.output.name+'-checks.json').is_file());self.assertFalse(self.stage.exists())
+ def test_retained_empty_fd_cleans_new_nested_entries_on_both_filesystems(self):
+  for parent in [None,ROOT.parent]:
+   for repeat in range(3):
+    with self.subTest(parent=str(parent),repeat=repeat),tempfile.TemporaryDirectory(prefix='platform252-held-',dir=parent)as directory:
+     root=Path(directory);fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+     try:
+      (root/'nested').mkdir();(root/'nested/own').write_text('OWN');(root/'checks.json').write_text('OWN')
+      builder._ExportStage._clear_directory(fd)
+      self.assertEqual(list(root.iterdir()),[])
+     finally:os.close(fd)
+
 if __name__=='__main__':unittest.main()
-
-
-
-

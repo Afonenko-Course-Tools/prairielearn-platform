@@ -215,7 +215,15 @@ class _ExportStage:
     def _clear_directory(fd):
         # All recursion stays anchored to our retained directory, never a fresh
         # resolution of export-stage. Symlinks are unlinked, never traversed.
-        for name in os.listdir(fd):
+        # Новый directory stream видит entries, созданные после первоначального
+        # open пустого stage. Относительный "." остаётся на том же held inode.
+        reader=os.open('.',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+        try:
+            if _identity(os.fstat(reader))!=_identity(os.fstat(fd)):
+                raise BuildError('Stage directory identity changed before cleanup read')
+            names=os.listdir(reader)
+        finally:os.close(reader)
+        for name in names:
             info=os.stat(name,dir_fd=fd,follow_symlinks=False)
             if stat.S_ISDIR(info.st_mode):
                 child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
