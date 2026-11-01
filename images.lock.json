@@ -33,5 +33,12 @@
     "localImage": "ghcr.io/afonenko-course-tools/fish-git-grader:2.2.0",
     "localImageId": "sha256:0efbd38d68560f1a179a90d9346fb30f8149a86dd918450d700b3ae5ce2c2fd0",
     "status": "Опубликованный fish runtime; profile fish-git-v1 закреплён за этим immutable image digest."
+  },
+  "spGitWorkspace": {
+    "baseImage": "docker.io/prairielearn/workspace-vscode-base@sha256:cdad0b1fd89a3e019efca29c66768ffa2f7b4f99dbfe3016e2667f6769b90600",
+    "image": "ghcr.io/afonenko-course-tools/sp-git-workspace@sha256:e7b367cf726b6850568910516d542d2e3518c823a4cc650e0e3c64952e9be1b8",
+    "sourceCommit": "e528abf277b4142b91520e50dcbe949c65ce025d",
+    "version": "2.5.0",
+    "status": "Опубликованная роль Git Workspace. Штатная сборка новой поставки связывает эту роль с проверенным immutable digest, source и version внешних assets."
   }
 }
