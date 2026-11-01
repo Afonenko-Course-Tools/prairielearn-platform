@@ -46,7 +46,8 @@ class DiagnosticRegistry(unittest.TestCase):
     assembly.assert_called_once_with(builds.builder.PLATFORM,(root/'registry.json').absolute())
     run.assert_called_once()
     command=run.call_args.args[0]
-    self.assertEqual(command[:3],['quarto','run','tasks/_extensions/course-prairielearn/entrypoints/export-course.ts'])
+    self.assertEqual(command[:3],['quarto','run',str(entry)])
+    self.assertEqual(run.call_args.kwargs['cwd'],source/'tasks')
     self.assertEqual(command[command.index('--candidate-image')+1],'sha256:'+'d'*64)
  def test_check_cli_threads_one_explicit_registry_through_prepare_execute_and_receipt(self):
   import sys

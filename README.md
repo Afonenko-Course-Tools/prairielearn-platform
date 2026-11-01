@@ -1,6 +1,6 @@
 # PrairieLearn platform
 
-Кандидат исходников **2.4.0** продолжает принятую c020/2.3.0 линию и добавляет совместимый optional-primary Java контракт с Exporter/Core 8.3.0. Это не опубликованный выпуск: действующие registry, `runtime-image.json` и `images.lock.json` по-прежнему описывают опубликованную **2.2.0**. Новый image digest и приёмка CI/публикации подтверждаются отдельно. Подготовка воспроизводимого toolchain context описана в [runtime README](runtime/gradle-jar-v1/README.md), порядок выпуска — в [docs/releasing.md](docs/releasing.md).
+Исходники кандидата **2.5.2** добавляют узкую границу qualified launch: абсолютный installed C entry, `cwd` владельца и необязательный свежий `--export-stage`, выбранный до RME/prior P. Это не новый authority API. [Порядок запуска и cleanup](docs/qualified-launch.md) описывает ограничения. Новые hosted CI, четыре OCI и три authenticated assets/readback относятся к отдельному выпуску; свидетельства 2.5.1 не выдаются за 2.5.2. Подготовка toolchain — в [runtime README](runtime/gradle-jar-v1/README.md), публикация — в [docs/releasing.md](docs/releasing.md).
 
 Принятые publication/private-source изменения из a42728c3534a65d77a5e7ca55ae4a81f83d3a36e включены локально.
 Новая runtime поставка требует собственного source/image/asset proof; старые receipts не переназначаются.
