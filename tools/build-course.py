@@ -2,14 +2,14 @@
 """Assemble a native PL course from a clean source checkout and owner exports."""
 import argparse
 import ctypes
+import fcntl
+import stat
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
-import tempfile
 import uuid
 import importlib.util
 
@@ -116,18 +116,147 @@ def validate_uuids_and_assessments(course, questions):
             for question in zone['questions']:
                 visit(question)
 
-def publish_directory(source, destination):
+def publish_directory(source, destination, *, source_fd=-100, destination_fd=-100):
     # Linux renameat2 makes the no-replacement promise atomic, including an
     # empty directory created by another builder after our initial validation.
     libc = ctypes.CDLL(None, use_errno=True)
     rename = libc.renameat2
     rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
     rename.restype = ctypes.c_int
-    if rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1):
+    if rename(source_fd, os.fsencode(source if source_fd==-100 else source.name), destination_fd, os.fsencode(destination if destination_fd==-100 else destination.name), 1):
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, staging_receipt=None) -> None:
+def _identity(info):
+    return info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode)
+
+class _ExportStage:
+    """Локальный filesystem lifecycle под protected/exclusive-writer предпосылкой."""
+    def __init__(self, source, output, selected, inputs):
+        self.output=output;self.parent=output.parent;self.parent_fd=None;self.fd=None
+        self.products={};self.published=False;self.created=False
+        if selected is None:
+            self.path=self.parent/('.pl-full-export-'+uuid.uuid4().hex)
+        else:
+            text=os.fspath(selected)
+            if not os.path.isabs(text) or os.path.normpath(text)!=text:
+                raise BuildError('Export stage must be an absolute normalized path')
+            self.path=Path(text)
+        if self.path.parent!=self.parent or self.path in (output,output.with_name(output.name+'-checks.json')):
+            raise BuildError('Export stage must be a distinct fresh sibling of output')
+        for value in (source,*inputs):
+            value=Path(value).absolute()
+            if self.path.is_relative_to(value) or value.is_relative_to(self.path):
+                raise BuildError('Export stage overlaps an immutable input')
+
+    def __enter__(self):
+        try:
+            self.parent_fd=os.open(self.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            fcntl.flock(self.parent_fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.parent_identity=_identity(os.fstat(self.parent_fd))
+            self._parent_current()
+            os.mkdir(self.path.name,0o700,dir_fd=self.parent_fd);self.created=True
+            self.fd=os.open(self.path.name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=self.parent_fd)
+            if stat.S_IMODE(os.fstat(self.fd).st_mode)!=0o700:
+                raise BuildError('Export stage must have mode0700')
+            self.identity=_identity(os.fstat(self.fd));self.assert_current()
+            return self
+        except BaseException as primary:
+            if self.created:primary.add_note(f'Stage creation interrupted; retained for inspection: {self.path}')
+            # Never remove a name whose created directory identity was not retained.
+            self.close()
+            raise
+
+    def _parent_current(self):
+        if self.parent.resolve()!=self.parent or _identity(self.parent.lstat())!=self.parent_identity:
+            raise BuildError('Export parent identity changed')
+
+    def assert_current(self, products=False):
+        self._parent_current()
+        if _identity(os.stat(self.path.name,dir_fd=self.parent_fd,follow_symlinks=False))!=self.identity:
+            raise BuildError('Export stage identity changed')
+        if products:
+            for name,(fd,identity) in self.products.items():
+                if _identity(os.stat(name,dir_fd=self.fd,follow_symlinks=False))!=identity:
+                    raise BuildError('Export product identity changed: '+name)
+
+    def bind_products(self):
+        self.assert_current()
+        for name,kind in [('native',stat.S_IFDIR),('checks.json',stat.S_IFREG)]:
+            before=os.stat(name,dir_fd=self.fd,follow_symlinks=False)
+            if stat.S_IFMT(before.st_mode)!=kind:
+                raise BuildError('Invalid export product type: '+name)
+            fd=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|(os.O_DIRECTORY if kind==stat.S_IFDIR else 0),dir_fd=self.fd)
+            info=os.fstat(fd)
+            if stat.S_IFMT(info.st_mode)!=kind or _identity(info)!=_identity(before):
+                os.close(fd);raise BuildError('Invalid export product type or identity: '+name)
+            self.products[name]=(fd,_identity(info))
+        self.assert_current(products=True)
+
+    def observe_publication(self):
+        native=self.products.get("native")
+        if native:
+            try:self.published |= _identity(os.stat(self.output.name,dir_fd=self.parent_fd,follow_symlinks=False))==native[1]
+            except FileNotFoundError:pass
+        return self.published
+
+    def private_checks_current(self, name, identity):
+        self.assert_current()
+        if _identity(os.stat(name,dir_fd=self.parent_fd,follow_symlinks=False))!=identity:
+            raise BuildError("Private checks output identity changed; preserved")
+
+    def remove_private_checks(self, name, identity):
+        self.assert_current()
+        if _identity(os.stat(name,dir_fd=self.parent_fd,follow_symlinks=False))!=identity:
+            raise BuildError('Private checks output identity changed; preserved')
+        os.unlink(name,dir_fd=self.parent_fd)
+
+    @staticmethod
+    def _clear_directory(fd):
+        # All recursion stays anchored to our retained directory, never a fresh
+        # resolution of export-stage. Symlinks are unlinked, never traversed.
+        # Новый directory stream видит entries, созданные после первоначального
+        # open пустого stage. Относительный "." остаётся на том же held inode.
+        reader=os.open('.',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+        try:
+            if _identity(os.fstat(reader))!=_identity(os.fstat(fd)):
+                raise BuildError('Stage directory identity changed before cleanup read')
+            names=os.listdir(reader)
+        finally:os.close(reader)
+        for name in names:
+            info=os.stat(name,dir_fd=fd,follow_symlinks=False)
+            if stat.S_ISDIR(info.st_mode):
+                child=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                try:
+                    if _identity(os.fstat(child))!=_identity(info):
+                        raise BuildError('Stage child replaced during cleanup')
+                    _ExportStage._clear_directory(child)
+                    if _identity(os.stat(name,dir_fd=fd,follow_symlinks=False))!=_identity(info):
+                        raise BuildError('Stage child replaced during cleanup')
+                    os.rmdir(name,dir_fd=fd)
+                finally:os.close(child)
+            else:os.unlink(name,dir_fd=fd)
+
+    def close(self):
+        for fd,_ in self.products.values():os.close(fd)
+        self.products.clear()
+        if self.fd is not None:os.close(self.fd);self.fd=None
+        if self.parent_fd is not None:os.close(self.parent_fd);self.parent_fd=None
+
+    def __exit__(self, kind, primary, traceback):
+        try:
+            self.assert_current()
+            self._clear_directory(self.fd)
+            self.assert_current()
+            os.rmdir(self.path.name,dir_fd=self.parent_fd)
+        except BaseException as error:
+            outcome=f'Export cleanup refused; published={self.published}; stage={self.path}; {error}'
+            if primary is not None:primary.add_note(outcome)
+            else:raise BuildError(outcome) from error
+        finally:self.close()
+        return False
+
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, staging_receipt=None, export_stage=None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or source.is_symlink():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
@@ -147,6 +276,7 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     entries=[root/'_extensions/course-prairielearn/entrypoints/export-course.ts',root/'_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export-course.ts']
     entries=[p for p in entries if p.is_file() and not p.is_symlink()]
     if len(entries)!=1:raise BuildError('Exactly one installed full owner exporter is required')
+    if entries[0].resolve()!=entries[0]:raise BuildError('Installed full owner exporter must not use aliased parents')
     registry=Path(runtime_registry or PLATFORM/'runtime-profiles.json').absolute()
     try:assembly=_assembly.for_build(PLATFORM,registry)
     except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as error:raise BuildError('Release assembly rejected') from error
@@ -155,16 +285,21 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         if assembly:
             try:assembly.recheck()
             except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as error:raise BuildError('Release assembly changed during export') from error
-    with tempfile.TemporaryDirectory(prefix='.pl-full-export-',dir=output.parent) as tmp:
-        stage=Path(tmp);native=stage/'native';checks=stage/'checks.json'
-        command=['quarto','run',str(entries[0].relative_to(source)),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
+    immutable_inputs=[registry]+([Path(staging_receipt)] if staging_receipt else [])
+    with _ExportStage(source,output,export_stage,immutable_inputs) as owned:
+        stage=owned.path;native=stage/'native';checks=stage/'checks.json'
+        command=['quarto','run',str(entries[0]),str(source),str(native),'--instance',instance,'--checks-output',str(checks),'--runtime-registry',str(registry),'--book',book]
         if candidate_image:command+=['--candidate-image',candidate_image]
         if staging:command+=['--staging-receipt',str(Path(staging_receipt).absolute())]
-        try:subprocess.run(command,cwd=source,check=True)
+        try:subprocess.run(command,cwd=root,check=True)
         except (OSError,subprocess.CalledProcessError) as error:raise BuildError('Installed full owner export failed') from error
+        owned.bind_products()
         files=tree(native)
+        owned.assert_current(products=True)
         if 'delivery.json' not in files or 'infoCourse.json' not in files or not checks.is_file():raise BuildError('Full exporter did not emit native course, delivery and private checks')
         delivery=read_json(native/'delivery.json');manifest=read_json(checks)
+        checks_text=checks.read_text()
+        if json.loads(checks_text)!=manifest:raise BuildError('Private checks changed during validation')
         from delivery_verification import package_integrity
         from grading_job import JobError
         try:
@@ -187,23 +322,37 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         if assembly:
             try:_assembly.validate_provenance(provenance,delivery,assembly)
             except (ValueError,KeyError,TypeError) as error:raise BuildError('Invalid release provenance') from error
+        owned.assert_current(products=True)
         write_json(native/'provenance.json',provenance)
         # Checks inventory stays private outside native payload.
         checks_output=output.parent/(output.name+'-checks.json')
         if checks_output.exists():raise BuildError('Private checks output must be fresh')
         try:
-            with checks_output.open('x') as f:f.write(checks.read_text())
-            try:
-                recheck_assembly()
-                if {n:b for n,b in tree(native).items() if n!='provenance.json'}!=files:raise BuildError('Native inventory changed before publication')
-                publish_directory(native,output)
-            except BuildError:
-                checks_output.unlink()
-                raise
-        except OSError as error:raise BuildError('Native candidate exported but private checks publication failed') from error
+            owned.assert_current(products=True)
+            if checks.read_text()!=checks_text:raise BuildError('Private checks changed before publication')
+            with checks_output.open('x') as f:
+                private_identity=_identity(os.fstat(f.fileno()))
+                try:
+                    f.write(checks_text);f.flush()
+                    recheck_assembly()
+                    if {n:b for n,b in tree(native).items() if n!='provenance.json'}!=files:raise BuildError('Native inventory changed before publication')
+                    owned.assert_current(products=True)
+                    owned.private_checks_current(checks_output.name,private_identity)
+                    publish_directory(native,output,source_fd=owned.fd,destination_fd=owned.parent_fd)
+                    owned.published=True
+                except BaseException as primary:
+                    try:
+                        if owned.observe_publication():primary.add_note(f'Native already published at {output}; private checks preserved at {checks_output}')
+                        else:owned.remove_private_checks(checks_output.name,private_identity)
+                    except BaseException as cleanup:primary.add_note("Private checks cleanup refused: "+str(cleanup))
+                    raise
+        except OSError as error:
+            failure=BuildError('Native candidate exported but private checks publication failed')
+            for note in getattr(error,'__notes__',[]):failure.add_note(note)
+            raise failure from error
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--staging-receipt',type=Path);args=parser.parse_args()
-    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.staging_receipt)
-    except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--staging-receipt',type=Path);parser.add_argument('--export-stage',help='Fresh absolute sibling export stage selected before qualification');args=parser.parse_args()
+    try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.staging_receipt,args.export_stage)
+    except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n'+''.join(note+'\n' for note in getattr(error,'__notes__',[])))
 if __name__=='__main__':main()
