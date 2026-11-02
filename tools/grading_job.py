@@ -358,6 +358,7 @@ def prepare_job(
     )
     primary_names = {x["submissionRelativePath"] for x in sources}
     generated_archive = None
+    reference_source_names = None
     if archive_name:
         reserved = [
             *primary_names,
@@ -390,14 +391,27 @@ def prepare_job(
             raise JobError("reference-unavailable:" + name)
         selected = _selection(project, declared[0].get("sources", []), book, version)
         reference_names = {x["submissionRelativePath"] for x in selected}
-        if (not extra_policy and reference_names != primary_names) or (
+        complete_java_reference = (
+            not extra_policy
+            and check["runtime"] in ("java25-junit-v1", "java25-gradle-junit-v1")
+        )
+        if complete_java_reference:
+            # Только exact named reference; публичная student policy не меняется.
+            paths = [_origin_path(book, project, x, version) for x in selected]
+            if (not selected or len(selected) > 128
+                or any(not x["submissionRelativePath"].endswith(".java") for x in selected)
+                or any(p.stat().st_size > 1048576 for p in paths)
+                or sum(p.stat().st_size for p in paths) > 4194304):
+                raise JobError("Reference Java source count/type/size limit")
+            reference_source_names = sorted(reference_names)
+        elif (not extra_policy and reference_names != primary_names) or (
             not optional_primary and not primary_names <= reference_names
         ):
             raise JobError("Reference source mapping differs from student source names")
         extras = [
             x for x in selected if x["submissionRelativePath"] not in primary_names
         ]
-        if extras:
+        if extras and not complete_java_reference:
             if any(not x["submissionRelativePath"].endswith(".java") for x in extras):
                 raise JobError("Reference extras must be Java sources")
             buffer = io.BytesIO()
@@ -661,6 +675,10 @@ def prepare_job(
                 or hashlib.sha256(f.read_bytes()).hexdigest() != x["sha256"]
             ):
                 raise JobError("Exported starter differs from snapshot")
+    if reference_source_names is not None:
+        # Exported student descriptor сравнен выше; это только private reference job.
+        grading = dict(grading, sourceFiles=reference_source_names)
+        job["grading"] = grading
     if version == 2:job["nativeSelectionScopeHash"] = manifest["selectionScopeHash"]
     validate("grading-job", job)
     job.root = Path(tempfile.mkdtemp(prefix="grading-job-"))
