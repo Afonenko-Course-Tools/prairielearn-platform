@@ -41,9 +41,9 @@ let database;
 async function nativeDb(){return database??=(async()=>{const [pg,{z}]=await Promise.all([import('@prairielearn/postgres'),import('zod')]);return{...pg,schema:z.any(),recompute:async(args)=>{const grading=await import(new URL('../dist/lib/assessment-grading.js',import.meta.url));return grading.updateAssessmentInstanceGrade({...args,onlyLogIfScoreUpdated:true});}};})();}
 async function repair(db,sql,input,actor){
  const p={assessment_instance_id:input.target.assessmentInstanceId,instance_question_id:input.target.instanceQuestionId,actor};
- const before=await db.queryOptionalRow(sql.context,{...p,...input.target},db.schema);same(before,input.target,IQ_FIELDS,'Target');maximum(before);
+ const before=await db.queryOptionalRow(sql.context,{assessment_instance_id:p.assessment_instance_id,instanceQuestionId:p.instance_question_id},db.schema);same(before,input.target,IQ_FIELDS,'Target');maximum(before);
  if(!full(before))await db.execute(sql.repair,p);
- const after=await db.queryOptionalRow(sql.readback,{...p,...input.target},db.schema);same(after,input.target,IQ_FIELDS,'Readback');if(!full(after))fail('Native recognized-credit readback incomplete');
+ const after=await db.queryOptionalRow(sql.readback,{assessment_instance_id:p.assessment_instance_id,instanceQuestionId:p.instance_question_id},db.schema);same(after,input.target,IQ_FIELDS,'Readback');if(!full(after))fail('Native recognized-credit readback incomplete');
  if(after.open!==before.open)fail('Recognition changed closure');return after;
 }
 function eventRecord(row){const r=row?.record;if(r?.format!==FORMAT||typeof row.authn_user_id!=='string'||r.actorUserId!==row.authn_user_id)fail('Invalid trusted native administrative event');shape(r);return r;}
@@ -52,19 +52,19 @@ export async function recognizeCredit(input,approval,injectedDb){
  if(!approval||approval.sourceCaptureHash!==input.source.captureHash||approval.mappingRowHash!==input.mappingRowHash||approval.deliveryHash!==input.target.deliveryHash||approval.actorUserId!==input.actorUserId)fail('Closed approved mapping/scope differs');
  const db=injectedDb??await nativeDb(),sql=db.loadSqlEquiv(import.meta.url);
  return db.runInTransactionAsync(async()=>{
-  const params={...input.target,assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
+  const params={assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
   const ai=await db.queryRow(sql.lock_ai,params,db.schema);same(ai,input.target,AI_FIELDS,'Assessment');await courseIdentity(ai,input.target);if(ai.administrator!==true)fail('Native administrator required');
-  const iq=await db.queryOptionalRow(sql.context,params,db.schema);
+  const iq=await db.queryOptionalRow(sql.context,{assessment_instance_id:params.assessment_instance_id,instanceQuestionId:input.target.instanceQuestionId},db.schema);
   if(!iq)return{status:'NEEDS_NATIVE_ADMIN_EVENT',reason:'Selected native IQ absent; administrative materialization not implemented; no reopen or alternate slot'};
   same(iq,input.target,IQ_FIELDS,'Target');maximum(iq);
-  const source=await db.queryRow(sql.source_success,{...input.source},db.schema);success(source,input.source);
+  const source=await db.queryRow(sql.source_success,{autoJobId:input.source.autoJobId},db.schema);success(source,input.source);
   const existing=await db.queryOptionalRow(sql.existing_event,{instance_question_id:input.target.instanceQuestionId},db.schema);
   if(existing){const prior=eventRecord(existing);if(mappingDigest(prior)!==mappingDigest(input)||prior.mappingRowHash!==input.mappingRowHash)fail('Existing materialization mapping conflict');if(hash(source)!==prior.sourceEvidenceHash)fail('Original native success changed');await repair(db,sql,prior,prior.actorUserId);await db.recompute({assessment_instance_id:prior.target.assessmentInstanceId,authn_user_id:prior.actorUserId,credit:100});return{status:'ALREADY_RECOGNIZED',eventId:existing.id,key:hash({source:prior.source,target:prior.target,mappingRowHash:prior.mappingRowHash})};}
   if(typeof input.checkModifiedAt!=='string'||!Number.isFinite(Date.parse(input.checkModifiedAt))||new Date(iq.modified_at).toISOString()!==new Date(input.checkModifiedAt).toISOString())fail('modified_at conflict; no recognition applied');
   // An unrelated/failed response must never become an import response.
   if(input.destinationSubmissionId!=null&&(input.destinationSubmissionId!==input.source.submissionId||input.target.instanceQuestionId!==input.source.instanceQuestionId))fail('Unsuitable destination submission; use honest no-submission admin event');
   const record={format:FORMAT,source:input.source,target:input.target,mapping:input.mapping,mappingRowHash:input.mappingRowHash,actorUserId:input.actorUserId,sourceEvidenceHash:hash(source),explanation:'Признан прежний полный автоматический успех. Ручная часть не требуется. Это административный перенос, не проверка новых тестов и не новый ответ студента.'};
-  const event=await db.queryRow(sql.insert_event,{...params,record:canonical(record)},db.schema);
+  const event=await db.queryRow(sql.insert_event,{actor:input.actorUserId,userId:input.target.userId,courseInstanceId:input.target.courseInstanceId,instanceQuestionId:input.target.instanceQuestionId,record:canonical(record)},db.schema);
   if(input.destinationSubmissionId!=null)await db.execute(sql.insert_manual_job,{actor:input.actorUserId,submission_id:input.destinationSubmissionId,record:canonical(record),auto_points:iq.max_auto_points??0,manual_points:iq.max_manual_points??0});
   await repair(db,sql,record,input.actorUserId);await db.recompute({assessment_instance_id:record.target.assessmentInstanceId,authn_user_id:input.actorUserId,credit:100});
   return{status:'RECOGNIZED_NATIVE_ADMIN_EVENT',eventId:event.id,key:hash({source:record.source,target:record.target,mappingRowHash:record.mappingRowHash})};
@@ -76,7 +76,7 @@ export async function applyRecognizedCredit({assessment_instance_id},injectedDb)
  const db=injectedDb??await nativeDb(),sql=db.loadSqlEquiv(import.meta.url);
  return db.runInTransactionAsync(async()=>{
   const events=await db.queryRows(sql.recognized_events,{assessment_instance_id},db.schema);
-  for(const event of events){const record=eventRecord(event);if(record.target.assessmentInstanceId!==assessment_instance_id)fail('Recognition bound to another AI');const ai=await db.queryRow(sql.lock_ai,{...record.target,assessment_instance_id,actor:record.actorUserId},db.schema);same(ai,record.target,AI_FIELDS,'Assessment');await courseIdentity(ai,record.target);const source=await db.queryRow(sql.source_success,record.source,db.schema);success(source,record.source);if(hash(source)!==record.sourceEvidenceHash)fail('Original native success changed');await repair(db,sql,record,record.actorUserId);}
+  for(const event of events){const record=eventRecord(event);if(record.target.assessmentInstanceId!==assessment_instance_id)fail('Recognition bound to another AI');const ai=await db.queryRow(sql.lock_ai,{assessment_instance_id,actor:record.actorUserId},db.schema);same(ai,record.target,AI_FIELDS,'Assessment');await courseIdentity(ai,record.target);const source=await db.queryRow(sql.source_success,{autoJobId:record.source.autoJobId},db.schema);success(source,record.source);if(hash(source)!==record.sourceEvidenceHash)fail('Original native success changed');await repair(db,sql,record,record.actorUserId);}
   return events.length;
  });
 }
@@ -86,10 +86,10 @@ export async function recognizedPrivateFilesApi(input,approval,injectedDb,inject
  if(approval?.sourceCaptureHash!==input.source.captureHash||approval?.mappingRowHash!==input.mappingRowHash||approval?.deliveryHash!==input.target.deliveryHash||approval?.actorUserId!==input.actorUserId)fail('Closed approved file owner mapping differs');
  const db=injectedDb??await nativeDb(),sql=db.loadSqlEquiv(import.meta.url);
  const store=injectedStore??await import(new URL('../dist/lib/file-store.js',import.meta.url));
- const p={...input.target,assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
+ const p={assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
  const context=()=>db.runInTransactionAsync(async()=>{
   const ai=await db.queryRow(sql.lock_ai,p,db.schema);same(ai,input.target,AI_FIELDS,'File assessment');await courseIdentity(ai,input.target);if(ai.administrator!==true)fail('Native administrator required for private code transfer');
-  const iq=await db.queryOptionalRow(sql.context,p,db.schema);same(iq,input.target,IQ_FIELDS,'File owner');
+  const iq=await db.queryOptionalRow(sql.context,{assessment_instance_id:p.assessment_instance_id,instanceQuestionId:input.target.instanceQuestionId},db.schema);same(iq,input.target,IQ_FIELDS,'File owner');
   const event=await db.queryOptionalRow(sql.existing_event,{instance_question_id:input.target.instanceQuestionId},db.schema);const record=eventRecord(event);
   if(mappingDigest(record)!==mappingDigest(input)||record.mappingRowHash!==input.mappingRowHash||!full(iq))fail('Private files require exact current recognized IQ');
   return{...input.target,actorUserId:input.actorUserId,allowPersonalNotes:iq.allow_personal_notes===true,recognizedCredit:true};
@@ -116,9 +116,9 @@ export async function recognizedPrivateFilesApi(input,approval,injectedDb,inject
    if(!Buffer.isBuffer(bytes)||bytes.length!==ref.bytes||createHash('sha256').update(bytes).digest('hex')!==ref.sha256)fail('Source private bytes differ from native reference');
    return{status:'NATIVE_SOURCE_PRIVATE_REFERENCE_BYTES_VERIFIED',sourceReference:ref.sourceReference,bytes:ref.bytes,sha256:ref.sha256};
   }),
-  findFiles:async name=>{await context();return db.queryRows(sql.find_private_files,{...p,display_filename:name},db.schema);},
+  findFiles:async name=>{await context();return db.queryRows(sql.find_private_files,{assessmentId:input.target.assessmentId,assessment_instance_id:p.assessment_instance_id,instanceQuestionId:input.target.instanceQuestionId,userId:input.target.userId,display_filename:name},db.schema);},
   uploadFile:async options=>{const owner=await context();if(!owner.allowPersonalNotes)fail('Private code visibility requires delivered personal notes');if(options.type!=='student_upload'||options.user_id!==input.target.userId||options.authn_user_id!==input.actorUserId||options.assessment_id!==input.target.assessmentId||options.assessment_instance_id!==input.target.assessmentInstanceId||options.instance_question_id!==input.target.instanceQuestionId)fail('Native private upload authority differs');return store.uploadFile(options);},
-  getFile:async fileId=>{await context();const row=await db.queryOptionalRow(sql.owned_private_file,{...p,file_id:fileId},db.schema);if(!row)fail('Foreign or deleted native private file');return store.getFile(fileId);},
+  getFile:async fileId=>{await context();const row=await db.queryOptionalRow(sql.owned_private_file,{assessmentId:input.target.assessmentId,assessment_instance_id:p.assessment_instance_id,instanceQuestionId:input.target.instanceQuestionId,userId:input.target.userId,file_id:fileId},db.schema);if(!row)fail('Foreign or deleted native private file');return store.getFile(fileId);},
  };
 }
 
@@ -128,12 +128,12 @@ export async function verifyRecognizedCredit(input,approval,injectedDb){
  if(approval?.sourceCaptureHash!==input.source.captureHash||approval?.mappingRowHash!==input.mappingRowHash||approval?.deliveryHash!==input.target.deliveryHash||approval?.actorUserId!==input.actorUserId)fail('Closed approved recognition mapping differs');
  const db=injectedDb??await nativeDb(),sql=db.loadSqlEquiv(import.meta.url);
  return db.runInTransactionAsync(async()=>{
-  const p={...input.target,assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
+  const p={assessment_instance_id:input.target.assessmentInstanceId,actor:input.actorUserId};
   const ai=await db.queryRow(sql.lock_ai,p,db.schema);same(ai,input.target,AI_FIELDS,'Recognized assessment');await courseIdentity(ai,input.target);if(ai.administrator!==true)fail('Native administrator required');
-  const iq=await db.queryOptionalRow(sql.context,p,db.schema);same(iq,input.target,IQ_FIELDS,'Recognized IQ');if(!full(iq))fail('Native recognized credit is not currently full');
+  const iq=await db.queryOptionalRow(sql.context,{assessment_instance_id:p.assessment_instance_id,instanceQuestionId:input.target.instanceQuestionId},db.schema);same(iq,input.target,IQ_FIELDS,'Recognized IQ');if(!full(iq))fail('Native recognized credit is not currently full');
   const event=eventRecord(await db.queryOptionalRow(sql.existing_event,{instance_question_id:input.target.instanceQuestionId},db.schema));
   if(event.mappingRowHash!==input.mappingRowHash||mappingDigest(event)!==mappingDigest(input))fail('Native recognition mapping differs');
-  const source=await db.queryRow(sql.source_success,input.source,db.schema);success(source,input.source);if(hash(source)!==event.sourceEvidenceHash)fail('Original native success changed');
+  const source=await db.queryRow(sql.source_success,{autoJobId:input.source.autoJobId},db.schema);success(source,input.source);if(hash(source)!==event.sourceEvidenceHash)fail('Original native success changed');
   return{...input.target,recognizedCredit:true};
  });
 }

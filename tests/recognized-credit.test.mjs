@@ -4,6 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {test,after} from 'node:test';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {recognizeCredit,applyRecognizedCredit,mappingDigest,recognizedPrivateFilesApi,verifyRecognizedCredit} from '../bridge/recognized-credit-native.mjs';
+import {strictNativeSqlFixture} from './helpers/native-sql-params.mjs';
 const H='a'.repeat(64),U='11111111-1111-4111-8111-111111111111';
 const coursePath=mkdtempSync(join(tmpdir(),'recognized-native-course-'));writeFileSync(join(coursePath,'infoCourse.json'),JSON.stringify({uuid:U}),{mode:0o600});after(()=>rmSync(coursePath,{recursive:true,force:true}));
 function fixture({open=true,manual=false,missing=false,submission=null}={}) {
@@ -33,7 +34,7 @@ function fixture({open=true,manual=false,missing=false,submission=null}={}) {
   if(q==='insert_manual_job'){state.jobs.push({score:1,grading_method:'Manual',submission_id:p.submission_id});return;}
   throw new Error('unexpected execute '+q);
  }};
- return {input,approval,state,db};
+ return {input,approval,state,db:strictNativeSqlFixture(db)};
 }
 function awaitableSql(){return Object.fromEntries(['lock_ai','source_success','context','readback','existing_event','insert_event','repair','recognized_events','insert_manual_job','find_private_files','owned_private_file','source_private_submission','source_private_file'].map(x=>[x,x]));}
 function full(s){assert.equal(s.iq.points,100);assert.equal(s.iq.auto_points,s.iq.max_auto_points);assert.equal(s.iq.manual_points,s.iq.max_manual_points);assert.equal(s.iq.status,'complete');assert.equal(s.iq.requires_manual_grading,false);}

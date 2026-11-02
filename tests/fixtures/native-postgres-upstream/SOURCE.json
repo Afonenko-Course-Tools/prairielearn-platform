@@ -1,0 +1,16 @@
+{
+  "image": "sha256:78e81a2b06ea0d372befdc6646d34b6de7be446b612b38062a4d5401b8ec84f5",
+  "readonly_created_cid": "e94445dbf94d332866298ea31444b29c7276d93b16673b3d081faaba7108d995",
+  "path": "/PrairieLearn/packages/postgres/dist",
+  "files": {
+    "pool.js": {
+      "bytes": 36386,
+      "sha256": "a75ad6c5fc4e60a2dc7d25bb05f97244285ba65df52073692e9fb9818bea0e93"
+    },
+    "loader.js": {
+      "bytes": 1275,
+      "sha256": "97f8882d01551db1e5e13036dbf666f45fa5c7e18f845f6428540428be803de3"
+    }
+  },
+  "kind": "PUBLIC_NATIVE_CODE_ONLY_NO_DB_OR_STUDENT_PAYLOAD"
+}
