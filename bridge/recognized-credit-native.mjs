@@ -59,14 +59,14 @@ export async function recognizeCredit(input,approval,injectedDb){
   same(iq,input.target,IQ_FIELDS,'Target');maximum(iq);
   const source=await db.queryRow(sql.source_success,{...input.source},db.schema);success(source,input.source);
   const existing=await db.queryOptionalRow(sql.existing_event,{instance_question_id:input.target.instanceQuestionId},db.schema);
-  if(existing){const prior=eventRecord(existing);if(mappingDigest(prior)!==mappingDigest(input)||prior.mappingRowHash!==input.mappingRowHash)fail('Existing materialization mapping conflict');if(hash(source)!==prior.sourceEvidenceHash)fail('Original native success changed');await repair(db,sql,prior,prior.actorUserId);await db.recompute({assessment_instance_id:prior.target.assessmentInstanceId,authn_user_id:prior.actorUserId});return{status:'ALREADY_RECOGNIZED',eventId:existing.id,key:hash({source:prior.source,target:prior.target,mappingRowHash:prior.mappingRowHash})};}
+  if(existing){const prior=eventRecord(existing);if(mappingDigest(prior)!==mappingDigest(input)||prior.mappingRowHash!==input.mappingRowHash)fail('Existing materialization mapping conflict');if(hash(source)!==prior.sourceEvidenceHash)fail('Original native success changed');await repair(db,sql,prior,prior.actorUserId);await db.recompute({assessment_instance_id:prior.target.assessmentInstanceId,authn_user_id:prior.actorUserId,credit:100});return{status:'ALREADY_RECOGNIZED',eventId:existing.id,key:hash({source:prior.source,target:prior.target,mappingRowHash:prior.mappingRowHash})};}
   if(typeof input.checkModifiedAt!=='string'||!Number.isFinite(Date.parse(input.checkModifiedAt))||new Date(iq.modified_at).toISOString()!==new Date(input.checkModifiedAt).toISOString())fail('modified_at conflict; no recognition applied');
   // An unrelated/failed response must never become an import response.
   if(input.destinationSubmissionId!=null&&(input.destinationSubmissionId!==input.source.submissionId||input.target.instanceQuestionId!==input.source.instanceQuestionId))fail('Unsuitable destination submission; use honest no-submission admin event');
   const record={format:FORMAT,source:input.source,target:input.target,mapping:input.mapping,mappingRowHash:input.mappingRowHash,actorUserId:input.actorUserId,sourceEvidenceHash:hash(source),explanation:'Признан прежний полный автоматический успех. Ручная часть не требуется. Это административный перенос, не проверка новых тестов и не новый ответ студента.'};
   const event=await db.queryRow(sql.insert_event,{...params,record:canonical(record)},db.schema);
   if(input.destinationSubmissionId!=null)await db.execute(sql.insert_manual_job,{actor:input.actorUserId,submission_id:input.destinationSubmissionId,record:canonical(record),auto_points:iq.max_auto_points??0,manual_points:iq.max_manual_points??0});
-  await repair(db,sql,record,input.actorUserId);await db.recompute({assessment_instance_id:record.target.assessmentInstanceId,authn_user_id:input.actorUserId});
+  await repair(db,sql,record,input.actorUserId);await db.recompute({assessment_instance_id:record.target.assessmentInstanceId,authn_user_id:input.actorUserId,credit:100});
   return{status:'RECOGNIZED_NATIVE_ADMIN_EVENT',eventId:event.id,key:hash({source:record.source,target:record.target,mappingRowHash:record.mappingRowHash})};
  });
 }

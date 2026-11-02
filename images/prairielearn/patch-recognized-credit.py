@@ -20,6 +20,10 @@ def patch(source,kind):
         anchor='if (credit == null) {'
         hook="const recognizedCreditCount = await applyRecognizedCredit({ assessment_instance_id });\n    if (recognizedCreditCount > 0) precomputedPointsByZone = undefined;\n    "
         source=once(source,anchor,hook+anchor)
+        # Match native manual grading credit:100, bounded by trusted AI events.
+        # Keep native points/maxima and existing bonus credit; no force-max.
+        anchor='const instanceQuestionsUsedForGrade ='
+        source=once(source,anchor,'if (recognizedCreditCount > 0) credit = Math.max(credit, 100);\n        '+anchor)
     elif kind=='grading-job':
         anchor='return gradingJob;'
         hook="if (!gradable && assessment_instance_id != null && instance_question_id != null) {\n      const recognizedCreditCount = await applyRecognizedCredit({ assessment_instance_id });\n      if (recognizedCreditCount > 0) await updateAssessmentInstanceGrade({ assessment_instance_id, authn_user_id: gradingJob.auth_user_id, credit });\n    }\n    "

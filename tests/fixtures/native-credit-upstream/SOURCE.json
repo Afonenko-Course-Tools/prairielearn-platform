@@ -7,7 +7,7 @@
     },
     "lib/assessment-grading.ts": {
       "source_sha256": "71b0aa36b8f5356445850c909ccd3bd194c65ddb87cd7bc576f1ac9184ba0c66",
-      "patched_sha256": "9ea2d79e915efbe7b5ccc5972ffc20d6ea88dcd22af436d5a98b3ba4630fe1e7"
+      "patched_sha256": "14a72cb15170849def3e846818122651276d355e332ad315f7a93f3b2cf9b67b"
     },
     "models/grading-job.ts": {
       "source_sha256": "d6e813fe2dccb286ca37f592e0899474895ce4e1e7275062ed2d08475688f590",
@@ -27,7 +27,7 @@
     },
     "dist/lib/assessment-grading.js": {
       "source_sha256": "b35c3291a9dcedfe69754ec032410eb4ba1000a36ad964809ad07960615843d0",
-      "patched_sha256": "0e6f7a82622498d9ea7dc7b0b4d5c8b14e6fafaeb017b5632b6b3fb3c4311884"
+      "patched_sha256": "984c2d2c0a85c13e119c5688dcec1da6d579a95cc8a85196ba5bcf1d24d720cf"
     },
     "dist/models/grading-job.js": {
       "source_sha256": "df226ebcbab9d5993d4b1e08b3bbeece98cf02238ee975461b9e735901f22812",
