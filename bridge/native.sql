@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS public.pl_gateway_assignments (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (course_instance_id, user_uid)
 );
+ALTER TABLE public.pl_gateway_assignments
+ADD COLUMN IF NOT EXISTS recognized_assessment_instance_id bigint
+REFERENCES assessment_instances (id);
 
 -- BLOCK grant_administrator
 WITH inserted AS (
@@ -28,6 +31,9 @@ SELECT
 -- BLOCK select_assignment
 SELECT
   request,
+  course_instance_id::text,
+  user_uid,
+  recognized_assessment_instance_id::text,
   updated_at::text AS activated_at
 FROM
   pl_gateway_assignments
@@ -49,14 +55,56 @@ VALUES
 ON CONFLICT (id) DO UPDATE
 SET
   request = EXCLUDED.request,
+  recognized_assessment_instance_id = NULL,
   updated_at = clock_timestamp();
 
 -- BLOCK select_assignment_attempt
 SELECT ai.id::text AS id, ai.number
 FROM assessment_instances ai JOIN assessments a ON a.id=ai.assessment_id
 WHERE a.course_instance_id=$course_instance_id AND a.tid=$work_id AND a.deleted_at IS NULL
-AND ai.user_id=$user_id AND ai.team_id IS NULL AND ai.date >= $activated_at::timestamptz
+AND ai.user_id=$user_id AND ai.team_id IS NULL
+AND (
+ ($recognized_assessment_instance_id::bigint IS NULL AND ai.date >= $activated_at::timestamptz)
+ OR (ai.id=$recognized_assessment_instance_id::bigint AND EXISTS (
+  SELECT 1 FROM audit_logs al
+  JOIN instance_questions iq ON iq.id=al.row_id AND iq.assessment_instance_id=ai.id
+  JOIN assessment_questions aq ON aq.id=iq.assessment_question_id AND aq.assessment_id=a.id AND aq.deleted_at IS NULL
+  JOIN questions q ON q.id=aq.question_id AND q.deleted_at IS NULL
+  JOIN course_instances ci ON ci.id=a.course_instance_id JOIN courses c ON c.id=ci.course_id
+  WHERE al.table_name='instance_questions' AND al.action='recognized_credit'
+  AND al.new_state->>'format'='NATIVE_RECOGNIZED_CREDIT_V1'
+  AND al.authn_user_id::text=al.new_state->>'actorUserId'
+  AND al.new_state->'target'->>'assessmentInstanceId'=ai.id::text
+  AND al.new_state->'target'->>'instanceQuestionId'=iq.id::text
+  AND al.new_state->'target'->>'assessmentId'=a.id::text
+  AND al.new_state->'target'->>'assessmentUUID'=a.uuid::text
+  AND al.new_state->'target'->>'assessmentQuestionId'=aq.id::text
+  AND al.new_state->'target'->>'questionId'=q.id::text
+  AND al.new_state->'target'->>'questionUUID'=q.uuid::text
+  AND al.new_state->'target'->>'courseInstanceId'=ci.id::text
+  AND al.new_state->'target'->>'courseInstanceUUID'=ci.uuid::text
+  AND al.new_state->'target'->>'courseId'=c.id::text
+  AND al.new_state->'target'->>'workId'=$work_id
+  AND al.new_state->'target'->>'userId'=$user_id::text
+  AND al.new_state->'target'->>'uid'=$user_uid
+  AND al.new_state->'target'->>'deliveryHash'=$delivery_hash
+ ))
+)
 ORDER BY ai.number DESC,ai.id DESC LIMIT 1;
+
+-- BLOCK bind_recognized_assignment
+UPDATE pl_gateway_assignments
+SET recognized_assessment_instance_id=$assessment_instance_id
+WHERE id=$id AND request=$request::jsonb
+AND course_instance_id=$course_instance_id AND user_uid=$user_uid
+AND (recognized_assessment_instance_id IS NULL OR recognized_assessment_instance_id=$assessment_instance_id)
+RETURNING recognized_assessment_instance_id::text;
+
+-- BLOCK migrate_recognized_assignment
+UPDATE pl_gateway_assignments SET request=$request::jsonb,
+course_instance_id=$course_instance_id,recognized_assessment_instance_id=NULL,updated_at=clock_timestamp()
+WHERE id=$id AND request=$prior_request::jsonb AND user_uid=$user_uid
+RETURNING request;
 
 -- BLOCK select_results
 SELECT ai.id::text AS attempt_id,ai.number AS attempt_number,q.qid AS qualified_id,
@@ -110,6 +158,7 @@ LIMIT
 -- BLOCK select_user_assignment
 SELECT
   request,
+  recognized_assessment_instance_id::text,
   updated_at::text AS activated_at
 FROM
   pl_gateway_assignments

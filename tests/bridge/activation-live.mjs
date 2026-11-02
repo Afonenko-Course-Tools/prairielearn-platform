@@ -14,7 +14,7 @@ const holder=db.runInTransactionAsync(async()=>{
 });
 await acquired;
 const waiter=db.runInTransactionAsync(async()=>{
- await db.execute('CREATE TEMP TABLE pl_gateway_assignments (id text PRIMARY KEY,course_instance_id bigint,user_uid text,request jsonb,updated_at timestamptz DEFAULT now()) ON COMMIT DROP',{});
+ await db.execute('CREATE TEMP TABLE pl_gateway_assignments (id text PRIMARY KEY,course_instance_id bigint,user_uid text,request jsonb,recognized_assessment_instance_id bigint,updated_at timestamptz DEFAULT now()) ON COMMIT DROP',{});
  const row=await db.queryRow('SELECT extract(epoch FROM now())::float8 AS t',{},z.object({t:z.number()}));
  releaseStarted();await db.execute(sql.lock,{lock_key:'gateway-activation-regression'});
  const params={id:'clock-test',course_instance_id:'1',user_uid:'clock-test',request:'{}'};
