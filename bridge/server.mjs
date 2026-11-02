@@ -1,6 +1,6 @@
-import {bridgeDeliverySchema} from './delivery.mjs';
+import {loadVerifiedBindings} from './bindings.mjs';
 import { readFile } from 'node:fs/promises';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import * as db from '@prairielearn/postgres';
@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { BridgeError, resolveAssignment, assignmentTransition, completion, validateNativeGroups, assignedSlots } from './policy.mjs';
 import {
   canonicalJSONString as canonical,
-  validateBindings,
   assertProductionRuntime,
   authorizeAdministrator,
 } from './policy.mjs';
@@ -52,27 +51,7 @@ const settings = settingsSchema.parse(
 );
 const token = (await readFile(settings.tokenFile, 'utf8')).trim();
 if (token.length < 32) throw new Error('Service token needs at least 32 characters');
-const bindings = [];
-for (const binding of settings.bindings) {
-  const delivery = bridgeDeliverySchema.parse(
-    JSON.parse(await readFile(`${binding.deliveryPath}/delivery.json`, 'utf8')),
-  );
-  const { deliveryHash, ...payload } = delivery;
-  if (createHash('sha256').update(canonical(payload)).digest('hex') !== deliveryHash)
-    throw new Error('Delivery hash mismatch');
-  for (const [path, hash] of Object.entries(delivery.files)) {
-    if (path.startsWith('/') || path.split('/').includes('..'))
-      throw new Error('Unsafe delivery path');
-    if (
-      createHash('sha256')
-        .update(await readFile(`${binding.deliveryPath}/${path}`))
-        .digest('hex') !== hash
-    )
-      throw new Error('Delivery file mismatch');
-  }
-  bindings.push({ ...binding, delivery });
-}
-validateBindings(bindings);
+const bindings = await loadVerifiedBindings(settings.bindings);
 await loadConfig([`${root}/config.json`]);
 assertProductionRuntime(process.env.NODE_ENV, config);
 await db.initAsync(
@@ -101,7 +80,7 @@ const requestSchema = z.strictObject({
   newWork: z.string().nullable(),
 });
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
-const assignmentRow = z.object({ request: requestSchema, activated_at: z.string() });
+const assignmentRow = z.object({ request: requestSchema, activated_at: z.string(), recognized_assessment_instance_id:z.string().nullable() });
 const resultRow = z.strictObject({
   attempt_id: z.string(),
   attempt_number: z.number().int(),
@@ -215,7 +194,9 @@ async function results(id, version) {
     if (!row || row.request.version !== version || !row.request.newWork)
       throw new BridgeError(409, 'Inactive or stale assignment');
     const request = row.request;
-    const { binding, ci, user } = await context(request);
+    const recognized=row.recognized_assessment_instance_id!==null;
+    const { binding, ci, user } = await context(request,!recognized);
+    if(recognized)resolveAssignment({...request,oldWork:null},binding.delivery);
     const enrollment = await enrollments.selectOptionalEnrollmentByUserId({
       userId: user.id,
       courseInstance: ci,
@@ -230,7 +211,8 @@ async function results(id, version) {
       !(await labels.selectStudentLabelsForEnrollment(enrollment)).some((l) => l.name === label)
     )
       throw new BridgeError(403, 'Assignment ACL absent');
-    const attemptRow=await db.queryOptionalRow(sql.select_assignment_attempt,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,activated_at:row.activated_at},z.strictObject({id:z.string(),number:z.number().int()}));
+    const attemptRow=await db.queryOptionalRow(sql.select_assignment_attempt,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,user_uid:user.uid,activated_at:row.activated_at,recognized_assessment_instance_id:row.recognized_assessment_instance_id,delivery_hash:request.deliveryHash},z.strictObject({id:z.string(),number:z.number().int()}));
+    if(recognized&&!attemptRow)throw new BridgeError(409,'Bound native recognition is absent or stale');
     const rows = attemptRow ? await db.queryRows(sql.select_results,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,assessment_instance_id:attemptRow.id},resultRow) : [];
     const slots=assignedSlots(work,rows,attemptRow,work.nativeGroups);
     return {

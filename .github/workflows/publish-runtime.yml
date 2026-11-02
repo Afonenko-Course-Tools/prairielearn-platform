@@ -11,9 +11,17 @@ on:
         required: true
         type: string
       exporter_commit:
-        description: Точный независимо проверенный commit Exporter для настоящих synthetic delivery4 packages
-        required: true
+        description: Точный проверенный commit Exporter для synthetic delivery4 packages (только components=all)
+        required: false
         type: string
+      components:
+        description: Полный набор runtime либо только Community без изменения grader/Workspace/registry
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - community
 permissions:
   contents: read
   packages: write
@@ -22,6 +30,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    if: ${{ inputs.components != 'community' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -37,10 +46,12 @@ jobs:
           VERSION: ${{ inputs.version }}
           REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
           EXPORTER_COMMIT: ${{ inputs.exporter_commit }}
+          COMPONENTS: ${{ inputs.components }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
           [[ "$EXPORTER_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$COMPONENTS" == all ]] || exit 1
           [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
           [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
@@ -158,4 +169,74 @@ jobs:
           path: |
             ${{ runner.temp }}/delivery4-fixtures/
             ${{ runner.temp }}/workspace-smoke.json
+          if-no-files-found: error
+
+  community:
+    if: ${{ inputs.components == 'community' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - name: Зафиксировать reviewed Community source
+        env:
+          VERSION: ${{ inputs.version }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
+          [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
+          echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
+      - name: Проверить Community Source contracts
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --test tests/bridge/*.test.mjs
+          for TEST in tests/recognized-*.test.mjs; do
+            if [[ "$TEST" == tests/recognized-aggregate.test.mjs ]]; then
+              python3 -B images/prairielearn/patch-recognized-credit.py --stdin assessment-grading < tests/fixtures/native-credit-upstream/dist/lib/assessment-grading.js > "$RUNNER_TEMP/recognized-assessment-grading.js"
+              node "$TEST" --aggregate="$RUNNER_TEMP/recognized-assessment-grading.js"
+            else
+              node --test "$TEST"
+            fi
+          done
+          python3 -B tests/bridge/cookie-domain.test.py
+          python3 -B tests/bridge/grader-patch.test.py
+          python3 -B tests/test_community_publication.py
+      - name: Авторизоваться в registry для Community
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Подтвердить отсутствие только Community tag
+        run: bash tools/require-absent-image.sh "$COMMUNITY_IMAGE"
+      - name: Собрать и проверить только Community
+        run: |
+          docker build --pull=false --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
+          docker run --rm --network=none --entrypoint node "$COMMUNITY_IMAGE" --check /PrairieLearn/apps/prairielearn/bridge/server.mjs
+      - name: Опубликовать только Community
+        run: docker push "$COMMUNITY_IMAGE"
+      - name: Проверить Community digest и source readback
+        run: |
+          COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
+          PREFIX="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway@sha256:"
+          [[ "$COMMUNITY_DIGEST" == "$PREFIX"* ]] || exit 1
+          HEX="${COMMUNITY_DIGEST#"$PREFIX"}"
+          [[ "$HEX" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          docker pull "$COMMUNITY_DIGEST"
+          [[ "$(docker image inspect "$COMMUNITY_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$GITHUB_SHA" ]] || exit 1
+          [[ "$(docker image inspect "$COMMUNITY_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" == "https://github.com/$GITHUB_REPOSITORY" ]] || exit 1
+          printf '%s\n' "$COMMUNITY_DIGEST" > community-image.txt
+          docker image inspect "$COMMUNITY_DIGEST" > community-image-inspect.json
+          printf 'Community %s\nSource %s\nImage %s\n' "$(cat VERSION)" "$GITHUB_SHA" "$COMMUNITY_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-community-digest-${{ inputs.version }}
+          path: |
+            community-image.txt
+            community-image-inspect.json
           if-no-files-found: error
