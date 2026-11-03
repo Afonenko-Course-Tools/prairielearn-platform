@@ -439,15 +439,45 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     shutil.rmtree(job.root)
             self.assertEqual(archives[0], archives[1])
             saved = fact["check"].pop("additional-java-sources")
-            with self.assertRaisesRegex(jobs.JobError, "mapping|Unauthorized"):
-                job = jobs.prepare_job(
+            # Полный named reference разрешён без student ZIP policy.
+            job = jobs.prepare_job(
+                manifest,
+                snapshot,
+                "demo/exr-extra",
+                "reference:correct",
+                registry=unit_registry(),
+            )
+            try:
+                self.assertEqual(
+                    job["grading"]["sourceFiles"], ["Base.java", "Student.java"]
+                )
+                self.assertNotIn("additionalJavaSources", job["grading"])
+                self.assertEqual(
+                    set(job["sourceHashes"]),
+                    {"reference/Base.java", "reference/Student.java"},
+                )
+                result = jobs.run_job(job, "host", registry=unit_registry())
+                self.assertEqual(result["classification"], "success", result)
+                self.assertEqual(result["publicResult"]["classification"], "success")
+            finally:
+                shutil.rmtree(job.root)
+            starter = jobs.prepare_job(
+                manifest, snapshot, "demo/exr-extra", "starter", registry=unit_registry()
+            )
+            try:
+                self.assertEqual(starter["grading"]["sourceFiles"], ["Student.java"])
+                self.assertNotIn("additionalJavaSources", starter["grading"])
+                self.assertFalse((starter.root / "student/Base.java").exists())
+            finally:
+                shutil.rmtree(starter.root)
+            with self.assertRaisesRegex(jobs.JobError, "Unauthorized"):
+                jobs.prepare_job(
                     manifest,
                     snapshot,
                     "demo/exr-extra",
-                    "reference:correct",
+                    "contract:extra",
                     registry=unit_registry(),
                 )
-                shutil.rmtree(job.root)
             fact["check"]["additional-java-sources"] = saved
             (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
             with self.assertRaisesRegex(jobs.JobError, "snapshot changed"):
