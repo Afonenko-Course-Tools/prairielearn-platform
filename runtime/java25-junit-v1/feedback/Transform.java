@@ -245,9 +245,8 @@ public final class Transform {
           : cf.transformClass(model, ClassTransform.transformingMethodBodies((builder, element) -> {
               if (element instanceof InvokeInstruction call && call.opcode() == Opcode.INVOKESTATIC
                   && call.owner().asInternalName().equals("org/junit/jupiter/api/Assertions")
-                  && !adapter) {
-                if (!supported.contains(call.name().stringValue() + call.type().stringValue()))
-                  throw new IllegalArgumentException("Unsupported exact descriptor: " + call);
+                  && !adapter
+                  && supported.contains(call.name().stringValue() + call.type().stringValue())) {
                 builder.invokestatic(FACADE, call.name().stringValue(), call.typeSymbol());
               } else
                 builder.with(element);

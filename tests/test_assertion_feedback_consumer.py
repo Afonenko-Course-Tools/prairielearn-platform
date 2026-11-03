@@ -81,6 +81,19 @@ class ConsumerGuards(unittest.TestCase):
         self.assertEqual(native["feedback"]["feedbackCompleteness"], "incomplete")
         self.assertEqual((native["score"], native["tests"][0]["points"]), (1, 1))
 
+    def test_success_without_optional_checks_has_complete_feedback(self):
+        result = self.result()
+        result["counts"]["cases"][0]["checks"] = []
+        native = af.feedback(result, {})
+        self.assertEqual(native["feedback"]["feedbackCompleteness"], "complete")
+        self.assertEqual((native["score"], native["tests"][0]["points"]), (1, 1))
+
+    def test_existing_tolerance_is_rendered_without_private_data(self):
+        result = self.result()
+        result["counts"]["cases"][0]["checks"][0]["delta"] = "0.25"
+        native = af.feedback(result, {})
+        self.assertIn("Допуск: 0.25", native["tests"][0]["description"])
+
 
 class SignedUnknownGuard(af.ProductionCase):
     def test_broken_signed_unknown_complete_is_infrastructure(self):

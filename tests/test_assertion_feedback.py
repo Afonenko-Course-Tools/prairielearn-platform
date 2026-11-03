@@ -159,6 +159,58 @@ class ProductionCase(unittest.TestCase):
 
 class AssertionFeedback(ProductionCase):
 
+    def test_ordinary_junit_keeps_real_leaves_and_private_failure_details(self):
+        (self.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @ParameterizedTest(name="Самостоятельный случай {0}") @ValueSource(ints={1,2})
+ void rows(int n){assertEquals((double)n,(double)n,"PRIVATE_PARAMETER_MESSAGE");}
+ @Test @DisplayName("Обычное равенство") void exact(){
+  assertEquals(187.25d,Student.answer(),"PRIVATE_DOUBLE_MESSAGE");
+ }
+ @Test @DisplayName("Две причины одного случая") void grouped(){
+  assertAll("PRIVATE_GROUP_MESSAGE",
+   ()->assertEquals(41,Student.answer(),"PRIVATE_FIRST_MESSAGE"),
+   ()->assertTrue(false,"PRIVATE_SECOND_MESSAGE"));
+ }
+ @Test @DisplayName("Равенство с допуском") void tolerance(){
+  assertEquals(41d,Student.answer(),0.01d,"PRIVATE_TOLERANCE_MESSAGE");
+ }
+ @Test @DisplayName("Успех без обязательного наблюдения") void lazy(){
+  assertEquals(42d,Student.answer(),()->{throw new IllegalStateException("EAGER_MESSAGE");});
+  assertArrayEquals(new boolean[]{true},new boolean[]{true});
+ }
+}
+""")
+        result = self.run_job()
+        counts = result["counts"]
+        self.assertEqual((counts["executed"], counts["passed"], counts["failed"]), (6, 3, 3))
+        self.assertTrue(counts["complete"])
+        self.assertEqual(result["score"], 0.5)
+        cases = counts["cases"]
+        group = next(c for c in cases if c["name"] == "Две причины одного случая")
+        self.assertEqual(len(group["checks"]), 2)
+        self.assertTrue(all(c["delegated"] == "threw" for c in group["checks"]))
+        lazy = next(c for c in cases if c["name"] == "Успех без обязательного наблюдения")
+        self.assertEqual((lazy["status"], lazy["checks"]), ("passed", []))
+        raw_cases = result["rawResult"]["tests"]
+        raw_group = next(c for c in raw_cases if c["name"] == "Две причины одного случая")
+        for message in ("PRIVATE_FIRST_MESSAGE", "PRIVATE_SECOND_MESSAGE"):
+            self.assertIn(message, raw_group["message"])
+        raw_exact = next(c for c in raw_cases if c["name"] == "Обычное равенство")
+        for detail in ("PRIVATE_DOUBLE_MESSAGE", "187.25", "42.0"):
+            self.assertIn(detail, raw_exact["message"])
+        native = feedback(result, self.cfg)
+        self.assertEqual((native["score"], len(native["tests"])), (0.5, 6))
+        tolerance = next(t for t in native["tests"] if t["name"] == "Равенство с допуском")
+        self.assertIn("Допуск: 0.01", tolerance["description"])
+        public = json.dumps(native, ensure_ascii=False)
+        for private in ("PRIVATE_", "187.25", "EAGER_MESSAGE", "java25-job-runtime-"):
+            self.assertNotIn(private, public)
+
     def test_real_arguments_reach_native_without_new_points(self):
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;

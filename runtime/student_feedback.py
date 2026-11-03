@@ -277,7 +277,7 @@ def student_result(result, descriptor):
                 lines = []
                 if case.get("reporter"):
                     lines.extend(["Наблюдение TestReporter:", test["description"]])
-                if not checks:
+                if not checks and case["status"] != "passed":
                     complete = False
                 for check in checks:
                     complete &= check["availability"] == "complete"
@@ -292,6 +292,7 @@ def student_result(result, descriptor):
                     if check["availability"] != "complete":
                         lines.append("Полнота: " + check["availability"])
                     for key, label in (
+                        ("delta", "Допуск"),
                         ("differenceIndex", "Первое различие"),
                         ("differenceLine", "Строка"),
                         ("differenceColumn", "Столбец"),
