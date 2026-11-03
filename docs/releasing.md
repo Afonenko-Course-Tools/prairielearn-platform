@@ -1,17 +1,14 @@
 # Версии Platform и публикация образов
 
-`VERSION` содержит **2.5.0** — локальную кандидатуру optional-primary Java с Core/Exporter 8.3.0. Новый runner source pin обновлён; новый OCI digest, actual image admission и assets ещё не получены.
+`VERSION` содержит **2.5.4** — кандидат Java-only исправления трёх точных JUnit overload и соответствующих bundle SHA. Исходная база сохраняет опубликованную Community 2.5.3 и reference-complete source tools. [Узкий порядок выпуска](releases/java-2.5.4.md) использует существующий Java Dockerfile и генератор трёх assets; fish/Workspace/Community повторно не собираются.
 
-Далее сохранён порядок существующего runtime publisher. Для 2.5.0 используются
-новый versioned source commit и его actual merged main SHA после review;
-старые 2.2.0/2.3.0 receipts не подтверждают этот runner. Source tag должен
-указывать на тот же source commit, что и новый runtime-image receipt.
-Принятые Root84 publication updates a42728c3534a65d77a5e7ca55ae4a81f83d3a36e
-включены локально; remote merge/publisher/actual image приёмка ещё не выполнены.
-Ниже сохранены исторические сведения о runtime-выпусках2.2.0/2.3.0;
-последовательность публикации относится к текущему кандидату2.5.0.
+Фактические Java OCI digest, source commit и asset hashes устанавливаются после build/push/readback. Локальный полный leaf-тест не является новым опубликованным образом. Для run120 и нового Java digest требуется новая достоверная Native delivery; действующая поставка не редактируется.
 
-Действующие образы **2.2.0** опубликованы из commit
+## Исторические сведения и полный publisher
+
+Следующие сведения о 2.2.0/2.3.0 и полном publisher сохранены для истории. Они не подтверждают новый Java OCI 2.5.4.
+
+Исторические образы **2.2.0** опубликованы из commit
 `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`; source tag выпускается после
 проверки metadata commit с фактическими pins.
 Исторический receipt2.2.0 объявляет delivery/results2; эти опубликованные bytes сохранены.
