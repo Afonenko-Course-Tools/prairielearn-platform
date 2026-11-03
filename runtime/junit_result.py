@@ -146,13 +146,14 @@ def validate_counts(counts, require_cases=True):
     for case in cases:
         if (
             not isinstance(case, dict)
-            or set(case) - {"id", "name", "status", "expected", "actual", "checks"}
+            or set(case) - {"id", "name", "status", "expected", "actual", "checks", "test"}
             or not {"id", "name", "status"} <= set(case)
             or any(
                 not isinstance(value, str) or len(value) > 8192
                 for key, value in case.items()
                 if key != "checks"
             )
+            or ("test" in case and not case["test"])
             or case["id"] not in outcomes
             or case["status"]
             != ("passed" if outcomes[case["id"]] == "successful" else "failed")

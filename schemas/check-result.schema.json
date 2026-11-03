@@ -2555,6 +2555,11 @@
           "items": {
             "$ref": "#/$defs/assertionCheck"
           }
+        },
+        "test": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
         }
       },
       "required": [

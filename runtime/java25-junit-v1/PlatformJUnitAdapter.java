@@ -118,6 +118,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       Map<String, String> report = new HashMap<>();
       report.put("id", id);
       report.put("name", bounded(test.getDisplayName()));
+      if (test.getSource().orElse(null) instanceof MethodSource method)
+        report.put("test", method.getClassName() + "#" + method.getMethodName());
       return report;
     });
   }

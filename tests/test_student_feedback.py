@@ -185,7 +185,130 @@ class StudentFeedback(unittest.TestCase):
         self.assertNotIn("score", value)
 
 
+class PublicCaseExecution(unittest.TestCase):
+    def fixture(self):
+        import test_assertion_feedback as af
+
+        counts = af.CheckShape().counts()
+        counts["cases"][0].update(test="T#t", checks=[])
+        descriptor = {"publicCases": [{
+            "id": "public", "name": "Публичная проверка", "test": "T#t",
+            "input": "2", "expected": "5",
+        }]}
+        return {"classification": "success", "score": 1, "counts": counts}, descriptor
+
+    def test_completed_leaf_status_does_not_require_subject_observation(self):
+        for outcome, status in (("successful", "passed"), ("failed", "failed")):
+            with self.subTest(outcome=outcome):
+                result, descriptor = self.fixture()
+                counts = result["counts"]
+                counts.update(passed=int(outcome == "successful"), failed=int(outcome == "failed"))
+                counts["outcomes"]["T#t"] = outcome
+                counts["failureKinds"] = {"T#t": "wrong-answer"} if outcome == "failed" else {}
+                counts["cases"][0]["status"] = status
+                case = feedback.student_result(result, descriptor)["feedback"]["publicCases"][0]
+                self.assertEqual((case["status"], case["actual"]), (status, None))
+
+    def test_missing_duplicate_aborted_or_infrastructure_does_not_confirm_execution(self):
+        import copy
+
+        for mutation in ("missing", "duplicate", "aborted", "skipped", "infrastructure"):
+            with self.subTest(mutation=mutation):
+                result, descriptor = self.fixture()
+                counts = result["counts"]
+                if mutation == "missing":
+                    counts["cases"][0]["test"] = "Other#method"
+                elif mutation == "duplicate":
+                    extra = copy.deepcopy(counts["cases"][0]); extra["id"] = "second"
+                    counts["cases"].append(extra)
+                    counts["registered"].append("second"); counts["started"].append("second")
+                    counts["outcomes"]["second"] = "successful"
+                    counts.update(discovered=2, executed=2, passed=2)
+                elif mutation == "aborted":
+                    counts.update(passed=0, aborted=1)
+                    counts["outcomes"]["T#t"] = "aborted"
+                    counts["cases"][0]["status"] = "failed"
+                elif mutation == "skipped":
+                    counts.update(executed=0, passed=0, skipped=1, started=[], cases=[])
+                    counts["outcomes"]["T#t"] = "skipped"
+                else:
+                    result.update(classification="infrastructure-failure", infrastructure="failure")
+                result["publicCaseObservations"] = [{
+                    "id": "public", "test": "T#t", "actual": "CLOSED_UNCONFIRMED", "status": "passed",
+                }]
+                case = feedback.student_result(result, descriptor)["feedback"]["publicCases"][0]
+                self.assertEqual((case["status"], case["actual"]), ("not-run", None))
+
+    def test_reporter_actual_and_legacy_version_one_fallback_remain_available(self):
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                result, descriptor = self.fixture()
+                if legacy:
+                    result["counts"]["feedbackProtocolVersion"] = 1
+                    result["counts"]["cases"][0].pop("test")
+                    result["counts"]["cases"][0].pop("checks")
+                result["publicCaseObservations"] = [{
+                    "id": "public", "test": "T#t", "actual": "явно получено", "status": "passed",
+                }]
+                case = feedback.student_result(result, descriptor)["feedback"]["publicCases"][0]
+                self.assertEqual((case["status"], case["actual"]), ("passed", "явно получено"))
+
+    def test_incomplete_counts_and_invalid_selector_are_rejected(self):
+        import runpy, jsonschema
+
+        decoder = runpy.run_path(str(ROOT / "runtime/junit_result.py"))["validate_counts"]
+        schema = json.loads((ROOT / "schemas/check-result.schema.json").read_text())
+        validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/caseResult", "$defs": schema["$defs"]})
+        result, descriptor = self.fixture()
+        decoder(result["counts"])
+        validator.validate(result["counts"]["cases"][0])
+        result["counts"]["complete"] = False
+        with self.assertRaises(ValueError):
+            feedback.student_result(result, descriptor)
+        for selector in ("", 42, "x" * 8193):
+            result, _ = self.fixture()
+            case = result["counts"]["cases"][0]; case["test"] = selector
+            with self.subTest(selector_type=type(selector).__name__):
+                with self.assertRaises(ValueError):decoder(result["counts"])
+                self.assertTrue(list(validator.iter_errors(case)))
+
+
 class ActualNativeFeedback(unittest.TestCase):
+    def test_method_source_confirms_public_status_without_reporter(self):
+        import test_grading_job as fixtures, subprocess, os
+
+        fixture = fixtures.JUnitJob(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
+        fixture.cfg["publicCases"] = [
+            {"id": name, "name": name, "test": "AnswerTest#" + name, "input": "", "expected": "42"}
+            for name in ("normal", "wrong", "observed", "missing")
+        ]
+        (fixture.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @Test @DisplayName("Имя не является selector") void normal(){assertEquals(42,Student.answer());}
+ @Test void wrong(){assertEquals(41,Student.answer(),"CLOSED_THROWABLE");}
+ @Test void observed(TestReporter r){r.publishEntry(java.util.Map.of("public-case","observed","actual","42"));assertEquals(42,Student.answer());}
+}
+""")
+        (fixture.job / "tests/grading-job.json").write_text(json.dumps(fixture.cfg))
+        run = subprocess.run([
+            "python3", str(unit_platform(self) / "images/java25-grader/grade.py"),
+            "--job-dir", str(fixture.job), "--verification",
+        ], text=True, capture_output=True, env=os.environ, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        result = json.loads((fixture.job / "results/results.json").read_text())
+        public = feedback.student_result(result, fixture.cfg)
+        self.assertEqual((result["counts"]["executed"], result["counts"]["passed"]), (3, 2))
+        self.assertEqual(public["score"], 2 / 3)
+        self.assertEqual(
+            [(c["status"], c["actual"]) for c in public["feedback"]["publicCases"]],
+            [("passed", None), ("failed", None), ("passed", "42"), ("not-run", None)],
+        )
+        self.assertEqual({c["test"] for c in result["counts"]["cases"]},
+                         {"AnswerTest#normal", "AnswerTest#wrong", "AnswerTest#observed"})
+        self.assertNotIn("CLOSED_", json.dumps(public))
+        self.assertTrue(all("test" not in c for c in public["feedback"]["publicCases"] + public["feedback"]["cases"]))
+
     def test_public_reporting_entries_and_private_canary(self):
         import test_grading_job as fixtures, subprocess, os
 

@@ -10,7 +10,7 @@
       "bundle": "runtime/java25-junit-v1",
       "files": {
         "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
-        "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
+        "PlatformJUnitAdapter.java": "b5349d30c28248bffdfbd0e08e9735204b450362f02721d3c7641820b5a30e2f",
         "feedback/Transform.java": "4c4f712165edb2b1aa355afead72ef61dda2d9c2b313fa15cbb93736251338c7",
         "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",
         "feedback/module/org/prairielearn/feedback/Assertions.java": "d568f88da7dec6392dca0f1975dbeac78a76ac6b54b537085d97e1d581a0de68",
@@ -28,8 +28,8 @@
       },
       "runnerSha256": "a529996a56d9e5906e8b7655667cee133eacddb16c07bc27164ff0c4c684c4af",
       "sharedFiles": {
-        "runtime/student_feedback.py": "36774ab9013744651f52f37128d3900869ab5caf0f8a46cc4e213812c5953538",
-        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
+        "runtime/student_feedback.py": "54beda2d884e1b00c274bbca155de5bc910dcc29ecbe85c764ac0ff04c7872fe",
+        "runtime/junit_result.py": "ffbcbf3282beed963a2b47d256c29dac46c8d44110d7f176267ca677019b1ebe"
       },
       "assertionFeedbackProtocol": 2
     },
@@ -42,7 +42,7 @@
       "bundle": "runtime/java25-junit-v1",
       "files": {
         "PlatformApiPrecheck.java": "061019f75ce624c43b19027902e3d1d10c7c9ac65dff614df89c5aca31db2fae",
-        "PlatformJUnitAdapter.java": "ead632e48fb16e82b75ad02b44fc01c8563b0eabafc0981f8aea2711b8fd0991",
+        "PlatformJUnitAdapter.java": "b5349d30c28248bffdfbd0e08e9735204b450362f02721d3c7641820b5a30e2f",
         "feedback/Transform.java": "4c4f712165edb2b1aa355afead72ef61dda2d9c2b313fa15cbb93736251338c7",
         "feedback/module/module-info.java": "030c13198a143a66df1d29d2ad39d5166904091c614680721e6541daffa1f228",
         "feedback/module/org/prairielearn/feedback/Assertions.java": "d568f88da7dec6392dca0f1975dbeac78a76ac6b54b537085d97e1d581a0de68",
@@ -60,8 +60,8 @@
       },
       "runnerSha256": "a529996a56d9e5906e8b7655667cee133eacddb16c07bc27164ff0c4c684c4af",
       "sharedFiles": {
-        "runtime/student_feedback.py": "36774ab9013744651f52f37128d3900869ab5caf0f8a46cc4e213812c5953538",
-        "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
+        "runtime/student_feedback.py": "54beda2d884e1b00c274bbca155de5bc910dcc29ecbe85c764ac0ff04c7872fe",
+        "runtime/junit_result.py": "ffbcbf3282beed963a2b47d256c29dac46c8d44110d7f176267ca677019b1ebe"
       },
       "assertionFeedbackProtocol": 2
     },
@@ -79,7 +79,7 @@
         "supervisor.py": "d7aa7ab5e721b4b55cb604d77a633c41fb294b540420dfc8230a47d52ccb2ee3"
       },
       "sharedFiles": {
-        "runtime/student_feedback.py": "36774ab9013744651f52f37128d3900869ab5caf0f8a46cc4e213812c5953538",
+        "runtime/student_feedback.py": "54beda2d884e1b00c274bbca155de5bc910dcc29ecbe85c764ac0ff04c7872fe",
         "schemas/grading-descriptor.schema.json": "94944d3fccb9ec8f19468056e8289738cf60d4c0728529ff5e786a48b6e9fd68"
       }
     }

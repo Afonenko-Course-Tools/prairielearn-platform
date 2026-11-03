@@ -146,6 +146,30 @@ def student_result(result, descriptor):
             and math.isfinite(score)
         ):
             native["score"] = max(0, min(1, score))
+    counts = result.get("counts", {})
+    if isinstance(counts, dict) and (
+        "cases" in counts or "feedbackProtocolVersion" in counts
+    ):
+        # Fish counts have a separate shape and no JUnit case projection.
+        # Every JUnit projection uses the same decoder before reading cases.
+        import runpy
+        from pathlib import Path
+
+        runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
+            "validate_counts"
+        ](
+            counts,
+            require_cases=not (
+                descriptor.get("mode") == "student-tests"
+                and counts.get("feedbackProtocolVersion", 1) == 1
+            ),
+        )
+    case_results = counts.get("cases") if isinstance(counts, dict) else None
+    bound_cases = (
+        [case for case in case_results if "test" in case]
+        if isinstance(case_results, list)
+        else []
+    )
     observations = result.get("publicCaseObservations", [])
     for case in cases:
         # Only the declared trusted test may report this explicitly public case.
@@ -162,14 +186,29 @@ def student_result(result, descriptor):
             if key in case
         }
         value.update(actual=None, status="not-run")
-        if (
+        reported = (
             len(matches) == 1
             and matches[0].get("status") in ("passed", "failed")
             and isinstance(matches[0].get("actual"), str)
-        ):
-            value.update(
-                actual=matches[0]["actual"][:8192], status=matches[0]["status"]
-            )
+        )
+        if kind != "infrastructure":
+            if bound_cases:
+                execution = [leaf for leaf in bound_cases if leaf["test"] == case["test"]]
+                if len(execution) == 1:
+                    outcome = counts["outcomes"][execution[0]["id"]]
+                    if outcome in ("successful", "failed"):
+                        value["status"] = "passed" if outcome == "successful" else "failed"
+                        if reported and matches[0]["status"] == value["status"]:
+                            value["actual"] = matches[0]["actual"][:8192]
+            elif reported and (
+                case_results is None
+                or ("successful" if matches[0]["status"] == "passed" else "failed")
+                in counts["outcomes"].values()
+            ):
+                # Compatibility with earlier DTOs without MethodSource binding.
+                value.update(
+                    actual=matches[0]["actual"][:8192], status=matches[0]["status"]
+                )
         feedback["publicCases"].append(value)
     if feedback["publicCases"]:
         labels = {
@@ -206,25 +245,6 @@ def student_result(result, descriptor):
             }
             for c in feedback["publicCases"]
         ]
-    counts = result.get("counts", {})
-    if isinstance(counts, dict) and (
-        "cases" in counts or "feedbackProtocolVersion" in counts
-    ):
-        # Fish counts have a separate shape and no JUnit case projection.
-        # Every JUnit projection uses the same decoder before reading cases.
-        import runpy
-        from pathlib import Path
-
-        runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
-            "validate_counts"
-        ](
-            counts,
-            require_cases=not (
-                descriptor.get("mode") == "student-tests"
-                and counts.get("feedbackProtocolVersion", 1) == 1
-            ),
-        )
-    case_results = counts.get("cases") if isinstance(counts, dict) else None
     if (
         kind != "infrastructure"
         and isinstance(case_results, list)
