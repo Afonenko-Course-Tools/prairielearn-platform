@@ -730,4 +730,34 @@ public final class Assertions {
       throw error;
     }
   }
+  public static void assertEquals(int expected, Integer actual) {
+    var token = State.begin("равенство", expected, actual, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(expected, actual);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertFalse(boolean actual, String message) {
+    var token = State.begin("значение предиката", false, actual, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertFalse(actual, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(char[] expected, char[] actual) {
+    var token = State.begin("равенство массивов", expected, actual, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(expected, actual);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
 }

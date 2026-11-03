@@ -30,3 +30,28 @@ public class AnswerTest {
             if case is not correct:
                 self.assertEqual([c['delegated'] for c in case['checks']], ['threw'])
 
+
+    def test_three_exact_overloads_keep_leaf_feedback(self):
+        (self.job / 'tests/AnswerTest.java').write_text('''
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @Test void correct() {
+  assertEquals(42, Integer.valueOf(Student.answer()));
+  assertFalse(Student.answer()!=42, "PRIVATE_MESSAGE");
+  assertArrayEquals(new char[]{'я'},new char[]{'я'});
+ }
+ @Test void wrongBoxed() {assertEquals(41,Integer.valueOf(Student.answer()));}
+ @Test void nullBoxed() {assertEquals(42,(Integer)null);}
+ @Test void wrongFalse() {assertFalse(Student.answer()==42,"PRIVATE_MESSAGE");}
+ @Test void wrongChars() {assertArrayEquals(new char[]{'я'},new char[]{'ю'});}
+}''')
+        result = self.run_job()
+        self.assertEqual((result['counts']['executed'], result['counts']['passed'],
+                          result['counts']['failed']), (5, 1, 4))
+        self.assertEqual(result['score'], 0.2)
+        correct = next(c for c in result['counts']['cases'] if 'correct()' in c['id'])
+        self.assertEqual([c['delegated'] for c in correct['checks']], ['returned'] * 3)
+        for case in result['counts']['cases']:
+            if case is not correct:
+                self.assertEqual([c['delegated'] for c in case['checks']], ['threw'])
