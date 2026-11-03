@@ -1,6 +1,6 @@
 # PrairieLearn platform
 
-Исходники кандидата **2.5.2** добавляют узкую границу qualified launch: абсолютный installed C entry, `cwd` владельца и необязательный свежий `--export-stage`, выбранный до RME/prior P. Это не новый authority API. [Порядок запуска и cleanup](docs/qualified-launch.md) описывает ограничения. Новые hosted CI, четыре OCI и три authenticated assets/readback относятся к отдельному выпуску; свидетельства 2.5.1 не выдаются за 2.5.2. Подготовка toolchain — в [runtime README](runtime/gradle-jar-v1/README.md), публикация — в [docs/releasing.md](docs/releasing.md).
+Исходники кандидата **2.5.4** сохраняют опубликованную Community 2.5.3, qualified launch и reference-complete source tools. Java-фасад дополняется тремя штатными JUnit overload с прежним независимым leaf-feedback; bundle SHA двух Java-профилей обновлены по фактическому фасаду. [Порядок выпуска 2.5.4](docs/releases/java-2.5.4.md) предусматривает новый Java OCI и registry/assets, сохраняя Community/fish/Workspace digest. Старые receipts не переназначаются. Новый OCI/readback и новая Native delivery подтверждаются отдельно; локальная проверка не выдаётся за публикацию.
 
 Принятые publication/private-source изменения из a42728c3534a65d77a5e7ca55ae4a81f83d3a36e включены локально.
 Новая runtime поставка требует собственного source/image/asset proof; старые receipts не переназначаются.
