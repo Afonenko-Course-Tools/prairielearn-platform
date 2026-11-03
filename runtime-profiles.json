@@ -26,7 +26,7 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "d25691ae4c31afe29445b18f9e012890b798e5d4c9717ddae0bb6395f14c6b57",
+      "runnerSha256": "a529996a56d9e5906e8b7655667cee133eacddb16c07bc27164ff0c4c684c4af",
       "sharedFiles": {
         "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
         "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"
@@ -58,7 +58,7 @@
         "upstream/LICENSE": "f3fba75145cfb48af6b3f50664b12459b5a60b50500176692b06309beb1dda4d",
         "upstream/org/prairielearn/autograder/AutograderInfo.java": "43e3e320cb5fae2840462d36dea21c9fdbb0c99fbcb51ad3e692739b2bf3683f"
       },
-      "runnerSha256": "d25691ae4c31afe29445b18f9e012890b798e5d4c9717ddae0bb6395f14c6b57",
+      "runnerSha256": "a529996a56d9e5906e8b7655667cee133eacddb16c07bc27164ff0c4c684c4af",
       "sharedFiles": {
         "runtime/student_feedback.py": "a4f5237e85866f3169f77f774f65152b57a6ccb0032aff2edd29535f4756f59e",
         "runtime/junit_result.py": "36a019f32d66dcf2ec125738c02e2e22d7a2585bd628596556d846ea6dfd3a4e"

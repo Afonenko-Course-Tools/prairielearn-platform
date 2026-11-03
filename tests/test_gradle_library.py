@@ -336,6 +336,14 @@ class ActualTrustedRecipe(unittest.TestCase):
         (unit / "src").mkdir()
         self.preserve("selected/" + filename, self.source / relative)
         shutil.copyfile(self.source / relative, unit / "src" / filename)
+        classes = unit / "production-classes"
+        classes.mkdir()
+        self.run_process([
+            os.environ["JAVA_HOME"] + "/bin/javac", "--release", "25",
+            "-encoding", "UTF-8", "-proc:none", "-Xmaxerrs", "5",
+            "-sourcepath", "", "-cp", str(classes), "-d", str(classes),
+            unit / "src" / filename,
+        ], unit)
         config = {"kind": "gradle-jar-v1", "artifact": "production.jar"}
         if main is not None:
             config["mainClass"] = main
@@ -368,6 +376,7 @@ class ActualTrustedRecipe(unittest.TestCase):
             "jar",
         ]
         output = self.run_process(command, unit)
+        self.assertIn(":compileJava SKIPPED", output)
         self.assertNotIn(":test", output)
         self.assertFalse((unit / "build/classes/java/test").exists())
         jar = unit / "build/libs/production.jar"

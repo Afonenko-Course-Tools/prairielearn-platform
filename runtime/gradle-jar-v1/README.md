@@ -1,8 +1,9 @@
 # Доверенная сборка production JAR
 
 Новый opt-in `java25-gradle-junit-v1` использует существующий Java runner:
-компиляция выбранных исходников → независимый API precheck → фиксированный
-`clean jar` установленного Gradle 9.8.0 → прежние trusted JUnit/JavaProcess
+единственная компиляция выбранных исходников настоящим JDK25 javac с `--release 25`
+и без внешних production dependencies → независимый API precheck → фиксированный
+`clean jar` установленного Gradle 9.8.0 из read-only копии готовых classes → trusted JUnit/JavaProcess
 проверки. Descriptor содержит закрытый `javaBuild` с `kind: gradle-jar-v1`,
 безопасным basename `artifact` и необязательным `mainClass`. Если `mainClass`
 отсутствует, собирается обычный library JAR без `Main-Class`; фиктивный main не
@@ -12,10 +13,22 @@
 в конфигурации recipe и input digest, без подстановки defaults. Исполняемый
 JAR с явно указанным main сохраняет прежний manifest и запуск.
 
-Сборка использует только копии выбранных production Java sources, этот recipe,
-settings и проверенные значения descriptor. Присланные build scripts, Wrapper,
+API и JUnit используют исходный private каталог classes той же компиляции.
+Supervisor копирует эти bytes в отдельный read-only `production-classes`,
+а штатная Gradle task `jar` создаёт настоящий library/executable JAR;
+`compileJava` отключена. При передаче результата состав и bytes JAR сверяются
+с classes, использованными API/JUnit. Gradle startup сохраняется.
+
+Сборка получает только эти classes, копии выбранных production Java sources
+для provenance, этот recipe, settings и проверенные значения descriptor.
+Присланные build scripts, Wrapper,
 init scripts, tests и внешние production dependencies не запускаются. Проверка
 не оценивает учебную часть написания студентом Gradle scripts.
+Самостоятельный Gradle-проект студента и предметные проверки JAR сохраняются.
+Обычный `java25-junit-v1` не запускает этот recipe и сохраняет свой classpath;
+JUnit/framework доступны trusted/test коду. Неподдерживаемый import внешней
+production dependency в native профиле даёт ранний student compile error,
+до API, Gradle и зависимых тестов.
 
 Требуются официальный изолированный supervisor, отдельный проверенный UID,
 реальное отсутствие сети, недоступность private inputs и полный допущенный
@@ -39,7 +52,8 @@ Source lock содержит ожидаемые319 JDK/716 Gradle files со с�
 `nativebuild` — фиксированная non-login учётная запись с собственной private group.
 Оператор записывает фактически выделенные UID/GID. Только trusted builtin Gradle recipe
 получает полный JDK319 в `/opt/native-jdk`: root-owned дерево, корень0750 и GID
-группы `nativebuild`. Выбранные production Java sources компилируются без processors;
+группы `nativebuild`. Supervisor компилирует production Java sources без processors
+на hardened JDK25, а nativebuild получает только root-owned read-only копию classes;
 пользовательские build scripts, тесты и bindings не являются build inputs.
 
 `sbuser` выполняет API/JUnit и обычные/вложенные student JVM на неизменённом hardened
@@ -57,8 +71,9 @@ SHA256 `6c964acad9b3c929edb97eba9acc799907a68c89011336e813c88ee26fb00e9c`.
 
 Перед private фазой supervisor завершает и reap-ит build-role descendants в своём
 container PID namespace, проверяет отсутствие оставшихся процессов и удаляет свежие
-build work/HOME/cache. До и после grading повторно проверяются роли, группы,
-приватный корень, core hardened payload и отказ доступа к полному JDK. Drift —
+build work/HOME/cache. На переходе build→grading проверяются роли, группы,
+приватный корень и отказ доступа к полному JDK. Metadata установки допускаются
+один раз в начале job; полные bytes сверяются при подготовке image. Drift —
 infrastructure/noScore, а не ошибка студента. Exact null helper81cd… не изменён.
 
 Dockerfile требует закрытые `.native-toolchain` inputs, подготовленные оператором;

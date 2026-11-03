@@ -1452,7 +1452,14 @@ def _execute(
                 os.pathsep.join([libs, str(trusted)]),
             )
         else:
-            code, reason = compile_phase("studentCompilation", sources, student, libs)
+            # Native production has no external dependencies in the fixed recipe.
+            # An empty directory also prevents javac's empty -cp from using cwd.
+            production_classpath = (
+                str(student) if config["runtime"] == NATIVE_RUNTIME else libs
+            )
+            code, reason = compile_phase(
+                "studentCompilation", sources, student, production_classpath
+            )
         if reason:
             raise GraderError("Student compilation infrastructure limit: " + reason)
         if code:
@@ -2269,6 +2276,29 @@ def _native_build(
             if path.is_dir():
                 path.chmod(0o555)
         src.chmod(0o555)
+        # Only this supervisor-created javac output crosses into the build role.
+        # API and JUnit keep using the original private stage/student bytes.
+        compiled = stage / "student"
+        classes = work / "production-classes"
+        classes.mkdir(mode=0o755)
+        class_hashes = {}
+        for path in sorted(compiled.rglob("*.class")):
+            name = path.relative_to(compiled).as_posix()
+            source = _files_any(compiled, name)
+            info = source.stat()
+            if info.st_uid != os.geteuid() or info.st_nlink != 1:
+                raise GraderError("Unsafe compiled production class")
+            data = source.read_bytes()
+            class_hashes[name] = hashlib.sha256(data).hexdigest()
+            target = classes / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as output:
+                output.write(data)
+            target.chmod(0o444)
+        for directory in sorted(classes.rglob("*"), reverse=True):
+            if directory.is_dir():
+                directory.chmod(0o555)
+        classes.chmod(0o555)
         for name in NATIVE_RECIPE[:2]:
             target = work / Path(name).name
             target.write_bytes(_files_any(PLATFORM, name).read_bytes())
@@ -2305,6 +2335,7 @@ def _native_build(
         }
         admitted_copies = {
             **{"src/" + name: sha for name, sha in inputs.items()},
+            **{"production-classes/" + name: sha for name, sha in class_hashes.items()},
             **{Path(name).name: recipe[name] for name in NATIVE_RECIPE[:2]},
             "native-config.json": hashlib.sha256(
                 json.dumps(build, sort_keys=True).encode()
@@ -2354,6 +2385,23 @@ def _native_build(
             raise GraderError("Trusted Gradle build failed: " + (reason or str(code)))
         relative = "build/libs/" + build["artifact"]
         state = _artifact_state(work, relative)
+        # Bind the JAR's implementation at the actual build-to-grading handoff.
+        # No later full inventory of immutable classes is needed.
+        try:
+            with zipfile.ZipFile(_files_any(work, relative)) as archive:
+                members = [entry for entry in archive.infolist() if not entry.is_dir()]
+                names = [entry.filename for entry in members]
+                if len(names) != len(set(names)) or set(names) != {
+                    "META-INF/MANIFEST.MF", *class_hashes
+                }:
+                    raise GraderError("Native JAR differs from compiled production classes")
+                if any(
+                    hashlib.sha256(archive.read(name)).hexdigest() != digest
+                    for name, digest in class_hashes.items()
+                ):
+                    raise GraderError("Native JAR differs from compiled production classes")
+        except (zipfile.BadZipFile, RuntimeError, zlib.error) as error:
+            raise GraderError("Invalid native JAR") from error
         libs = _files_any(work, relative).parent
         if {p.name for p in libs.iterdir()} != {build["artifact"]}:
             raise GraderError("Unexpected native build artifacts")
