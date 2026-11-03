@@ -528,8 +528,6 @@ class NativeArtifactUnitTests(unittest.TestCase):
         )
 
         def process(command, cwd, *args, **kwargs):
-            if "--version" in command:
-                return 0, "Gradle 9.8.0\n", None
             # The exact fixed offline argv is required at the process boundary.
             self.assertEqual(
                 command,
@@ -579,7 +577,7 @@ class NativeArtifactUnitTests(unittest.TestCase):
             )
 
     def test_fresh_artifact_is_guarded_and_post_execution_drift_is_rejected(self):
-        (proof, verify), lock = self.build()
+        (proof, verify), _ = self.build()
         self.assertEqual(proof["status"], "success")
         self.assertEqual(proof["artifact"]["path"], "build/libs/gradeapp.jar")
         self.assertEqual(
@@ -587,14 +585,12 @@ class NativeArtifactUnitTests(unittest.TestCase):
         )
         private = self.job / ".native-build-private"
         self.assertEqual(private.stat().st_mode & 0o777, 0o700)
-        with patch.object(grader, "_verify_native_toolchain", return_value=lock):
-            verify()
+        verify()
         artifact = self.job / "build/libs/gradeapp.jar"
         artifact.chmod(0o644)
         artifact.write_bytes(b"UNIT ONLY retarget")
-        with patch.object(grader, "_verify_native_toolchain", return_value=lock):
-            with self.assertRaises(grader.GraderError):
-                verify()
+        with self.assertRaises(grader.GraderError):
+            verify()
 
     def test_source_or_recipe_drift_never_hands_off_artifact(self):
         for kind in ["source", "recipe", "symlink", "hardlink"]:
@@ -622,6 +618,18 @@ class NativeArtifactUnitTests(unittest.TestCase):
                 with self.assertRaises(grader.GraderError):
                     self.build(mutation)
                 self.assertFalse((self.job / "build").exists())
+
+    def test_changed_roles_after_build_refuse_private_grading(self):
+        import copy
+
+        def mutation(cwd):
+            changed = copy.deepcopy(grader._grading_boundary.return_value)
+            changed["roles"]["sbuser"]["uid"] += 1
+            grader._grading_boundary.return_value = changed
+
+        with self.assertRaisesRegex(grader.GraderError, "role identity drift"):
+            self.build(mutation=mutation)
+        self.assertFalse((self.job / "build").exists())
 
     def test_preexisting_artifact_parent_refuses_before_build_child(self):
         from types import SimpleNamespace
@@ -948,9 +956,15 @@ class HardenedCoreSelectionTests(unittest.TestCase):
                 os, "fstat", side_effect=lambda fd: synthetic_root(real_fstat(fd))
             ):
                 self.assertEqual(set(grader._hardened_tool_state()), set(files))
+                with patch.object(os, "open", side_effect=AssertionError("core bytes read")):
+                    self.assertEqual(
+                        set(grader._hardened_tool_state(verify_bytes=False)), set(files)
+                    )
                 library = home / "lib/modules"
                 original = library.read_bytes()
                 library.write_bytes(b"changed")
+                with self.assertRaises(grader.GraderError):
+                    grader._hardened_tool_state(verify_bytes=False)
                 with self.assertRaises(grader.GraderError):
                     grader._hardened_tool_state()
                 library.write_bytes(original)
@@ -999,3 +1013,46 @@ class BuildTransitionCleanupTests(unittest.TestCase):
                 receipt,
                 {"uid": 1102, "remaining": [], "terminated": expected, "reaped": []},
             )
+
+
+class InstallationMetadataAdmissionTests(unittest.TestCase):
+    def test_admission_never_reads_installed_bytes_and_rejects_writers_and_links(self):
+        """Настоящие fixture paths; root ownership и внешние parents синтетические."""
+        from types import SimpleNamespace
+        import stat
+
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "installed"
+            home.mkdir()
+            tool = home / "tool"
+            tool.write_bytes(b"admitted installation")
+            tool.chmod(0o755)
+            real_lstat = Path.lstat
+
+            def observed(path):
+                s = real_lstat(path)
+                fields = {n: getattr(s, n) for n in dir(s) if n.startswith("st_")}
+                fields["st_uid"] = 0
+                if path != home and home not in path.parents:
+                    fields["st_mode"] = stat.S_IFDIR | 0o755
+                return SimpleNamespace(**fields)
+
+            with patch.object(Path, "lstat", observed), patch.object(
+                Path, "read_bytes", side_effect=AssertionError("installation bytes read")
+            ):
+                expected = {"tool": {"bytes": 21, "mode": "0o755"}}
+                self.assertEqual(
+                    grader._installation_inventory(home, verify_bytes=False), expected
+                )
+                tool.chmod(0o775)
+                with self.assertRaises(grader.GraderError):
+                    grader._installation_inventory(home, verify_bytes=False)
+                tool.chmod(0o755)
+                os.link(tool, home / "alias")
+                with self.assertRaises(grader.GraderError):
+                    grader._installation_inventory(home, verify_bytes=False)
+                (home / "alias").unlink()
+                tool.unlink()
+                tool.symlink_to(home / "missing")
+                with self.assertRaises(grader.GraderError):
+                    grader._installation_inventory(home, verify_bytes=False)

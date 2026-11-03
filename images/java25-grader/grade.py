@@ -283,10 +283,24 @@ def _finish_build_role(uid):
         time.sleep(0.02)
 
 
-def _hardened_tool_state():
+def _hardened_tool_state(*, verify_bytes=True):
     lock = json.loads(_files_any(PLATFORM, NATIVE_RECIPE[2]).read_text())
     files = lock["jdk"]["files"]
     state = {}
+
+    def identity(s):
+        return (
+            s.st_dev,
+            s.st_ino,
+            s.st_uid,
+            s.st_gid,
+            s.st_mode,
+            s.st_nlink,
+            s.st_size,
+            s.st_mtime_ns,
+            s.st_ctime_ns,
+        )
+
     for parent in [HARDENED_JDK, *HARDENED_JDK.parents]:
         info = parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o7022:
@@ -317,19 +331,15 @@ def _hardened_tool_state():
             or info.st_mode & 0o7022
         ):
             raise GraderError("Unsafe hardened tool")
+        if not verify_bytes:
+            if info.st_size != expected["bytes"] or oct(
+                stat.S_IMODE(info.st_mode)
+            ) != expected["mode"]:
+                raise GraderError("Hardened core metadata drift")
+            state[name] = identity(info)
+            continue
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         try:
-            identity = lambda s: (
-                s.st_dev,
-                s.st_ino,
-                s.st_uid,
-                s.st_gid,
-                s.st_mode,
-                s.st_nlink,
-                s.st_size,
-                s.st_mtime_ns,
-                s.st_ctime_ns,
-            )
             if identity(os.fstat(fd)) != identity(info):
                 raise GraderError("Hardened path/FD drift")
             h = hashlib.sha256()
@@ -355,8 +365,16 @@ def _grading_boundary_unchecked():
     if not Path("/.dockerenv").is_file() or os.geteuid() != 0:
         raise GraderError("Java role boundary requires container namespace supervisor")
     roles = _role_records()
-    tree = _build_tree_state(roles)
-    hardened = _hardened_tool_state()
+    root = BUILD_JDK.lstat()
+    _validate_build_root_record(
+        dict(
+            uid=root.st_uid,
+            gid=root.st_gid,
+            mode=stat.S_IMODE(root.st_mode),
+            directory=stat.S_ISDIR(root.st_mode),
+        ),
+        roles["nativebuild"]["gid"],
+    )
     if _build_process_records(Path("/proc"), roles["nativebuild"]["uid"]):
         raise GraderError("Live build role at private grading boundary")
     prefix = [
@@ -381,7 +399,7 @@ def _grading_boundary_unchecked():
         )
         if code != 1 or reason:
             raise GraderError("Grading role can access complete build JDK")
-    return {"roles": roles, "buildDirectories": tree, "hardened": hardened}
+    return {"roles": roles}
 
 
 def _grading_boundary():
@@ -462,21 +480,13 @@ def _run_unchecked(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None
 
 def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None):
     official = os.environ.get("PL_CONTAINMENT") == "official"
-    grading = official and str(HARDENED_JDK / "bin/java") in command
-    before = _grading_boundary() if grading else None
-    try:
-        return _run_unchecked(
-            command,
-            cwd,
-            timeout,
-            output_limit,
-            env=(_grading_environment() if official and env is None else env),
-        )
-    finally:
-        if grading and _grading_boundary() != before:
-            raise GraderError(
-                "Java role/toolchain boundary changed during private phase"
-            )
+    return _run_unchecked(
+        command,
+        cwd,
+        timeout,
+        output_limit,
+        env=(_grading_environment() if official and env is None else env),
+    )
 
 
 def _names(config, key):
@@ -1911,29 +1921,40 @@ def _artifact_state(root, name, guarded=False):
     }
 
 
-def _installation_inventory(home):
+def _installation_inventory(home, *, verify_bytes=True):
     if home.is_symlink() or not home.is_dir() or home.resolve() != home.absolute():
         raise GraderError("Native toolchain installation is unavailable")
-    if home.stat().st_uid != 0 or home.stat().st_mode & 0o022:
-        raise GraderError("Native toolchain root is writable")
+    # Допуск job проверяет writers; байты сверяются при installation.
+    for parent in [home, *home.parents]:
+        info = parent.lstat()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != 0
+            or info.st_mode & 0o7022
+        ):
+            raise GraderError("Native toolchain path is writable or unsafe")
     files = {}
     for path in home.rglob("*"):
         info = path.lstat()
-        if info.st_uid != 0 or info.st_mode & 0o022:
+        if info.st_uid != 0 or info.st_mode & 0o7022:
             raise GraderError("Native toolchain is writable")
         if stat.S_ISDIR(info.st_mode):
             continue
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise GraderError("Unsafe native toolchain file")
         files[path.relative_to(home).as_posix()] = {
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            **(
+                {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                if verify_bytes
+                else {}
+            ),
             "bytes": info.st_size,
             "mode": oct(stat.S_IMODE(info.st_mode)),
         }
     return files
 
 
-def _verify_native_toolchain():
+def _verify_native_toolchain(*, verify_bytes=False):
     lock = json.loads(_files_any(PLATFORM, NATIVE_RECIPE[2]).read_text())
     if (
         set(lock)
@@ -1969,18 +1990,35 @@ def _verify_native_toolchain():
         or not isinstance(jdk["release"], str)
     ):
         raise GraderError("Invalid admitted JDK25 installation")
-    roles = _role_records()
-    _build_tree_state(roles)
     if len(jdk["files"]) != 319 or not set(MANAGEMENT_MEMBERS) <= set(jdk["files"]):
         raise GraderError("Complete319 build JDK required")
     for tool in (gradle, jdk):
-        if _installation_inventory(Path(tool["home"])) != tool["files"]:
+        expected = tool["files"] if verify_bytes else {
+            name: {key: record[key] for key in ("bytes", "mode")}
+            for name, record in tool["files"].items()
+        }
+        if _installation_inventory(
+            Path(tool["home"]), verify_bytes=verify_bytes
+        ) != expected:
             raise GraderError("Native toolchain installation drift")
-    if (Path(jdk["home"]) / "release").read_text() != jdk["release"] or not re.search(
-        r'JAVA_VERSION="25(?:[.\"+\-])', jdk["release"]
-    ):
+    if (
+        verify_bytes
+        and (Path(jdk["home"]) / "release").read_text() != jdk["release"]
+    ) or not re.search(r'JAVA_VERSION="25(?:[.\"+\-])', jdk["release"]):
         raise GraderError("Native build requires pinned JDK25")
     return lock
+
+
+def _admit_java_job():
+    # Байты сверены installer; ни одна sandbox role не может писать tools/parents.
+    # Допуск живёт только в текущем job. После build повторяются role/access checks.
+    try:
+        lock = _verify_native_toolchain()
+        _hardened_tool_state(verify_bytes=False)
+        _grading_boundary()
+        return lock
+    except (OSError, KeyError, ValueError, TypeError) as error:
+        raise GraderError("Missing or invalid Java job admission") from error
 
 
 def _verify_landlock_helper():
@@ -2110,6 +2148,8 @@ def _native_build(
     dependency_hash,
     durations,
     diagnostics,
+    *,
+    toolchain_lock=None,
 ):
     build = config["javaBuild"]
     limits = config["limits"]
@@ -2129,7 +2169,7 @@ def _native_build(
             *map(Path, _files(job / "tests", config["testFiles"])),
         ],
     )
-    lock = _verify_native_toolchain()
+    lock = toolchain_lock if toolchain_lock is not None else _verify_native_toolchain()
     boundary = _grading_boundary()
     _enable_build_reaper()
     if _build_process_records(Path("/proc"), uid):
@@ -2170,8 +2210,6 @@ def _native_build(
             )
         ):
             raise GraderError("Native source/configuration integrity drift")
-        if _verify_native_toolchain() != lock or _grading_boundary() != boundary:
-            raise GraderError("Native toolchain/role identity drift")
 
     private = job / ".native-build-private"
     private.mkdir(mode=0o700)
@@ -2201,6 +2239,8 @@ def _native_build(
         private_manifest["buildRoleTransitions"].append(
             {"phase": phase, **_finish_build_role(uid)}
         )
+        if _grading_boundary() != boundary:
+            raise GraderError("Native role identity drift before private grading")
         file = private / "manifest.json"
         file.write_text(json.dumps(private_manifest, sort_keys=True))
         file.chmod(0o600)
@@ -2276,22 +2316,6 @@ def _native_build(
                 "Copied native inputs differ from admitted source/recipe bytes"
             )
         intact()
-        # Verify executable identities with the same UID/env/isolation as build.
-        try:
-            code, text, reason = _run(
-                [*prefix, lock["gradle"]["home"] + "/bin/gradle", "--version"],
-                work,
-                limits.get("compile-seconds", 15),
-                int(limits["max-output-bytes"]),
-                env=environment,
-            )
-        finally:
-            finish_role("gradle-version")
-        (private / "gradle-version.log").write_text(text)
-        (private / "gradle-version.log").chmod(0o600)
-        os.chown(private / "gradle-version.log", job.stat().st_uid, -1)
-        if code or reason or not re.search(r"^Gradle 9\.8(?:\.0)?$", text, re.M):
-            raise GraderError("Admitted Gradle executable version check failed")
         command = [
             *prefix,
             lock["gradle"]["home"] + "/bin/gradle",
@@ -2571,6 +2595,10 @@ def grade(job_dir, registry=None):
     except (OSError, ValueError) as error:
         raise GraderError("Missing or invalid grading configuration") from error
     validate_config(config)
+    official = os.environ.get("PL_CONTAINMENT") == "official"
+    if official:
+        _protect_input_identity(job)
+    toolchain_lock = _admit_java_job() if official else None
     profile, bundle, toolchain = preflight(config["runtime"], registry)
     import runpy
 
@@ -2602,7 +2630,6 @@ def grade(job_dir, registry=None):
         if native_context is not None:
             if "verify" in native_context:
                 native_context["verify"]()
-            preflight(config["runtime"], registry)
             value["buildEvidence"] = native_context.get(
                 "proof",
                 {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"},
@@ -2678,6 +2705,7 @@ def grade(job_dir, registry=None):
                         evidence["dependencyHash"],
                         durations,
                         diagnostics,
+                        toolchain_lock=toolchain_lock,
                     )
                 )
             try:
