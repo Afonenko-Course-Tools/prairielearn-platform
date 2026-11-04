@@ -18,18 +18,6 @@
     "scenario": {
       "type": "string"
     },
-    "sourceSnapshotHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
-    "inventoryHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
-    "deliveryHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
     "runtime": {
       "type": "string"
     },
@@ -43,20 +31,6 @@
           "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
         }
       ]
-    },
-    "sourceHashes": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[a-f0-9]{64}$"
-      }
-    },
-    "testsHashes": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[a-f0-9]{64}$"
-      }
     },
     "gradable": {
       "type": "boolean"
@@ -647,13 +621,6 @@
         }
       ]
     },
-    "nativeSelectionScopeHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
-    "jobSchemaVersion": {
-      "const": 2
-    },
     "reportFormat": {
       "const": "junit-xml"
     }
@@ -664,8 +631,6 @@
     "backend",
     "qualifiedId",
     "scenario",
-    "sourceSnapshotHash",
-    "inventoryHash",
     "runtime",
     "imageDigest",
     "classification",
@@ -2585,27 +2550,6 @@
     {
       "if": {
         "properties": {
-          "scope": {
-            "const": "delivery"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "deliveryHash"
-        ]
-      },
-      "else": {
-        "not": {
-          "required": [
-            "deliveryHash"
-          ]
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
           "backend": {
             "const": "container"
           },
@@ -2872,13 +2816,5 @@
         ]
       }
     }
-  ],
-  "dependentRequired": {
-    "jobSchemaVersion": [
-      "nativeSelectionScopeHash"
-    ],
-    "nativeSelectionScopeHash": [
-      "jobSchemaVersion"
-    ]
-  }
+  ]
 }

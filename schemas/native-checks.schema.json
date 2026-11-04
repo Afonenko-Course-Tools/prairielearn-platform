@@ -4,7 +4,7 @@
   "type": "object",
   "properties": {
     "schemaVersion": {
-      "const": 2
+      "const": 3
     },
     "courseId": {
       "type": "string",
@@ -14,14 +14,6 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-    },
-    "sourceSnapshotHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
-    },
-    "inventoryHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
     },
     "projects": {
       "type": "array",
@@ -894,187 +886,92 @@
               }
             ]
           },
-          "selectionOriginVersion": {
-            "const": 2
-          },
-          "nativePlanGroups": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
-            "uniqueItems": true
-          },
           "sources": {
             "type": "array",
             "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "projectRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "projectRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                 },
-                {
-                  "type": "object",
-                  "properties": {
-                    "ownerRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "ownerRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "data": {
+                  "type": "string",
+                  "maxLength": 1400000
                 }
-              ]
-            }
+              },
+              "required": [
+                "name",
+                "target",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 4096
           },
           "trustedTests": {
             "type": "array",
             "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "projectRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "projectRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                 },
-                {
-                  "type": "object",
-                  "properties": {
-                    "ownerRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "ownerRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "data": {
+                  "type": "string",
+                  "maxLength": 1400000
                 }
-              ]
-            }
+              },
+              "required": [
+                "name",
+                "target",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 4096
           },
           "verificationTests": {
             "type": "array",
             "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "projectRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "projectRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                 },
-                {
-                  "type": "object",
-                  "properties": {
-                    "ownerRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "ownerRelativePath",
-                    "sha256",
-                    "submissionRelativePath"
-                  ],
-                  "additionalProperties": false
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "data": {
+                  "type": "string",
+                  "maxLength": 1400000
                 }
-              ]
-            }
+              },
+              "required": [
+                "name",
+                "target",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 4096
           },
           "references": {
             "type": "array",
@@ -1112,59 +1009,31 @@
                 "sources": {
                   "type": "array",
                   "items": {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "projectRelativePath": {
-                            "type": "string",
-                            "minLength": 1,
-                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                          },
-                          "sha256": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{64}$"
-                          },
-                          "submissionRelativePath": {
-                            "type": "string",
-                            "minLength": 1,
-                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                          }
-                        },
-                        "required": [
-                          "projectRelativePath",
-                          "sha256",
-                          "submissionRelativePath"
-                        ],
-                        "additionalProperties": false
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                       },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "ownerRelativePath": {
-                            "type": "string",
-                            "minLength": 1,
-                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                          },
-                          "sha256": {
-                            "type": "string",
-                            "pattern": "^[a-f0-9]{64}$"
-                          },
-                          "submissionRelativePath": {
-                            "type": "string",
-                            "minLength": 1,
-                            "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                          }
-                        },
-                        "required": [
-                          "ownerRelativePath",
-                          "sha256",
-                          "submissionRelativePath"
-                        ],
-                        "additionalProperties": false
+                      "target": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                      },
+                      "data": {
+                        "type": "string",
+                        "maxLength": 1400000
                       }
-                    ]
-                  }
+                    },
+                    "required": [
+                      "name",
+                      "target",
+                      "data"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 128
                 }
               },
               "required": [
@@ -1182,125 +1051,31 @@
           "contractFixtures": {
             "type": "array",
             "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "projectRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "logicalTarget": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "projectRelativePath",
-                    "sha256",
-                    "submissionRelativePath",
-                    "logicalTarget"
-                  ],
-                  "additionalProperties": false
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                 },
-                {
-                  "type": "object",
-                  "properties": {
-                    "ownerRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "sha256": {
-                      "type": "string",
-                      "pattern": "^[a-f0-9]{64}$"
-                    },
-                    "submissionRelativePath": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    },
-                    "logicalTarget": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                    }
-                  },
-                  "required": [
-                    "ownerRelativePath",
-                    "sha256",
-                    "submissionRelativePath",
-                    "logicalTarget"
-                  ],
-                  "additionalProperties": false
+                "target": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+                },
+                "data": {
+                  "type": "string",
+                  "maxLength": 1400000
                 }
-              ]
-            }
-          },
-          "contractCasesHash": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "projectRelativePath": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                  },
-                  "sha256": {
-                    "type": "string",
-                    "pattern": "^[a-f0-9]{64}$"
-                  },
-                  "logicalTarget": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                  }
-                },
-                "required": [
-                  "projectRelativePath",
-                  "sha256",
-                  "logicalTarget"
-                ],
-                "additionalProperties": false
               },
-              {
-                "type": "object",
-                "properties": {
-                  "ownerRelativePath": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                  },
-                  "sha256": {
-                    "type": "string",
-                    "pattern": "^[a-f0-9]{64}$"
-                  },
-                  "logicalTarget": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-                  }
-                },
-                "required": [
-                  "ownerRelativePath",
-                  "sha256",
-                  "logicalTarget"
-                ],
-                "additionalProperties": false
-              }
-            ]
+              "required": [
+                "name",
+                "target",
+                "data"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 4096
           },
           "readiness": {
             "type": "object",
@@ -1366,6 +1141,31 @@
               "files"
             ],
             "additionalProperties": false
+          },
+          "contractCases": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
+              },
+              "data": {
+                "type": "string",
+                "maxLength": 1400000
+              }
+            },
+            "required": [
+              "name",
+              "target",
+              "data"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1374,8 +1174,6 @@
           "source",
           "exerciseId",
           "check",
-          "selectionOriginVersion",
-          "nativePlanGroups",
           "sources",
           "trustedTests",
           "verificationTests",
@@ -1385,125 +1183,13 @@
         ],
         "additionalProperties": false
       }
-    },
-    "selectionScope": {
-      "type": "object",
-      "properties": {
-        "schema": {
-          "const": "pl-native-selected-checks-v1"
-        },
-        "identity": {
-          "type": "object",
-          "properties": {
-            "operation": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "projection": {
-              "enum": [
-                "author",
-                "student"
-              ]
-            },
-            "runtime": {
-              "const": "quarto-1.11.5"
-            },
-            "profiles": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "uniqueItems": true
-            }
-          },
-          "required": [
-            "operation",
-            "projection",
-            "runtime",
-            "profiles"
-          ],
-          "additionalProperties": false
-        },
-        "assessments": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-              },
-              "id": {
-                "type": "string",
-                "pattern": "^sec-"
-              }
-            },
-            "required": [
-              "source",
-              "id"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "sources": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
-              },
-              "sha256": {
-                "type": "string",
-                "pattern": "^[a-f0-9]{64}$"
-              }
-            },
-            "required": [
-              "source",
-              "sha256"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "automaticIds": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
-      "required": [
-        "schema",
-        "identity",
-        "assessments",
-        "sources",
-        "automaticIds"
-      ],
-      "additionalProperties": false
-    },
-    "selectionScopeHash": {
-      "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
     }
   },
   "required": [
     "schemaVersion",
     "courseId",
     "bookRoot",
-    "sourceSnapshotHash",
-    "inventoryHash",
-    "projects",
-    "selectionScope",
-    "selectionScopeHash"
+    "projects"
   ],
   "additionalProperties": false
 }

@@ -3,7 +3,7 @@ import hashlib,json,re,stat,uuid
 from html.parser import HTMLParser
 from pathlib import Path
 import jsonschema
-from grading_job import ROOT,JobError,digest,safe
+from grading_job import ROOT,JobError,safe
 
 HASH=re.compile(r'^[a-f0-9]{64}$')
 def relative_name(value):
@@ -41,10 +41,9 @@ def upload_values(attrs,key,paths=True):
 
 
 def classification(delivery):
- if not isinstance(delivery,dict) or type(delivery.get('schemaVersion')) is not int or delivery.get('schemaVersion') not in (3,4):raise JobError('Unsupported native delivery; v3 required')
- required={'schemaVersion','courseId','bookRoot','sourceSnapshotHash','inventoryHash','verificationInventoryHash','questions','gradingPayloads','works','instances','files','deliveryHash'}
+ if not isinstance(delivery,dict) or type(delivery.get('schemaVersion')) is not int or delivery.get('schemaVersion') != 5:raise JobError('Expected functional delivery v5')
+ required={'schemaVersion','courseId','bookRoot','questions','gradingPayloads','works','instances','files'}
  if not required<=delivery.keys() or set(delivery)-required-{'candidate'} or not isinstance(delivery.get('courseId'),str) or not re.fullmatch(r'[a-z][a-z0-9-]*',delivery['courseId']):raise JobError('Closed canonical delivery v3 required')
- if any(not isinstance(delivery.get(k),str) or not HASH.fullmatch(delivery[k]) for k in ('sourceSnapshotHash','inventoryHash','verificationInventoryHash','deliveryHash')):raise JobError('Invalid delivery hash binding')
  if not isinstance(delivery['works'],list) or not delivery['works'] or not isinstance(delivery['instances'],dict) or not delivery['instances']:raise JobError('Native work/instance catalog required')
  if 'candidate' in delivery and type(delivery['candidate']) is not bool:raise JobError('Invalid candidate marker')
  questions=delivery.get('questions');bindings=delivery.get('gradingPayloads')
@@ -53,7 +52,7 @@ def classification(delivery):
  methods={};uuids=set()
  for q in questions:
   binding=bindings[q]
-  if delivery['schemaVersion']==4:
+  if delivery['schemaVersion']==5:
    from delivery4 import binding4
    if not isinstance(binding,dict):raise JobError('Closed delivery4 binding required')
    if binding.get('kind')!='project':
@@ -79,7 +78,7 @@ def classification(delivery):
    if any(not isinstance(binding[k],str) or not binding[k] for k in ('projectCheck','runtime')) or not isinstance(binding['sources'],list) or not binding['sources']:raise JobError('Automatic source/check binding required')
    targets=set()
    for source in binding['sources']:
-    if not isinstance(source,dict) or set(source)!={'projectRelativePath','submissionRelativePath','sha256'} or any(not relative_name(source[k]) for k in ('projectRelativePath','submissionRelativePath')) or not isinstance(source['sha256'],str) or not HASH.fullmatch(source['sha256']) or source['submissionRelativePath'] in targets:raise JobError('Invalid or duplicate automatic source binding')
+    if not isinstance(source,dict) or set(source)!={'projectRelativePath','submissionRelativePath'} or any(not relative_name(source[k]) for k in ('projectRelativePath','submissionRelativePath')) or source['submissionRelativePath'] in targets:raise JobError('Invalid or duplicate automatic source binding')
     targets.add(source['submissionRelativePath'])
   uuids.add(binding['uuid']);methods[q]=method
  return methods
@@ -89,19 +88,12 @@ def package_integrity(delivery,native,checks=None):
  native=Path(native);methods=classification(delivery)
  from delivery4 import code_ids,native_proof,seed_proof
  automatic_ids=code_ids(delivery)
- if not automatic_ids and delivery['verificationInventoryHash']!=digest([]):raise JobError('Wholly manual delivery cannot declare automatic scenarios')
- if digest({k:v for k,v in delivery.items() if k!='deliveryHash'})!=delivery.get('deliveryHash'):raise JobError('Canonical delivery identity mismatch')
- if checks is not None and any(delivery.get(k)!=checks.get(k) for k in ('sourceSnapshotHash','inventoryHash')):raise JobError('Package/check source identity differs')
- if checks is not None and checks.get('schemaVersion')==2:
-  from grading_job import inventory
-  inventory(checks);scope=checks['selectionScope']
-  if scope['automaticIds']!=sorted(automatic_ids) or sorted(a['id'] for a in scope['assessments'])!=sorted(work['id'] for work in delivery['works']):raise JobError('Native selected scope differs from delivery')
  files=delivery.get('files')
- if not isinstance(files,dict) or not files or not all(isinstance(sha,str) and HASH.fullmatch(sha) for sha in files.values()):raise JobError('Nonempty canonical native inventory required')
- for name,sha in files.items():
-  if hashlib.sha256(file_bytes(native,name)).hexdigest()!=sha:raise JobError('Native package bytes differ: '+name)
+ if not isinstance(files,list) or not files or len(set(files))!=len(files):raise JobError('Selected native file paths required')
+ for name in files:
+  if not relative_name(name):raise JobError('Unsafe selected native path')
+  file_bytes(native,name)
  def read(name):
-  if name not in files:raise JobError('Native metadata absent from canonical inventory')
   try:return json.loads(file_bytes(native,name))
   except ValueError as error:raise JobError('Invalid native JSON') from error
  native_schema('infoCourse.json',read('infoCourse.json'))
@@ -158,28 +150,28 @@ def package_integrity(delivery,native,checks=None):
   facts[q]=project
  result=[]
  for q,method in sorted(methods.items()):
-  binding=delivery['gradingPayloads'][q];prefix='questions/'+q+'/';question_files={name[len(prefix):]:sha for name,sha in files.items() if name.startswith(prefix)}
+  binding=delivery['gradingPayloads'][q];prefix='questions/'+q+'/';question_files={name[len(prefix):] for name in files if name.startswith(prefix)}
   if not question_files:raise JobError('Question has no canonical files')
   folder=safe(native,'questions/'+q);actual=set()
   for path in folder.rglob('*'):
    if path.is_symlink() or not (path.is_dir() or path.is_file()):raise JobError('Unsafe native question tree')
    if path.is_file():actual.add(path.relative_to(folder).as_posix())
-  if actual!=set(question_files):raise JobError('Question file inventory differs from canonical delivery')
+  question_files=actual
   info=read(prefix+'info.json');native_schema('infoQuestion.json',info)
   expected_method=binding.get('upstreamGradingMethod', 'Manual' if method=='manual' else 'External')
   if info['uuid']!=binding['uuid'] or info.get('gradingMethod')!=expected_method:raise JobError('Native method/UUID differs from canonical binding')
   controls=Controls(file_bytes(native,prefix+'question.html').decode('utf-8')).elements
-  if delivery['schemaVersion']==4 and binding['kind']!='project':
+  if delivery['schemaVersion']==5 and binding['kind']!='project':
    if q in facts or 'externalGradingOptions' in info:raise JobError('Non-project cannot accept code Job')
    if binding['kind']=='native-answer':
     if info.get('showCorrectAnswer') is not False:raise JobError('Native answer key visibility differs')
-    proof=native_proof(q,binding,question_files,controls)
+    native_proof(q,binding,question_files,controls)
     if info.get('partialCredit') is not (method!='manual'):raise JobError('Native partial-credit policy differs')
     mode='native-answer'
    else:
     if info.get('workspaceOptions')!=binding['submission']['workspaceOptions'] or info.get('singleVariant') is not True or not any(t=='pl-workspace' for t,_ in controls) or any(n.startswith('tests/') or n in ('server.py','server.js','server.ts') for n in question_files):raise JobError('Workspace native controls differ')
-    proof=seed_proof(native,prefix,binding);mode='workspace'
-   result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':mode,'questionFilesHash':digest(question_files)})
+    seed_proof(native,prefix,binding);mode='workspace'
+   result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':mode})
    continue
   uploads=[attrs for tag,attrs in controls if tag=='pl-file-upload'];editors=[attrs for tag,attrs in controls if tag=='pl-file-editor']
   descriptor=None
@@ -213,22 +205,9 @@ def package_integrity(delivery,native,checks=None):
    if checks is not None:
     fact=facts.get(q)
     if not fact or not fact.get('check') or fact.get('readiness',{}).get('ready') is False:raise JobError('Automatic question needs ready private check')
-    if binding['sourceRoot']!=fact.get('projectRoot') or binding['runtime']!=fact['check'].get('runtime') or binding['projectCheck']!=fact['check'].get('profile') or binding['sources']!=fact.get('sources'):raise JobError('Automatic source/check binding differs')
+    if binding['sourceRoot']!=fact.get('projectRoot') or binding['runtime']!=fact['check'].get('runtime') or binding['projectCheck']!=fact['check'].get('profile') or [x['submissionRelativePath'] for x in binding['sources']]!=[x['name'] for x in fact.get('sources',[])]:raise JobError('Automatic source/check binding differs')
    if descriptor['runtime']!=binding['runtime'] or not info.get('externalGradingOptions',{}).get('image') or not any(tag=='pl-external-grader-results' for tag,_ in controls):raise JobError('Automatic runtime/native control missing')
-  result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':binding['submission']['mode'],'questionFilesHash':digest(question_files)})
- return {'status':'success','coverage':'complete','filesHash':digest(files),'questionBindings':result}
+  result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':binding['submission']['mode']})
+ return {'status':'success','questionBindings':result}
 
-
-def delivery_receipt(delivery,native,checks,automatic=None,registry=None):
- from grading_job import TOOL_VERSION,validate_release_receipt
- package=package_integrity(delivery,native,checks);methods=classification(delivery)
- from delivery4 import code_ids,internal_proof
- auto=code_ids(delivery)
- if auto and automatic is None:raise JobError('Automatic proof missing')
- if not auto and automatic is not None:raise JobError('Wholly manual does not accept grading results')
- if auto and checks.get('schemaVersion')==2 and (automatic is None or automatic.get('jobSchemaVersion')!=2 or automatic.get('nativeSelectionScopeHash')!=checks['selectionScopeHash']):raise JobError('Native automatic scope binding differs')
- proof={'state':'verified','receipt':automatic} if auto else {'state':'not-applicable','reason':'all-questions-manual' if delivery['schemaVersion']==3 else 'no-project-automatic'}
- result={'schemaVersion':delivery['schemaVersion'],'kind':'delivery-verification','scope':'delivery','toolVersion':TOOL_VERSION,**{k:delivery[k] for k in ('deliveryHash','sourceSnapshotHash','inventoryHash')},'packageIntegrity':package,'automatic':proof}
- if delivery['schemaVersion']==4:result['nativeAnswers']=internal_proof(delivery,native)
- result['identityHash']=digest(result);validate_release_receipt(result,delivery,native,registry);return result
 

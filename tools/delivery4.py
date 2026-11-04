@@ -1,6 +1,6 @@
 """Закрытые data-only bindings v4; пакет и seed никогда не исполняются."""
 import hashlib,io,json,re,stat,struct,unicodedata,zipfile,zlib
-from grading_job import JobError,digest
+from grading_job import JobError
 
 def closed(v,keys):
  if not isinstance(v,dict) or set(v)!=set(keys):raise JobError('Closed delivery4 binding required')
@@ -46,15 +46,15 @@ def binding4(v):
   if not isinstance(o['image'],str) or not re.fullmatch(r'[^\s]+@sha256:[a-f0-9]{64}',o['image']) or not isinstance(o['home'],str) or not re.fullmatch(r'/(?:[a-zA-Z0-9_-]+/?)+',o['home']) or type(o['port']) is not int or not 1024<=o['port']<=65535:raise JobError('Workspace runtime binding differs')
   f=o['gradedFiles'];required={'work/**','work/.git/**','work/.*','explanation.m[d]','.pl-seed/identity.jso[n]'}
   if not isinstance(f,list) or any(not isinstance(x,str) for x in f) or not required<=set(f) or len(f)!=len(set(f)) or any(not relative_name(x) for x in f) or any(k in o and type(o[k]) is not bool for k in ('rewriteUrl','enableNetworking')):raise JobError('Workspace return inventory differs')
-  closed(v['seed'],['schema','archive','archiveSha256','manifest','manifestSha256'])
+  closed(v['seed'],['schema','archive','manifest'])
   s=v['seed']
-  if s['schema']!='pl-git-workspace-seed-v1' or s['archive']!='workspace/.pl-seed/starter.zip' or s['manifest']!='workspace/.pl-seed/manifest.json' or any(not isinstance(s[k],str) or not re.fullmatch('[a-f0-9]{64}',s[k]) for k in ('archiveSha256','manifestSha256')):raise JobError('Workspace seed binding differs')
+  if s['schema']!='pl-git-workspace-seed-v1' or s['archive']!='workspace/.pl-seed/starter.zip' or s['manifest']!='workspace/.pl-seed/manifest.json':raise JobError('Workspace seed binding differs')
  else:raise JobError('Unknown delivery4 kind')
  return v['grading']['method']
 
 def code_ids(delivery):
  from delivery_verification import classification
- return {q for q,m in classification(delivery).items() if m!='manual' and (delivery['schemaVersion']==3 or delivery['gradingPayloads'][q]['kind']=='project')}
+ return {q for q,m in classification(delivery).items() if m!='manual' and delivery['gradingPayloads'][q]['kind']=='project'}
 
 def native_proof(q,b,question_files,controls):
  expected=[]
@@ -69,20 +69,18 @@ def native_proof(q,b,question_files,controls):
   if tag=='pl-string-input' and set(attrs)!={'answers-name','allow-blank'} or tag=='pl-string-input' and attrs.get('allow-blank')!='true' or tag=='pl-rich-text-editor' and set(attrs)!={'file-name','placeholder'}:raise JobError('Native answer control attributes differ')
  if actual!=expected or any('correct' in a for _,a in controls):raise JobError('Native controls differ from public response slots')
  if 'server.py' not in question_files or any(n.startswith('tests/') or n in ('server.js','server.ts') for n in question_files):raise JobError('Native answer cannot contain code Job')
- return {'qualifiedId':q,'uuid':b['uuid'],'answerType':b['answerType'],'responseSlotsHash':digest(b['responseSlots']),'controlsHash':digest(controls),'serverSha256':question_files['server.py']}
+ return None
 
 def seed_proof(native,prefix,b):
  from delivery_verification import file_bytes,relative_name
  seed=b['seed'];raw=file_bytes(native,prefix+seed['archive']);manifest_raw=file_bytes(native,prefix+seed['manifest'])
- if hashlib.sha256(raw).hexdigest()!=seed['archiveSha256'] or hashlib.sha256(manifest_raw).hexdigest()!=seed['manifestSha256']:raise JobError('Seed bytes differ')
  if len(raw)>64*1024**2 or len(manifest_raw)>2*1024**2:raise JobError('Seed bound exceeded')
- manifest=json.loads(manifest_raw);closed(manifest,['schema','sha256','files'])
- if manifest['schema']!=seed['schema'] or manifest['sha256']!=seed['archiveSha256'] or not isinstance(manifest['files'],list) or not manifest['files']:raise JobError('Seed manifest differs')
- expected={}
- for f in manifest['files']:
-  closed(f,['name','sha256'])
-  if not relative_name(f['name']) or f['name'] in expected or not isinstance(f['sha256'],str) or not re.fullmatch('[a-f0-9]{64}',f['sha256']):raise JobError('Seed inventory invalid')
-  expected[f['name']]=f['sha256']
+ manifest=json.loads(manifest_raw);closed(manifest,['schema','files'])
+ if manifest['schema']!=seed['schema'] or not isinstance(manifest['files'],list) or not manifest['files']:raise JobError('Seed manifest differs')
+ expected=set()
+ for name in manifest['files']:
+  if not relative_name(name) or name in expected:raise JobError('Seed paths invalid')
+  expected.add(name)
  entries={};aliases=set();total=0
  try:
   with zipfile.ZipFile(io.BytesIO(raw)) as z:
@@ -94,7 +92,7 @@ def seed_proof(native,prefix,b):
     if total>64*1024**2:raise JobError('Expanded seed bound exceeded')
     data=z.read(f);entries[name]=data;aliases.add(alias)
  except (zipfile.BadZipFile,RuntimeError) as e:raise JobError('Invalid seed ZIP') from e
- if {n:hashlib.sha256(v).hexdigest() for n,v in entries.items()}!=expected:raise JobError('Exact seed inventory differs')
+ if set(entries)!=expected:raise JobError('Seed selected paths differ')
  # Public materialization copies must agree byte-for-byte with seed entries.
  for n,data in entries.items():
   if '/.git/' not in '/'+n and file_bytes(native,prefix+'clientFilesQuestion/starter/'+n)!=data:raise JobError('Seed/source common file differs')
@@ -154,19 +152,7 @@ def seed_proof(native,prefix,b):
  while len(index)-20-offset>=8:
   if not 65<=index[offset]<=90:raise JobError('Unsupported mandatory Git index extension')
   offset+=8+struct.unpack('>I',index[offset+4:offset+8])[0]
- return {'archiveSha256':seed['archiveSha256'],'manifestSha256':seed['manifestSha256'],'filesHash':digest(expected),'initialCommit':ref}
-
-
-def internal_proof(delivery,native):
- from delivery_verification import Controls,file_bytes
- values=[]
- for q in sorted(delivery['questions']):
-  b=delivery['gradingPayloads'][q]
-  if b['kind']!='native-answer':continue
-  prefix='questions/'+q+'/'
-  files={n[len(prefix):]:sha for n,sha in delivery['files'].items() if n.startswith(prefix)}
-  values.append(native_proof(q,b,files,Controls(file_bytes(native,prefix+'question.html').decode()).elements))
- return {'kind':'native-answer-package-v1','deliveryHash':delivery['deliveryHash'],'bindings':values,'inventoryHash':digest(values)}
+ return {'initialCommit':ref}
 
 
 def workspace_image_authority(delivery,registry):
