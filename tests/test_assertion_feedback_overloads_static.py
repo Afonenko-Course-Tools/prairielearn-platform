@@ -21,7 +21,7 @@ class ExactOverloads(unittest.TestCase):
         cls.helper = cls.base/'helper'
         cls.facade.mkdir(); cls.helper.mkdir()
         sources = sorted((ROOT/'runtime/java25-junit-v1/feedback/module').rglob('*.java'))
-        cls.invoke(['javac', '--release', '25', '--module-path', str(cls.jar), '-d', str(cls.facade), *map(str, sources)])
+        cls.invoke(['javac', '--release', '25', '--module-path', os.pathsep.join(map(str, (cls.jar, ROOT/'runtime/java25-junit-v1/json-simple-1.1.1.jar'))), '-d', str(cls.facade), *map(str, sources)])
         cls.invoke(['javac', '--release', '25', '-d', str(cls.helper), str(ROOT/'runtime/java25-junit-v1/feedback/Transform.java')])
         (cls.facade/'org/prairielearn/feedback/internal/policy.properties').write_text('# inert Source control, no live leaf\n')
 

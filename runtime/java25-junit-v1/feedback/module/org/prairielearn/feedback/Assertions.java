@@ -760,4 +760,604 @@ public final class Assertions {
       throw error;
     }
   }
+  public static void assertArrayEquals(byte[] a, byte[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(short[] a, short[] b) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(short[] a, short[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(short[] a, short[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(int[] a, int[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(long[] a, long[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(long[] a, long[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(float[] a, float[] b) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(float[] a, float[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(float[] a, float[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(double[] a, double[] b) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(double[] a, double[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(double[] a, double[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(char[] a, char[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(char[] a, char[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(boolean[] a, boolean[] b) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(boolean[] a, boolean[] b, String message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(boolean[] a, boolean[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(Object[] a, Object[] b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство массивов", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(byte a, byte b) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(byte a, byte b, String message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(byte a, byte b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(byte a, byte b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(byte a, byte b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(byte a, byte b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(short a, short b) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(short a, short b, String message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(short a, short b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(short a, short b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(short a, short b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(short a, short b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(int a, int b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(int a, int b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(long a, long b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(long a, long b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(long a, long b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(float a, float b) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(float a, float b, String message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(float a, float b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(double a, double b, String message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(double a, double b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(char a, char b, String message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(char a, char b, java.util.function.Supplier<String> message) {
+    var token = State.begin("равенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(char a, char b) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(char a, char b, String message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(char a, char b, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство", a, b, null);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertEquals(float a, float b, float d) {
+    var token = State.begin("равенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertEquals(a, b, d);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b, float d) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b, float d, String message) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(float a, float b, float d, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertArrayEquals(float[] a, float[] b, float d) {
+    var token = State.begin("равенство массивов с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertArrayEquals(a, b, d);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b, double d) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b, double d, String message) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
+  public static void assertNotEquals(double a, double b, double d, java.util.function.Supplier<String> message) {
+    var token = State.begin("неравенство с допуском", a, b, d);
+    try {
+      org.junit.jupiter.api.Assertions.assertNotEquals(a, b, d, message);
+      State.end(token, "returned");
+    } catch (Throwable error) {
+      State.end(token, "threw");
+      throw error;
+    }
+  }
 }

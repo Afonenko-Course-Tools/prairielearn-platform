@@ -312,6 +312,8 @@ def _read_junit_xml(directory, feedback_file):
         totals[owner] = totals.get(owner, 0) + weight
         achieved = weight if status == 'successful' else 0
         points += achieved
+        if not math.isfinite(totals[owner]) or not math.isfinite(points):
+            raise ValueError('JUnit grading points overflow')
         tests.append(dict(name=metadata['name'], description=metadata['description'],
                           message='', output='', points=achieved, max_points=weight))
     for owner, maximum in feedback.get('classMaximums', {}).items():
@@ -319,6 +321,8 @@ def _read_junit_xml(directory, feedback_file):
             raise ValueError('Invalid JUnit class maximum')
         totals[owner] = maximum
     total = sum(totals.values())
+    if not math.isfinite(total):
+        raise ValueError('JUnit grading maximum overflow')
     raw = dict(gradable=True, tests=tests, score=min(points / total, 1) if total else 0,
                points=min(points, total), max_points=total, message='', output='')
     return raw, counts

@@ -427,7 +427,7 @@ def _primary_files(job, config):
     """Необязательность допускает отсутствие, но не unsafe/oversized primary."""
     root = job / "student"
     names = _names(config, "sourceFiles")
-    if config.get("additionalJavaSources", {}).get("primaryRequired", True):
+    if "additionalJavaSources" not in config:
         return _files(root, names)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("Unsafe student directory")
@@ -655,12 +655,13 @@ def validate_config(config):
             config.get("runtime") not in ("java25-junit-v1", "java25-gradle-junit-v1")
             or config["mode"] != "implementation"
             or not isinstance(policy, dict)
-            or set(policy) - {"archive", "primaryRequired", *caps}
+            or set(policy) - {"archive", "primaryRequired", "allowAdditional", *caps}
             or not {"archive", *caps} <= set(policy)
             or (
                 "primaryRequired" in policy
                 and type(policy["primaryRequired"]) is not bool
             )
+            or ("allowAdditional" in policy and type(policy["allowAdditional"]) is not bool)
             or not isinstance(policy["archive"], str)
             or not re.fullmatch(
                 r"[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip", policy["archive"]
@@ -1777,10 +1778,53 @@ class _AdditionalSubmissionError(Exception):
     def __init__(self, message, classification="unsafe-submission"):
         self.classification = classification
         super().__init__(
-            "ZIP дополнительных Java sources: "
+            "Java-файлы и ZIP ответа: "
             + message
             + ". Исправьте доставку или используйте ручную сдачу."
         )
+
+
+def _flat_additional_inventory(root, config):
+    policy = config["additionalJavaSources"]
+    members = []
+    total = 0
+    reserved = ["grading-job.json", "tests/grading-job.json"]
+    for path in sorted(root.iterdir()):
+        name = path.name
+        if not name.endswith(".java") or name in config["sourceFiles"]:
+            continue
+        if not policy.get("allowAdditional", True):
+            raise _AdditionalSubmissionError("не объявлен исходник " + repr(name))
+        try:
+            _names({"files": [name]}, "files")
+        except GraderError as error:
+            raise _AdditionalSubmissionError("недопустимое имя исходника") from error
+        if any(_path_collision(name, trusted) for trusted in reserved):
+            raise _AdditionalSubmissionError("конфликт с доверенным путём " + repr(name))
+        if path.is_symlink() or not path.is_file():
+            raise _AdditionalSubmissionError("исходник должен быть обычным файлом без symlink")
+        size = path.stat().st_size
+        if (len(members) >= policy["maxFiles"] or size > policy["maxFileBytes"]
+                or total + size > policy["maxTotalBytes"]):
+            raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
+        with path.open("rb") as source:
+            data = source.read(policy["maxFileBytes"] + 1)
+        if len(data) != size or total + len(data) > policy["maxTotalBytes"]:
+            raise _AdditionalSubmissionError("превышен фактический лимит bytes")
+        try:
+            data.decode("utf-8")
+        except UnicodeError as error:
+            raise _AdditionalSubmissionError("исходник не UTF-8: " + repr(name), "student-compilation-failure") from error
+        total += len(data)
+        members.append((name, data))
+    return members
+
+
+def _additional_evidence(policy, members, source_names):
+    if not members:
+        return None
+    return {"archive": policy["archive"],
+            "files": [{"path": name, "bytes": len(data)} for name, data in members if name not in source_names]}
 
 
 def _additional_inventory(job, config):
@@ -1792,29 +1836,23 @@ def _additional_inventory(job, config):
     file = root / policy["archive"]
     if root.is_symlink() or not root.is_dir():
         raise _AdditionalSubmissionError("небезопасный каталог student")
+    members = _flat_additional_inventory(root, config)
     if not file.exists() and not file.is_symlink():
-        return [], None
+        return members, _additional_evidence(policy, members, config["sourceFiles"])
     if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
         raise _AdditionalSubmissionError("архив должен быть обычным файлом без symlink")
     if file.stat().st_size > policy["maxArchiveBytes"]:
         raise _AdditionalSubmissionError("превышен maxArchiveBytes")
     reserved = [
-        *(
-            config["sourceFiles"]
-            if policy.get("primaryRequired", True)
-            else [
-                Path(p).relative_to(root).as_posix()
-                for p in _primary_files(job, config)
-            ]
-        ),
-        *config["testFiles"],
+        *[Path(p).relative_to(root).as_posix() for p in _primary_files(job, config)],
+        *[name for name, _ in members],
         "grading-job.json",
         "tests/grading-job.json",
         policy["archive"],
     ]
-    members = []
     names = {}
-    total = 0
+    total = sum(len(data) for _, data in members)
+    extra_count = len(members)
     try:
         with file.open("rb") as raw:
             archive_bytes = raw.read(policy["maxArchiveBytes"] + 1)
@@ -1886,31 +1924,23 @@ def _additional_inventory(job, config):
                             "каталог с содержимым " + repr(name)
                         )
                     continue
+                if not policy.get("allowAdditional", True) and name not in config["sourceFiles"]:
+                    raise _AdditionalSubmissionError("не объявлен исходник " + repr(name))
                 if not name.endswith(".java"):
                     raise _AdditionalSubmissionError(
                         "разрешены только .java: " + repr(name)
                     )
-                if (
-                    len(members) >= policy["maxFiles"]
-                    or info.file_size > policy["maxFileBytes"]
-                    or total + info.file_size > policy["maxTotalBytes"]
-                ):
-                    raise _AdditionalSubmissionError(
-                        "превышен лимит количества/размера исходников"
-                    )
+                primary = name in config["sourceFiles"]
+                file_limit = 1024 * 1024 if primary else policy["maxFileBytes"]
+                if (info.file_size > file_limit or not primary and (
+                        extra_count >= policy["maxFiles"] or total + info.file_size > policy["maxTotalBytes"])):
+                    raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
                 data = bytearray()
                 with archive.open(info) as member:
-                    while chunk := member.read(
-                        min(65536, policy["maxFileBytes"] - len(data) + 1)
-                    ):
+                    while chunk := member.read(min(65536, file_limit - len(data) + 1)):
                         data.extend(chunk)
-                        if (
-                            len(data) > policy["maxFileBytes"]
-                            or total + len(data) > policy["maxTotalBytes"]
-                        ):
-                            raise _AdditionalSubmissionError(
-                                "превышен фактический лимит bytes"
-                            )
+                        if len(data) > file_limit or (not primary and total + len(data) > policy["maxTotalBytes"]):
+                            raise _AdditionalSubmissionError("превышен фактический лимит bytes")
                 if len(data) != info.file_size:
                     raise _AdditionalSubmissionError(
                         "размер записи не совпадает " + repr(name)
@@ -1922,7 +1952,9 @@ def _additional_inventory(job, config):
                         "исходник не UTF-8: " + repr(name),
                         "student-compilation-failure",
                     ) from error
-                total += len(data)
+                if not primary:
+                    total += len(data)
+                    extra_count += 1
                 members.append((name, bytes(data)))
     except (
         zipfile.BadZipFile,
@@ -1938,16 +1970,7 @@ def _additional_inventory(job, config):
             "повреждённый или неподдерживаемый архив (" + type(error).__name__ + ")"
         ) from error
     members.sort()
-    return members, {
-        "archive": policy["archive"],
-        "files": [
-            {
-                "path": name,
-                "bytes": len(data),
-            }
-            for name, data in members
-        ],
-    }
+    return members, _additional_evidence(policy, members, config["sourceFiles"])
 
 
 def grade(job_dir, registry=None):
@@ -2008,6 +2031,11 @@ def grade(job_dir, registry=None):
         if "apiPrecheck" in config:
             result.update(apiPrecheck="not-run", dependentExecution="not-run")
         return finish(result)
+    if config.get("additionalJavaSources", {}).get("primaryRequired", True):
+        present = {Path(path).relative_to(job / "student").as_posix() for path in sources}
+        present.update(name for name, _ in additional)
+        if not set(source_names) <= present:
+            return finish(_invalid("Представьте все объявленные Java-файлы отдельно или в ZIP.", classification="unsafe-submission"))
     if not sources and not additional:
         return finish(
             _invalid(

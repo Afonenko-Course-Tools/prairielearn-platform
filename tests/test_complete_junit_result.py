@@ -56,10 +56,7 @@ public class AnswerTest {
                     "junit-platform-console",
                 ):
                     self.assertNotIn(canary, json.dumps(public))
-                self.assertEqual(
-                    public["tests"][0]["description"],
-                    "Ожидается: не установлено\nПолучено: не установлено",
-                )
+                self.assertIn("Подробности сравнения не получены", public["tests"][0]["message"])
 
     def test_real_typed_assertion_captures_arguments_without_throwable_values(self):
         (self.job / "tests/AnswerTest.java").write_text("""
@@ -77,8 +74,8 @@ public class AnswerTest {
         self.assertEqual(
             [(c["expected"], c["actual"]) for c in case["checks"]], [("41", "42")]
         )
-        self.assertIn("Ожидается: 41", public["tests"][0]["description"])
-        self.assertIn("Получено: 42", public["tests"][0]["description"])
+        self.assertIn("Ожидается: 41", public["tests"][0]["message"])
+        self.assertIn("Получено: 42", public["tests"][0]["message"])
         self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", json.dumps(public))
 
     def test_two_ordinary_and_eight_parameter_rows_have_equal_weight(self):

@@ -43,6 +43,20 @@ class JUnitXmlBoundaryTests(unittest.TestCase):
         self.assertEqual(raw['score'],1)
         self.assertEqual(counts['executed'],1)
 
+    def test_finite_weights_cannot_overflow_aggregate_points(self):
+        self.xml.write_text('<testsuite tests="2" failures="0" errors="0" skipped="0">' +
+            ''.join('<testcase name="ok"><system-out>unique-id: '+uid+'</system-out></testcase>' for uid in ('case-1','case-2')) + '</testsuite>')
+        self.value['verifiedOutcomes']['case-2']='successful'
+        self.value['cases'].append({'id':'case-2','name':'ok','status':'passed','checks':[]})
+        self.value['grading']={uid:{'weight':1e308,'name':'ok','description':'','owner':'class-1'} for uid in ('case-1','case-2')}
+        with self.assertRaises(ValueError):
+            self.run_reader()
+
+    def test_finite_class_maximums_cannot_overflow_total(self):
+        self.value['classMaximums']={'class-1':1e308, 'other-class':1e308}
+        with self.assertRaises(ValueError):
+            self.run_reader()
+
     def test_malformed_feedback_is_a_parse_error(self):
         for value in ([], {'complete':True}, {**self.value,'grading':{'case-1':{'weight':'bad'}}}):
             with self.subTest(value=value):

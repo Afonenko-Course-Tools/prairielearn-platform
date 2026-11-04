@@ -171,158 +171,124 @@ def student_result(result, descriptor):
         else []
     )
     observations = result.get("publicCaseObservations", [])
+    public_bindings = {}
     for case in cases:
-        # Only the declared trusted test may report this explicitly public case.
         matches = [
-            o
-            for o in observations
-            if isinstance(o, dict)
-            and o.get("id") == case["id"]
+            o for o in observations
+            if isinstance(o, dict) and o.get("id") == case["id"]
             and o.get("test") == case["test"]
         ]
-        value = {
-            key: case[key]
-            for key in ("id", "name", "input", "state", "action", "expected")
-            if key in case
-        }
-        value.update(actual=None, status="not-run")
-        reported = (
-            len(matches) == 1
-            and matches[0].get("status") in ("passed", "failed")
-            and isinstance(matches[0].get("actual"), str)
-        )
-        if kind != "infrastructure":
-            if bound_cases:
-                execution = [leaf for leaf in bound_cases if leaf["test"] == case["test"]]
-                if len(execution) == 1:
-                    outcome = counts["outcomes"][execution[0]["id"]]
-                    if outcome in ("successful", "failed"):
-                        value["status"] = "passed" if outcome == "successful" else "failed"
-                        if reported and matches[0]["status"] == value["status"]:
-                            value["actual"] = matches[0]["actual"][:8192]
-            elif reported and (
-                case_results is None
-                or ("successful" if matches[0]["status"] == "passed" else "failed")
-                in counts["outcomes"].values()
-            ):
-                # Compatibility with earlier DTOs without MethodSource binding.
-                value.update(
-                    actual=matches[0]["actual"][:8192], status=matches[0]["status"]
-                )
+        value = {key: case[key] for key in
+                 ("id", "name", "input", "state", "action", "expected") if key in case}
+        value.update(actual=None, status="unknown", statusReason="Нет достоверного результата выполнения.")
+        reported = (len(matches) == 1 and matches[0].get("status") in ("passed", "failed")
+                    and isinstance(matches[0].get("actual"), str))
+        execution = [leaf for leaf in bound_cases if leaf["test"] == case["test"]]
+        if kind == "infrastructure":
+            value["statusReason"] = "Проверяющая среда не получила достоверный результат."
+        elif kind in ("compile", "submission"):
+            value.update(status="not-run", statusReason="Зависимые проверки не запускались: не пройден допуск ответа.")
+        elif bound_cases and len(bound_cases) != len(case_results):
+            value["statusReason"] = "Связь части выполненных проверок с публичным сценарием не установлена."
+        elif bound_cases:
+            if len(execution) == 1:
+                outcome = counts["outcomes"][execution[0]["id"]]
+                if outcome in ("successful", "failed"):
+                    value.update(status="passed" if outcome == "successful" else "failed", statusReason="")
+                    public_bindings.setdefault(execution[0]["id"], []).append(value)
+                    if reported and matches[0]["status"] == value["status"]:
+                        value["actual"] = matches[0]["actual"][:8192]
+                else:
+                    value["statusReason"] = "Проверка началась, но её результат не установлен."
+            elif len(execution) > 1:
+                value["statusReason"] = "Публичный сценарий соответствует нескольким выполненным проверкам; однозначная связь не установлена."
+            else:
+                value.update(status="not-run", statusReason="Объявленная проверка отсутствует в завершённом наборе.")
+        elif isinstance(case_results, list) and counts.get("executed") == 0:
+            value.update(status="not-run", statusReason="Объявленная проверка не запускалась.")
+        elif reported and (
+            case_results is None or
+            counts.get("feedbackProtocolVersion", 1) == 1 and
+            ("successful" if matches[0]["status"] == "passed" else "failed") in counts["outcomes"].values()
+        ):
+            # Fish/earlier DTOs have explicit observations without MethodSource binding.
+            value.update(actual=matches[0]["actual"][:8192], status=matches[0]["status"], statusReason="")
         feedback["publicCases"].append(value)
+
+    statuses = {"passed": "пройден", "failed": "не пройден",
+                "not-run": "не запускался", "unknown": "результат не установлен"}
+
+    def public_lines(case):
+        lines = ["Что проверяется: " + case["name"]]
+        for key, label in (("input", "Вход"), ("state", "Состояние"), ("action", "Действие"),
+                           ("expected", "Ожидается"), ("actual", "Получено")):
+            if key in case:
+                lines.append(label + ": " + ("не получено" if case[key] is None else case[key]))
+        lines.append("Статус: " + statuses[case["status"]])
+        if case["statusReason"]:
+            lines.append("Причина: " + case["statusReason"])
+        return lines
+
     if feedback["publicCases"]:
-        labels = {
-            "name": "Что проверяется",
-            "input": "Вход",
-            "state": "Состояние",
-            "action": "Действие",
-            "expected": "Ожидается",
-            "actual": "Получено",
-            "status": "Статус",
-        }
-        statuses = {
-            "passed": "пройден",
-            "failed": "не пройден",
-            "not-run": "не запускался",
-        }
-        native["tests"] = [
-            {
-                "name": c["name"],
-                "description": "\n".join(
-                    labels[k]
-                    + ": "
-                    + (
-                        statuses[c[k]]
-                        if k == "status"
-                        else "не получен" if c[k] is None else str(c[k])
-                    )
-                    for k in labels
-                    if k in c
-                ),
-                "message": "Публичный сценарий: " + statuses[c["status"]],
-                "points": int(c["status"] == "passed"),
-                "max_points": 1,
-            }
-            for c in feedback["publicCases"]
-        ]
-    if (
-        kind != "infrastructure"
-        and isinstance(case_results, list)
-        and counts.get("complete") is True
-    ):
-        feedback["cases"] = [
-            {
-                key: case[key]
-                for key in ("name", "status", "expected", "actual")
-                if key in case
-            }
-            for case in case_results
-        ]
-        native["tests"] = [
-            {
-                "name": case["name"],
-                "description": "\n".join(
-                    label + ": " + case.get(key, "не установлено")
-                    for key, label in (
-                        ("expected", "Ожидается"),
-                        ("actual", "Получено"),
-                    )
-                ),
-                "message": (
-                    "Проверка пройдена."
-                    if case["status"] == "passed"
-                    else "Проверка не пройдена."
-                ),
-                "points": int(case["status"] == "passed"),
-                "max_points": 1,
-            }
-            for case in feedback["cases"]
-        ]
-        if counts.get("feedbackProtocolVersion") == 2:
-            complete = True
-            for original, case, test in zip(
-                case_results, feedback["cases"], native["tests"]
-            ):
+        native["tests"] = []
+        for case in feedback["publicCases"]:
+            card = {"name": case["name"], "description": "Публичный сценарий: " + statuses[case["status"]],
+                    "message": "\n".join(public_lines(case))}
+            if case["status"] in ("passed", "failed"):
+                card.update(points=int(case["status"] == "passed"), max_points=1)
+            native["tests"].append(card)
+    if (kind != "infrastructure" and isinstance(case_results, list) and counts.get("complete") is True):
+        feedback["cases"] = []
+        native["tests"] = []
+        complete = True
+        for original in case_results:
+            case = {key: original[key] for key in ("name", "status", "expected", "actual") if key in original}
+            feedback["cases"].append(case)
+            contexts = public_bindings.get(original["id"], [])
+            lines = []
+            if contexts:
+                case["publicCases"] = contexts
+                for context in contexts:
+                    lines.extend(public_lines(context))
+            if counts.get("feedbackProtocolVersion") == 2:
                 checks = [dict(check) for check in original["checks"]]
                 case["checks"] = checks
                 if "expected" in case or "actual" in case:
-                    case["reporter"] = {
-                        "origin": "trusted-TestReporter",
-                        **{
-                            key: case[key]
-                            for key in ("expected", "actual")
-                            if key in case
-                        },
-                    }
-                lines = []
-                if case.get("reporter"):
-                    lines.extend(["Наблюдение TestReporter:", test["description"]])
+                    case["reporter"] = {"origin": "trusted-TestReporter", **{
+                        key: case[key] for key in ("expected", "actual") if key in case}}
+                    lines.append("Наблюдение TestReporter:")
+                    lines.extend(label + ": " + case.get(key, "не установлено") for key, label in
+                                 (("expected", "Ожидается"), ("actual", "Получено")))
                 if not checks and case["status"] != "passed":
                     complete = False
+                    if not case.get("reporter"):
+                        lines.append("Подробности сравнения не получены: проверка завершилась до поддержанного наблюдения.")
                 for check in checks:
                     complete &= check["availability"] == "complete"
-                    lines.extend(
-                        [
-                            "Проверка: " + check["property"],
-                            "Источник: " + check["site"],
-                            "Ожидается: " + check["expected"],
-                            "Получено: " + check["actual"],
-                        ]
-                    )
+                    lines.extend(["Проверка: " + check["property"], "Источник: " + check["site"],
+                                  "Ожидается: " + check["expected"], "Получено: " + check["actual"]])
                     if check["availability"] != "complete":
                         lines.append("Полнота: " + check["availability"])
-                    for key, label in (
-                        ("delta", "Допуск"),
-                        ("differenceIndex", "Первое различие"),
-                        ("differenceLine", "Строка"),
-                        ("differenceColumn", "Столбец"),
-                        ("differenceExpected", "Ожидаемый фрагмент"),
-                        ("differenceActual", "Полученный фрагмент"),
-                    ):
+                    for key, label in (("delta", "Допуск"), ("differenceIndex", "Первое различие"),
+                                       ("differenceLine", "Строка"), ("differenceColumn", "Столбец"),
+                                       ("differenceExpected", "Ожидаемый фрагмент"),
+                                       ("differenceActual", "Полученный фрагмент")):
                         if key in check:
                             lines.append(label + ": " + check[key])
-                test["description"] = "\n".join(lines) if lines else test["description"]
+            else:
+                lines.extend(label + ": " + case.get(key, "не установлено") for key, label in
+                             (("expected", "Ожидается"), ("actual", "Получено")))
+            summary = "Проверка пройдена." if case["status"] == "passed" else "Проверка не пройдена."
+            native["tests"].append({"name": case["name"], "description": summary,
+                                    "message": "\n".join([summary, *lines]),
+                                    "points": int(case["status"] == "passed"), "max_points": 1})
+        if counts.get("feedbackProtocolVersion") == 2:
             feedback["feedbackCompleteness"] = "complete" if complete else "incomplete"
+        # Unbound public context remains visible without inventing another scored leaf.
+        attached = {case["id"] for group in public_bindings.values() for case in group}
+        for case in feedback["publicCases"]:
+            if case["id"] not in attached:
+                native["message"] += "\n\n" + "\n".join(public_lines(case))
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
         text = (

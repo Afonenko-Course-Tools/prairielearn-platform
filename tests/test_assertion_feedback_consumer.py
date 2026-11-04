@@ -92,7 +92,7 @@ class ConsumerGuards(unittest.TestCase):
         result = self.result()
         result["counts"]["cases"][0]["checks"][0]["delta"] = "0.25"
         native = af.feedback(result, {})
-        self.assertIn("Допуск: 0.25", native["tests"][0]["description"])
+        self.assertIn("Допуск: 0.25", native["tests"][0]["message"])
 
 
 class SignedUnknownGuard(af.ProductionCase):

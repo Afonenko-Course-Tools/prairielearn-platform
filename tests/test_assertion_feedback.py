@@ -195,20 +195,20 @@ public class AnswerTest {
         self.assertEqual(len(group["checks"]), 2)
         self.assertTrue(all(c["delegated"] == "threw" for c in group["checks"]))
         lazy = next(c for c in cases if c["name"] == "Успех без обязательного наблюдения")
-        self.assertEqual((lazy["status"], lazy["checks"]), ("passed", []))
+        self.assertEqual(lazy["status"], "passed")
+        self.assertEqual(len(lazy["checks"]), 2)
+        self.assertTrue(all(check["delegated"] == "returned" and check["availability"] == "complete" for check in lazy["checks"]))
         raw_cases = result["rawResult"]["tests"]
         raw_group = next(c for c in raw_cases if c["name"] == "Две причины одного случая")
-        for message in ("PRIVATE_FIRST_MESSAGE", "PRIVATE_SECOND_MESSAGE"):
-            self.assertIn(message, raw_group["message"])
+        self.assertEqual(raw_group["message"], "")
         raw_exact = next(c for c in raw_cases if c["name"] == "Обычное равенство")
-        for detail in ("PRIVATE_DOUBLE_MESSAGE", "187.25", "42.0"):
-            self.assertIn(detail, raw_exact["message"])
+        self.assertEqual(raw_exact["message"], "")
         native = feedback(result, self.cfg)
         self.assertEqual((native["score"], len(native["tests"])), (0.5, 6))
         tolerance = next(t for t in native["tests"] if t["name"] == "Равенство с допуском")
-        self.assertIn("Допуск: 0.01", tolerance["description"])
+        self.assertIn("Допуск: 0.01", tolerance["message"])
         public = json.dumps(native, ensure_ascii=False)
-        for private in ("PRIVATE_", "187.25", "EAGER_MESSAGE", "java25-job-runtime-"):
+        for private in ("PRIVATE_", "EAGER_MESSAGE", "java25-job-runtime-"):
             self.assertNotIn(private, public)
 
     def test_real_arguments_reach_native_without_new_points(self):
@@ -242,7 +242,7 @@ public class AnswerTest {
                 "actual": "Отдельное наблюдение",
             },
         )
-        self.assertIn("Ожидается: 41", native["tests"][0]["description"])
+        self.assertIn("Ожидается: 41", native["tests"][0]["message"])
         self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", str(native))
 
     def test_string_difference_beyond_10240_lines_is_localized(self):

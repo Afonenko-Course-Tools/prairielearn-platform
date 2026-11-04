@@ -105,8 +105,8 @@ class StudentFeedback(unittest.TestCase):
         self.assertEqual(cases[0]["expected"], "5")
         self.assertEqual(cases[1]["status"], "passed")
         self.assertNotIn("CLOSED_", json.dumps(value))
-        self.assertIn("Ожидается: 5", value["tests"][0]["description"])
-        self.assertIn("Получено: 4", value["tests"][0]["description"])
+        self.assertIn("Ожидается: 5", value["tests"][0]["message"])
+        self.assertIn("Получено: 4", value["tests"][0]["message"])
 
     def test_input_only_success_explains_each_public_requirement_without_private_canary(
         self,
@@ -142,7 +142,7 @@ class StudentFeedback(unittest.TestCase):
         self.assertEqual(value["tests"][0]["name"], "Пустой ввод даёт пустой результат")
         self.assertIn(
             "Что проверяется: Пустой ввод даёт пустой результат",
-            value["tests"][0]["description"],
+            value["tests"][0]["message"],
         )
         self.assertEqual(
             value["feedback"]["publicCases"][0]["name"],
@@ -236,7 +236,8 @@ class PublicCaseExecution(unittest.TestCase):
                     "id": "public", "test": "T#t", "actual": "CLOSED_UNCONFIRMED", "status": "passed",
                 }]
                 case = feedback.student_result(result, descriptor)["feedback"]["publicCases"][0]
-                self.assertEqual((case["status"], case["actual"]), ("not-run", None))
+                expected_status = "not-run" if mutation in ("missing", "skipped") else "unknown"
+                self.assertEqual((case["status"], case["actual"]), (expected_status, None))
 
     def test_reporter_actual_and_legacy_version_one_fallback_remain_available(self):
         for legacy in (False, True):
