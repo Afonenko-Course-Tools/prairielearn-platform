@@ -1,3 +1,5 @@
+import base64
+from selected_job_fixture import native_manifest
 """Real JUnit jobs expose discovery, isolation and policy mistakes."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -324,9 +326,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
 
             def select(name, target):
                 return {
-                    "projectRelativePath": name,
-                    "submissionRelativePath": target,
-                    "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                    "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
             fact = {
@@ -359,24 +359,13 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCasesHash": {
-                    "projectRelativePath": "tests/cases.json",
-                    "sha256": hashlib.sha256(
-                        (project / "tests/cases.json").read_bytes()
-                    ).hexdigest(),
-                },
+                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
                 "contractFixtures": [
                     select("tests/fixtures/Student.java", "Student.java"),
                     select("tests/fixtures/extra.zip", "additional-sources.zip"),
                 ],
             }
-            manifest = {
-                "schemaVersion": 1,
-                "bookRoot": "tasks",
-                "sourceSnapshotHash": "a" * 64,
-                "inventoryHash": "b" * 64,
-                "projects": [fact],
-            }
+            manifest = native_manifest(fact)
             archives = []
             for scenario in [
                 "reference:correct",
@@ -405,7 +394,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     )
                     if scenario.startswith("reference"):
                         archives.append(raw)
-                        self.assertIn("reference/Base.java", job["sourceHashes"])
+                        self.assertIn("reference/Base.java", [x["target"] for x in job["sources"]])
                     result = jobs.run_job(job, "host", registry=unit_registry())
                     self.assertEqual(result["classification"], "success", result)
                     self.assertEqual(
@@ -432,7 +421,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                 )
                 self.assertNotIn("additionalJavaSources", job["grading"])
                 self.assertEqual(
-                    set(job["sourceHashes"]),
+                    {x["target"] for x in job["sources"]},
                     {"reference/Base.java", "reference/Student.java"},
                 )
                 result = jobs.run_job(job, "host", registry=unit_registry())
@@ -458,15 +447,12 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     registry=unit_registry(),
                 )
             fact["check"]["additional-java-sources"] = saved
+            # Уже выбранные bytes не перечитываются из изменённого физического source.
             (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
-            with self.assertRaisesRegex(jobs.JobError, "snapshot changed"):
-                jobs.prepare_job(
-                    manifest,
-                    snapshot,
-                    "demo/exr-extra",
-                    "contract:extra",
-                    registry=unit_registry(),
-                )
+            job=jobs.prepare_job(manifest,snapshot,"demo/exr-extra","contract:extra",registry=unit_registry())
+            try:self.assertNotEqual((job.root/"student/additional-sources.zip").read_bytes(),b"tampered")
+            finally:shutil.rmtree(job.root)
+
 
 
 class PreparationMetadataTests(unittest.TestCase):
@@ -493,9 +479,7 @@ class PreparationMetadataTests(unittest.TestCase):
 
         def selected(name, target):
             return {
-                "projectRelativePath": name,
-                "submissionRelativePath": target,
-                "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
             }
 
         self.feedback = {
@@ -528,13 +512,7 @@ class PreparationMetadataTests(unittest.TestCase):
             "trustedTests": [selected("tests/AnswerTest.java", "AnswerTest.java")],
             "verificationTests": [],
         }
-        self.manifest = {
-            "schemaVersion": 1,
-            "bookRoot": "tasks",
-            "sourceSnapshotHash": "a" * 64,
-            "inventoryHash": "b" * 64,
-            "projects": [fact],
-        }
+        self.manifest = native_manifest(fact)
 
     def prepare(self):
         import shutil

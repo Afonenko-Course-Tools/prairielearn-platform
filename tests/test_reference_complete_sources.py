@@ -1,5 +1,6 @@
 """Полное авторское решение не расширяет student source policy."""
 import base64
+from selected_job_fixture import native_manifest
 import importlib.util
 import json
 from pathlib import Path
@@ -41,7 +42,7 @@ class ReferenceCompleteSources(unittest.TestCase):
             "trustedTests": [selected("tests/AnswerTest.java", "AnswerTest.java")],
             "references": [{"name": "complete", "root":"reference","optional":False,"available":True,"group":"complete","targets":["reference/Study.java","reference/Renamed.java","reference/support/Helper.java"],"sources": [selected("reference/Study.java", "Study.java"), selected("reference/Renamed.java", "Renamed.java"), selected("reference/support/Helper.java", "support/Helper.java")]}],
         }
-        self.manifest = {"schemaVersion":3,"courseId":"demo","bookRoot":"tasks","projects":[self.fact]}
+        self.manifest = native_manifest(self.fact)
         self.registry = registry()
     def prepare(self, scenario):
         job = jobs.prepare_job(self.manifest, self.snapshot, self.fact["qualifiedId"], scenario, registry=self.registry)

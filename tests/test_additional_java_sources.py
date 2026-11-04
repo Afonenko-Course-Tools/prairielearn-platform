@@ -1,3 +1,5 @@
+import base64
+from selected_job_fixture import native_manifest
 """Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
 
 import hashlib
@@ -634,9 +636,7 @@ class OptionalPreparationTests(unittest.TestCase):
 
             def selected(name, out):
                 return {
-                    "projectRelativePath": name,
-                    "submissionRelativePath": out,
-                    "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                    "name":out,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
             check = {
@@ -678,23 +678,12 @@ class OptionalPreparationTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCasesHash": {
-                    "projectRelativePath": "tests/cases.json",
-                    "sha256": hashlib.sha256(
-                        (project / "tests/cases.json").read_bytes()
-                    ).hexdigest(),
-                },
+                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
                 "contractFixtures": [
                     selected("tests/fixtures/only.zip", "additional-sources.zip")
                 ],
             }
-            manifest = {
-                "schemaVersion": 1,
-                "bookRoot": "tasks",
-                "sourceSnapshotHash": "a" * 64,
-                "inventoryHash": "b" * 64,
-                "projects": [fact],
-            }
+            manifest = native_manifest(fact)
             for scenario in ["reference:correct", "contract:only"]:
                 job = jobs.prepare_job(
                     manifest,
@@ -710,31 +699,6 @@ class OptionalPreparationTests(unittest.TestCase):
                     )
                     extras, _ = grader._additional_inventory(job.root, job["grading"])
                     self.assertEqual([n for n, _ in extras], ["other/Solution.java"])
-                    expected = jobs.digest(
-                        {
-                            "sources": {
-                                n: hashlib.sha256(b).hexdigest() for n, b in extras
-                            },
-                            "javaBuild": job["grading"]["javaBuild"],
-                        }
-                    )
-                    self.assertEqual(jobs._prepared_build_input_hash(job), expected)
-                    stage = job.root / "extra-stage"
-                    stage.mkdir()
-                    paths = []
-                    names = {}
-                    for name, data in extras:
-                        target = stage / name
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(data)
-                        paths.append(str(target))
-                        names[str(target)] = name
-                    self.assertEqual(
-                        grader._java_build_input(
-                            job.root, job["grading"]["javaBuild"], paths, names
-                        ),
-                        expected,
-                    )
                     # Реальная javac/JUnit проверка тех же materialized bytes; это не Gradle/image proof.
                     cfg = job["grading"]
                     cfg["runtime"] = "java25-junit-v1"

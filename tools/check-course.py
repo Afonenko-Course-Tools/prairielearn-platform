@@ -34,7 +34,7 @@ def main():
    for project in selected:
     scenarios=a.scenario or [x['scenario'] for x in required if x['qualifiedId']==project['qualifiedId']]
     for scenario in scenarios:
-     try:job=prepare_job(m,a.snapshot,project['qualifiedId'],scenario,a.scope,job_delivery,registry)
+     try:job=prepare_job(dict(m,projects=[project]),a.snapshot,project['qualifiedId'],scenario,a.scope,job_delivery,registry)
      except JobError as error:
       if str(error).startswith('reference-unavailable:'):unavailable.append({'qualifiedId':project['qualifiedId'],'scenario':scenario,'status':'reference-unavailable'});continue
       raise
