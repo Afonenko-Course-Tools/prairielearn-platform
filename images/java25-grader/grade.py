@@ -1740,8 +1740,11 @@ def _native_build(job, config, sources, extra_names, stage, runtime, durations, 
                 os.fchown(stream.fileno(), uid, -1)
                 os.fchmod(stream.fileno(), 0o400)
             entropy[role] = "-Djava.security.egd=" + path.as_uri()
-        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData " + entropy["daemon"] + "\n")
-        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "JAVA_OPTS": entropy["client"], "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData\n")
+        # Gradle removes mutable -D properties from daemon startup arguments.
+        # The launcher reads JDK_JAVA_OPTIONS before explicit JAVA_OPTS, so the
+        # client overrides this inherited daemon seed with its own fresh seed.
+        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "JAVA_OPTS": entropy["client"], "JDK_JAVA_OPTIONS": entropy["daemon"], "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
         try:
             code, text, reason = _run([*prefix, "/opt/gradle/bin/gradle", "--offline", "--no-daemon", "--console=plain", "--project-cache-dir", str(work / "project-cache"), "jar"], work, limits.get("compile-seconds", 15), int(limits["max-output-bytes"]), env=environment)
         finally:

@@ -12,6 +12,13 @@ class PlainImageTests(unittest.TestCase):
 
     def invoke(self):
         (self.job/'tests/grading-job.json').write_text(json.dumps(self.config))
+        # The official root supervisor creates protected artifact directories.
+        # Return only this test's disposable mount to its host owner before
+        # TemporaryDirectory cleanup, including when an assertion fails.
+        self.addCleanup(subprocess.run, ['docker','run','--rm','--network=none',
+            '--entrypoint','/bin/chown','--mount',f'type=bind,src={self.job},dst=/grade',
+            os.environ['PL_TEST_IMAGE'],'-Rh',f'{os.getuid()}:{os.getgid()}','/grade'],
+            capture_output=True,text=True,check=True,timeout=10)
         result=subprocess.run(['docker','run','--rm','--network=none','--cpus=2','--memory=512m','--pids-limit=128',
             '--mount',f'type=bind,src={self.job},dst=/grade',os.environ['PL_TEST_IMAGE'],'--verification'],
             capture_output=True,text=True,timeout=35)
