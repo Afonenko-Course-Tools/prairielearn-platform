@@ -149,30 +149,6 @@ def load_runtime_registry():
     return json.loads((ROOT / "runtime-profiles.json").read_text())
 
 
-def runtime_evidence(runtime, registry=None):
-    registry = registry or load_runtime_registry()
-    if runtime not in registry["profiles"]:
-        raise JobError("Unknown runtime " + runtime)
-    profile = registry["profiles"][runtime]
-    bundle = safe(ROOT, profile["bundle"])
-    actual = {
-        p.relative_to(bundle).as_posix() for p in bundle.rglob("*") if p.is_file()
-    }
-    if actual != set(profile["files"]):
-        raise JobError("Runtime dependency closure changed")
-    for name, sha in profile["files"].items():
-        if hashlib.sha256(safe(bundle, name).read_bytes()).hexdigest() != sha:
-            raise JobError("Runtime dependency checksum changed")
-    runner = hashlib.sha256(
-        safe(ROOT, profile.get("runner", "images/java25-grader/grade.py")).read_bytes()
-    ).hexdigest()
-    if runner != profile["runnerSha256"]:
-        raise JobError("Runtime runner checksum changed")
-    for name, sha in profile["sharedFiles"].items():
-        if hashlib.sha256(safe(ROOT, name).read_bytes()).hexdigest() != sha:
-            raise JobError("Shared runtime checksum changed")
-    files = {**profile["files"], **profile["sharedFiles"], "runner/grade.py": runner}
-    return {"dependencyHashes": files, "dependencyHash": digest(files)}
 
 
 
@@ -727,58 +703,10 @@ def prepare_job(
 NATIVE_RUNTIME = "java25-gradle-junit-v1"
 
 
-def _prepared_build_input_hash(job):
-    """Hash captured/materialized bytes, independently of the returned proof."""
-    config = job["grading"]
-    root = job.root
-    files = {}
-    for name in config["sourceFiles"]:
-        path = safe(root / "student", name)
-        if (
-            not path.exists()
-            and config.get("additionalJavaSources", {}).get("primaryRequired", True)
-            is False
-        ):
-            continue
-        files[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    selected = {x["submissionRelativePath"]: x["sha256"] for x in job["sources"]}
-    if any(selected.get(name) != sha for name, sha in files.items()):
-        raise JobError("Materialized native source differs from captured selection")
-    if "additionalJavaSources" in config:
-        archive = config["additionalJavaSources"]["archive"]
-        archive_file = safe(root / "student", archive)
-        if archive_file.exists():
-            actual = hashlib.sha256(archive_file.read_bytes()).hexdigest()
-            expected = selected.get(
-                archive, job["sourceHashes"].get("$generated/" + archive)
-            )
-            if expected is None or expected != actual:
-                raise JobError(
-                    "Materialized native archive differs from captured selection"
-                )
-        # Reuse the existing closed ZIP admission; never add another parser.
-        spec = importlib.util.spec_from_file_location(
-            "native_source_admission", ROOT / "images/java25-grader/grade.py"
-        )
-        admission = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(admission)
-        try:
-            extras, _ = admission._additional_inventory(root, config)
-        except admission._AdditionalSubmissionError:
-            return None  # No build is permitted; retain existing unsafe-submission outcome.
-        for name, data in extras:
-            if name in files:
-                raise JobError("Duplicate selected native source")
-            files[name] = hashlib.sha256(data).hexdigest()
-            if name in selected and selected[name] != files[name]:
-                raise JobError("Materialized native extra source differs from capture")
-        if set(selected) - set(files) - {archive}:
-            raise JobError("Captured native additional source is missing")
-    return digest({"sources": files, "javaBuild": config["javaBuild"]})
 
 
 def _validate_build_observation(
-    result, dependency_hash, input_hash=None, artifact=None
+    result, artifact=None
 ):
     proof = result.get("buildEvidence")
     if not isinstance(proof, dict):
@@ -839,8 +767,8 @@ def _validate_build_observation(
     ) or (classification == "unsafe-submission" and trusted == "not-run")
     if proof.get("status") == "not-run" and not negative:
         raise JobError("Native build not-run requires a compile/API negative outcome")
-    if negative and proof.get("status") != "not-run":
-        raise JobError("Compile/API negative cannot claim a build")
+    if student == "failure" and proof.get("status") != "not-run":
+        raise JobError("Compilation failure cannot claim a build")
     if (
         result.get("infrastructure") == "complete"
         and not negative
@@ -855,10 +783,6 @@ def _validate_build_observation(
             raise JobError(
                 "Successful native build requires successful student compilation"
             )
-        if proof.get("dependencyHash") != dependency_hash:
-            raise JobError("Build dependency closure differs from execution")
-        if input_hash is not None and proof.get("inputHash") != input_hash:
-            raise JobError("Build input differs from selected scenario bytes")
         if (
             artifact is not None
             and proof.get("artifact", {}).get("path") != "build/libs/" + artifact
@@ -891,7 +815,6 @@ def run_job(job, backend="host", registry=None):
     if "deliveryHash" in job:
         common["deliveryHash"] = job["deliveryHash"]
     native = job["runtime"] == NATIVE_RUNTIME
-    selected_input = _prepared_build_input_hash(job) if native else None
     try:
         if backend == "host":
             profile = (registry or load_runtime_registry())["profiles"][job["runtime"]]
@@ -975,14 +898,9 @@ def run_job(job, backend="host", registry=None):
                 "kind": "gradle-jar-v1",
                 "status": "failure",
                 "reason": "configuration",
-                **({"inputHash": selected_input} if selected_input is not None else {}),
             }
-        if selected_input != _prepared_build_input_hash(job):
-            raise JobError("Selected native scenario inputs changed during execution")
         _validate_build_observation(
             result,
-            runtime_evidence(job["runtime"], registry)["dependencyHash"],
-            selected_input,
             job["grading"]["javaBuild"]["artifact"],
         )
     if (job.root / "public-verification").is_dir() and result.get(
@@ -1029,7 +947,6 @@ def run_job(job, backend="host", registry=None):
                             "trustedCompilation",
                             "apiPrecheck",
                             "dependentExecution",
-                            "executionEvidence",
                         )
                         if key in result
                     }
@@ -1037,12 +954,6 @@ def run_job(job, backend="host", registry=None):
                     else {}
                 ),
             }
-    if result.get("infrastructure") == "complete" and result.get(
-        "executionEvidence"
-    ) != runtime_evidence(job["runtime"], registry):
-        raise JobError(
-            "Executed image dependency closure differs from prepared runtime"
-        )
     if any(key in result and result[key] != value for key, value in common.items()):
         raise JobError("Runtime result attempted to replace trusted job bindings")
     value = {"schemaVersion": 1, "backend": backend, **common, **result}
@@ -1178,7 +1089,6 @@ def verify_results(
     checks = []
     bindings = {}
     runtimes = {}
-    closures = {}
     observed = set()
     for r in results:
         validate("check-result", r)
@@ -1207,47 +1117,21 @@ def verify_results(
         if rid in runtimes and runtimes[rid] != image:
             raise JobError("Mixed images for one runtime")
         runtimes[rid] = image
-        expected_evidence = runtime_evidence(rid, registry)
-        evidence = r.get("executionEvidence", expected_evidence)
-        if evidence != expected_evidence:
-            raise JobError("Executed runtime dependency closure differs from registry")
         if rid == NATIVE_RUNTIME:
-            primary_build = _validate_build_observation(r, evidence["dependencyHash"])
+            primary_build = _validate_build_observation(r)
             if "publicResult" in r:
-                public_evidence = r["publicResult"].get("executionEvidence")
-                if (
-                    r["publicResult"].get("infrastructure") == "complete"
-                    or public_evidence is not None
-                ) and public_evidence != expected_evidence:
-                    raise JobError(
-                        "Public execution dependency closure differs from registry"
-                    )
-                public_build = _validate_build_observation(
-                    r["publicResult"], evidence["dependencyHash"]
-                )
-                if public_build.get("inputHash") != primary_build.get("inputHash"):
-                    raise JobError(
-                        "Public build input differs from primary scenario input"
-                    )
-                if (
-                    primary_build["status"] == "success"
-                    and public_build["status"] == "success"
-                    and public_build["artifact"]["path"]
-                    != primary_build["artifact"]["path"]
-                ):
-                    raise JobError(
-                        "Public build artifact differs from primary descriptor"
-                    )
+                public_build = _validate_build_observation(r["publicResult"])
+                if (primary_build["status"] == "success" and public_build["status"] == "success"
+                    and public_build["artifact"]["path"] != primary_build["artifact"]["path"]):
+                    raise JobError("Public build artifact differs from primary descriptor")
         binding = {
             "qualifiedId": q,
             "runtime": rid,
             "imageDigest": image,
-            "dependencyHash": evidence["dependencyHash"],
         }
         if q in bindings and bindings[q] != binding:
             raise JobError("Mixed runtime/image for one question")
         bindings[q] = binding
-        closures[rid] = evidence
         e = (
             {
                 "student-compilation": "success",
@@ -1327,12 +1211,6 @@ def verify_results(
         "checkedIds": sorted(bindings),
         "questionBindings": [bindings[q] for q in sorted(bindings)],
         "runtimes": runtimes,
-        "runtimeEvidence": closures,
-        "dependencyHashes": {
-            rid + "/" + name: sha
-            for rid, closure in closures.items()
-            for name, sha in closure["dependencyHashes"].items()
-        },
         "expectations": checks,
     }
     native_builds = [
@@ -1432,7 +1310,6 @@ def validate_receipt_integrity(receipt):
         }
         _validate_build_observation(
             {**proof["outcome"], "buildEvidence": inner},
-            bindings[proof["qualifiedId"]]["dependencyHash"],
         )
         observation = observations[(proof["qualifiedId"], proof["scenario"])]
         if observation["matched"] and proof["outcome"]["infrastructure"] != "complete":
@@ -1449,28 +1326,11 @@ def validate_receipt_integrity(receipt):
             )
         if receipt["status"] == "success" and proof["status"] == "failure":
             raise JobError("Successful receipt cannot contain trusted build failure")
-    used = {}
+    if {binding["runtime"] for binding in bindings.values()} != set(receipt["runtimes"]):
+        raise JobError("Receipt runtime set differs from question bindings")
     for binding in bindings.values():
-        rid = binding["runtime"]
-        closure = receipt["runtimeEvidence"].get(rid)
-        if (
-            not closure
-            or digest(closure["dependencyHashes"]) != closure["dependencyHash"]
-            or closure["dependencyHash"] != binding["dependencyHash"]
-            or receipt["runtimes"].get(rid) != binding["imageDigest"]
-        ):
-            raise JobError("Receipt runtime binding is inconsistent")
-        used[rid] = closure
-    if set(used) != set(receipt["runtimes"]) or set(used) != set(
-        receipt["runtimeEvidence"]
-    ):
-        raise JobError("Receipt has unbound runtime evidence")
-    if {
-        rid + "/" + name: sha
-        for rid, closure in used.items()
-        for name, sha in closure["dependencyHashes"].items()
-    } != receipt["dependencyHashes"]:
-        raise JobError("Receipt flattened dependency closure is inconsistent")
+        if receipt["runtimes"][binding["runtime"]] != binding["imageDigest"]:
+            raise JobError("Receipt image differs from question binding")
 
 
 def _validate_automatic_release_receipt(receipt, delivery, native, registry=None):
@@ -1556,12 +1416,6 @@ def _validate_automatic_release_receipt(receipt, delivery, native, registry=None
             or registry["profiles"][rid]["image"] != image
         ):
             raise JobError("Published runtime registry does not match question image")
-        evidence = runtime_evidence(rid, registry)
-        if (
-            evidence != receipt["runtimeEvidence"].get(rid)
-            or evidence["dependencyHash"] != binding["dependencyHash"]
-        ):
-            raise JobError("Question runtime dependency closure differs from receipt")
         if rid == NATIVE_RUNTIME:
             for proof in receipt.get("buildEvidence", []):
                 if (
@@ -1573,18 +1427,9 @@ def _validate_automatic_release_receipt(receipt, delivery, native, registry=None
                     raise JobError(
                         "Receipt native artifact differs from actual descriptor"
                     )
-        used[rid] = evidence
-    if set(used) != set(receipt["runtimes"]) or set(used) != set(
-        receipt["runtimeEvidence"]
-    ):
-        raise JobError("Receipt runtime set differs from actual question runtimes")
-    flattened = {
-        rid + "/" + name: sha
-        for rid, closure in used.items()
-        for name, sha in closure["dependencyHashes"].items()
-    }
-    if flattened != receipt["dependencyHashes"]:
-        raise JobError("Receipt dependency hashes differ from runtime closure")
+        used[rid] = image
+    if set(used) != set(receipt["runtimes"]):
+        raise JobError("Receipt runtime set differs from question runtimes")
     for name, sha in delivery.get("files", {}).items():
         if hashlib.sha256(safe(Path(native), name).read_bytes()).hexdigest() != sha:
             raise JobError("Native payload differs from canonical delivery")

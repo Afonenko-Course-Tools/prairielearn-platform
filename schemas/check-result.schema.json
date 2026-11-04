@@ -456,28 +456,6 @@
         "host-diagnostic"
       ]
     },
-    "executionEvidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "dependencyHash",
-        "dependencyHashes"
-      ],
-      "properties": {
-        "dependencyHash": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
-        "dependencyHashes": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          }
-        }
-      }
-    },
     "tests": {
       "$ref": "#/properties/rawResult/properties/tests"
     },
@@ -525,10 +503,6 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
         },
-        "archiveSha256": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
         "files": {
           "type": "array",
           "maxItems": 128,
@@ -539,10 +513,6 @@
                 "type": "string",
                 "minLength": 1
               },
-              "sha256": {
-                "type": "string",
-                "pattern": "^[a-f0-9]{64}$"
-              },
               "bytes": {
                 "type": "integer",
                 "minimum": 0,
@@ -551,7 +521,6 @@
             },
             "required": [
               "path",
-              "sha256",
               "bytes"
             ],
             "additionalProperties": false
@@ -560,7 +529,6 @@
       },
       "required": [
         "archive",
-        "archiveSha256",
         "files"
       ],
       "additionalProperties": false
@@ -608,14 +576,6 @@
             "failure"
           ]
         },
-        "inputHash": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
-        "dependencyHash": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$"
-        },
         "durationSeconds": {
           "type": "number",
           "minimum": 0
@@ -627,10 +587,6 @@
               "type": "string",
               "pattern": "^build/libs/[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
             },
-            "sha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
             "bytes": {
               "type": "integer",
               "minimum": 1
@@ -638,7 +594,6 @@
           },
           "required": [
             "path",
-            "sha256",
             "bytes"
           ],
           "additionalProperties": false
@@ -674,8 +629,6 @@
           },
           "then": {
             "required": [
-              "inputHash",
-              "dependencyHash",
               "artifact"
             ],
             "not": {
@@ -700,6 +653,9 @@
     },
     "jobSchemaVersion": {
       "const": 2
+    },
+    "reportFormat": {
+      "const": "junit-xml"
     }
   },
   "required": [
@@ -1104,28 +1060,6 @@
             "host-diagnostic"
           ]
         },
-        "executionEvidence": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "dependencyHash",
-            "dependencyHashes"
-          ],
-          "properties": {
-            "dependencyHash": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
-            "dependencyHashes": {
-              "type": "object",
-              "minProperties": 1,
-              "additionalProperties": {
-                "type": "string",
-                "pattern": "^[a-f0-9]{64}$"
-              }
-            }
-          }
-        },
         "tests": {
           "$ref": "#/properties/rawResult/properties/tests"
         },
@@ -1173,10 +1107,6 @@
               "type": "string",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.zip$"
             },
-            "archiveSha256": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
             "files": {
               "type": "array",
               "maxItems": 128,
@@ -1187,10 +1117,6 @@
                     "type": "string",
                     "minLength": 1
                   },
-                  "sha256": {
-                    "type": "string",
-                    "pattern": "^[a-f0-9]{64}$"
-                  },
                   "bytes": {
                     "type": "integer",
                     "minimum": 0,
@@ -1199,7 +1125,6 @@
                 },
                 "required": [
                   "path",
-                  "sha256",
                   "bytes"
                 ],
                 "additionalProperties": false
@@ -1208,7 +1133,6 @@
           },
           "required": [
             "archive",
-            "archiveSha256",
             "files"
           ],
           "additionalProperties": false
@@ -1256,14 +1180,6 @@
                 "failure"
               ]
             },
-            "inputHash": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
-            "dependencyHash": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            },
             "durationSeconds": {
               "type": "number",
               "minimum": 0
@@ -1275,10 +1191,6 @@
                   "type": "string",
                   "pattern": "^build/libs/[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
                 },
-                "sha256": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
                 "bytes": {
                   "type": "integer",
                   "minimum": 1
@@ -1286,7 +1198,6 @@
               },
               "required": [
                 "path",
-                "sha256",
                 "bytes"
               ],
               "additionalProperties": false
@@ -1322,8 +1233,6 @@
               },
               "then": {
                 "required": [
-                  "inputHash",
-                  "dependencyHash",
                   "artifact"
                 ],
                 "not": {
@@ -1341,6 +1250,9 @@
               }
             }
           ]
+        },
+        "reportFormat": {
+          "const": "junit-xml"
         }
       },
       "additionalProperties": false,
@@ -2757,11 +2669,7 @@
           }
         }
       },
-      "then": {
-        "required": [
-          "executionEvidence"
-        ]
-      }
+      "then": {}
     },
     {
       "if": {

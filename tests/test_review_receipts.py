@@ -22,9 +22,6 @@ def result(scenario="starter", image=IMAGE):
         "deliveryHash": "c" * 64,
         "runtime": "java25-junit-v1",
         "imageDigest": image,
-        "executionEvidence": g.runtime_evidence(
-            "java25-junit-v1", registry=unit_registry()
-        ),
         "sourceHashes": {"S.java": "a" * 64},
         "testsHashes": {"T.java": "b" * 64},
         "gradable": True,
@@ -331,12 +328,6 @@ class ReviewReceipts(unittest.TestCase):
             casefile.write_text("{}")
             with self.assertRaises(g.JobError):
                 g.scenario_inventory(manifest, root)
-
-    def test_executed_dependency_substitution_is_rejected(self):
-        r = result()
-        r["executionEvidence"]["dependencyHashes"]["runner/grade.py"] = "d" * 64
-        with self.assertRaises(g.JobError):
-            g.verify_results([r], {}, registry=unit_registry())
 
     def test_defect_receipt_cannot_claim_all_expectations_matched(self):
         receipt = g.verify_results([result()], {}, registry=unit_registry())

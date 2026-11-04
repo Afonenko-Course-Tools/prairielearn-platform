@@ -1,17 +1,25 @@
-plugins { id 'java' }
+plugins {
+    id 'java'
+    id 'application'
+}
 
 def nativeConfig = new groovy.json.JsonSlurper().parse(file('native-config.json'))
 java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
 sourceSets {
-    main {
-        java { setSrcDirs([]) }
-        resources { setSrcDirs([]) }
-        output.classesDirs.setFrom(files('production-classes'))
-    }
-    test { java { setSrcDirs([]) }; resources { setSrcDirs([]) } }
+    main { java { setSrcDirs(['src']) }; resources { setSrcDirs([]) } }
+    test { java { setSrcDirs(['tests']) }; resources { setSrcDirs([]) } }
 }
-// Supervisor передаёт единственный результат javac --release 25 только для чтения.
-tasks.withType(JavaCompile).configureEach { enabled = false }
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+    options.compilerArgs.addAll(['-proc:none', '-Xmaxerrs', '5'])
+}
+def junitJar = providers.gradleProperty('junitJar').orElse('/platform/runtime/java25-junit-v1/junit-platform-console-standalone-1.14.1.jar')
+dependencies { testImplementation files(junitJar) }
+tasks.named('test') { useJUnitPlatform() }
+if (nativeConfig.containsKey('mainClass')) {
+    application { mainClass = nativeConfig.mainClass }
+}
 tasks.named('jar') {
     archiveFileName = nativeConfig.artifact
     if (nativeConfig.containsKey('mainClass')) {
@@ -20,4 +28,3 @@ tasks.named('jar') {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
-tasks.named('test') { enabled = false }

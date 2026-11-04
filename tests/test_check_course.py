@@ -187,7 +187,7 @@ class PreparedJobTests(unittest.TestCase):
             try:
                 r = m.run_job(job, "host", registry=unit_registry())
                 self.assertEqual(r["score"], 1)
-                self.assertIn("executionEvidence", r)
+                self.assertNotIn("executionEvidence", r)
                 m.validate("check-result", r)
             finally:
                 __import__("shutil").rmtree(job.root)

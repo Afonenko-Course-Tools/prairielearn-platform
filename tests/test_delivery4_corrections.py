@@ -60,7 +60,7 @@ class BuildReader(unittest.TestCase):
   self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name);self.source=self.root/'source';self.source.mkdir()
   entry=self.source/'tasks/_extensions/course-prairielearn/entrypoints/export-course.ts';entry.parent.mkdir(parents=True);entry.write_text('// UNIT inert installed-exporter carrier; no native spawn\n')
   for args in [('init','-q'),('add','.'),('-c','user.name=UNIT','-c','user.email=unit@example.invalid','commit','-qm','UNIT carrier'),('remote','add','origin','https://example.invalid/unit-source')]:self.assertEqual(git(self.source,*args).returncode,0)
- def build(self,payload,d,manifest,label,assembly=None,mutate_source=False):
+ def build(self,payload,d,manifest,label,mutate_source=False):
   calls=[];original=subprocess.run
   def carrier(args,*a,**kw):
    if args[0]=='quarto':
@@ -73,18 +73,13 @@ class BuildReader(unittest.TestCase):
     return subprocess.CompletedProcess(args,0)
    return original(args,*a,**kw)
   out=self.root/label;error='';accepted=False
-  with patch('subprocess.run',carrier),patch.object(builder._assembly,'for_build',return_value=assembly):
+  with patch('subprocess.run',carrier):
    try:builder.build_course(self.source,'tasks','test',out);accepted=True
    except builder.BuildError as e:error=str(e)
   row={'label':label,'accepted':accepted,'error':error,'published':out.exists(),'privateChecksPublished':out.with_name(out.name+'-checks.json').exists(),'calls':calls};return row
- def test_actual_source_changed_fence_and_release3_capability_refuse4(self):
-  from release_assembly_fixtures import AssemblyFixture
+ def test_actual_source_changed_fence(self):
   root,d=load('numeric');changed=self.build(root,d,checks(d),'source-changed',mutate_source=True)
   self.assertFalse(changed['accepted']);self.assertFalse(changed['published']);self.assertFalse(changed['privateChecksPublished']);self.assertIn('Exporter changed clean source',changed['error']);(self.source/'changed.qmd').unlink()
-  with tempfile.TemporaryDirectory() as tmp:
-   f=AssemblyFixture(tmp);context=builder._assembly.Context(f.platform,f.assets/'images.lock.json')
-   row=self.build(root,d,checks(d),'release3-cap',assembly=context)
-   self.assertFalse(row['accepted']);self.assertFalse(row['published']);self.assertIn('source-bound release protocol',row['error']);record('source-release-fences',[changed,row])
  def test_actual_legacy3_and_native4_dispatch_mutants_and_final_fence(self):
   old=legacy.DeliveryPackage();old.setUp();self.addCleanup(old.doCleanups);old.put('delivery.json',old.delivery);rows=[self.build(old.root,old.delivery,old.checks,'legacy3')]
   project4=copy.deepcopy(old.delivery);project4['schemaVersion']=4

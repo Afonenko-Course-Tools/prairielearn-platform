@@ -1,6 +1,5 @@
 """Student boundary rejects private canaries, including failed runner reports."""
 
-from gradle_unit_fixtures import image_evidence
 from gradle_unit_fixtures import unit_platform
 import importlib.util, json, unittest
 from pathlib import Path
@@ -485,7 +484,7 @@ class ActualFailureBoundary(unittest.TestCase):
             run, private = execute(["--verification"])
             self.assertEqual(run.returncode, 0)
             self.assertIn("CLOSED_OPERATOR_CANARY", json.dumps(private))
-            self.assertIn("executionEvidence", private)
+            self.assertNotIn("executionEvidence", private)
             config.write_text(json.dumps(dict(fixture.cfg, verification=True)))
             run, native = execute()
             self.assertEqual(run.returncode, 2)
@@ -624,12 +623,9 @@ class NativeContainerFeedback(unittest.TestCase):
                 if private:
                     import test_review_receipts as receipts
 
-                    self.assertEqual(
-                        result["executionEvidence"],
-                        image_evidence("java25-junit-v1", os.environ["PL_TEST_IMAGE"]),
-                    )
+                    self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_CONTAINER_CANARY", json.dumps(result))
-                    self.assertIn("executionEvidence", result)
+                    self.assertNotIn("executionEvidence", result)
                     self.assertEqual(result["containment"], "official-landlock-sbuser")
                 else:
                     self.assertNotIn("CLOSED_", json.dumps(result) + run.stderr)
@@ -717,12 +713,9 @@ class NativeFishContainerFeedback(unittest.TestCase):
                 if private:
                     import test_review_receipts as receipts
 
-                    self.assertEqual(
-                        result["executionEvidence"],
-                        image_evidence("fish-git-v1", os.environ["PL_FISH_TEST_IMAGE"]),
-                    )
+                    self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_FISH_CONTAINER", json.dumps(result))
-                    self.assertIn("executionEvidence", result)
+                    self.assertNotIn("executionEvidence", result)
                     self.assertEqual(result["containment"], "official-landlock-sbuser")
                 else:
                     self.assertNotIn("CLOSED_", json.dumps(result) + run.stderr)

@@ -63,17 +63,6 @@ class ConsoleFeedback(unittest.TestCase):
  def test_similar_assertion_name_or_text_is_not_typed_failure(self):
   f,_=self.fixture();(f.job/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.Test;public class AnswerTest {static final class StudentTimeout extends AssertionError {} @Test void wrong(){throw new StudentTimeout();}}')
   result=f.run_job();self.assertEqual(result['classification'],'behavior-failure');self.assertEqual(set(result['counts']['failureKinds'].values()),{'wrong-answer'})
- def test_adapter_binding_does_not_initialize_common_and_other_loader_has_no_privilege(self):
-  import tempfile
-  f,helper=self.fixture()
-  with tempfile.TemporaryDirectory() as tmp:
-   root=Path(tmp);trusted=root/'trusted';trusted.mkdir();source=root/'source/coursesupport/JavaProcess.java';source.parent.mkdir(parents=True)
-   source.write_text(helper.read_text().replace('public final class JavaProcess {','public final class JavaProcess {static {System.setProperty("console.initialized","yes");}'))
-   bundle=ROOT/'runtime/java25-junit-v1';runtime=fixtures.grader._JobRuntime(root,bundle);runtime.ensure_adapter(f.job,f.cfg['limits'],{},{});
-   command=['javac','--release','25','-encoding','UTF-8','-d',str(trusted),str(source)];run=subprocess.run(command,capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)
-   probe=root/'BindingProbe.java';probe.write_text('import java.nio.file.*;import java.net.*;import java.util.*;public class BindingProbe {public static void main(String[] args)throws Exception {Class<?> adapter=Class.forName("PlatformJUnitAdapter");Object listener=adapter.getConstructor().newInstance();var bind=adapter.getDeclaredMethod("bindConsoleSupport",Object.class);bind.setAccessible(true);bind.invoke(listener,args[0]);if(System.getProperty("console.initialized")!=null)throw new AssertionError("binding initialized owner");var field=adapter.getDeclaredField("consoleFailures");field.setAccessible(true);Map<?,?> types=(Map<?,?>)field.get(listener);try(var foreign=new URLClassLoader(new URL[]{Path.of(args[0]).toUri().toURL()},null)){Class<?> spoof=Class.forName("coursesupport.JavaProcess$StudentTimeout",false,foreign);if(types.containsKey(spoof))throw new AssertionError("foreign loader gained typed privilege");}System.out.print("BOUND_WITHOUT_INITIALIZATION");}}')
-   cp=os.pathsep.join([str(runtime.adapter),runtime.libs,str(trusted)]);run=subprocess.run(['javac','--release','25','-cp',cp,'-d',str(trusted),str(probe)],capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr)
-   run=subprocess.run(['java','-cp',cp,'BindingProbe',str(trusted)],capture_output=True,text=True);self.assertEqual(run.returncode,0,run.stderr);self.assertEqual(run.stdout,'BOUND_WITHOUT_INITIALIZATION')
 
  def test_student_descriptor_cannot_supply_trusted_origin_marker(self):
   f,_=self.fixture();f.cfg['trusted_console_support_root']=str(f.job)

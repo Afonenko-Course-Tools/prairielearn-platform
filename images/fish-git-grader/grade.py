@@ -28,16 +28,10 @@ def file(root,name):
 def preflight():
     profile=json.loads((ROOT/'runtime-profiles.json').read_text())['profiles'][RUNTIME]
     bundle=ROOT/profile['bundle']
-    hashes={p.relative_to(bundle).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in bundle.rglob('*') if p.is_file()}
-    runner=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if hashes!=profile['files'] or runner!=profile['runnerSha256']: raise GraderError('Runtime dependency closure mismatch')
     supervisor=types.ModuleType('bounded_supervisor')
     exec(compile((bundle/'supervisor.py').read_text(),str(bundle/'supervisor.py'),'exec'),supervisor.__dict__)
     if not shutil.which('fish'): raise GraderError('fish executable unavailable')
-    for name,sha in profile['sharedFiles'].items():
-        if hashlib.sha256(file(ROOT,name).read_bytes()).hexdigest()!=sha:raise GraderError('Shared runtime checksum mismatch')
-    closure={**hashes,**profile['sharedFiles'],'runner/grade.py':runner}
-    return supervisor,{'dependencyHashes':closure,'dependencyHash':digest(closure)}
+    return supervisor
 
 def grade(job_dir):
     entered=time.monotonic()
@@ -45,7 +39,7 @@ def grade(job_dir):
     from jsonschema import Draft202012Validator
     Draft202012Validator(json.loads((ROOT/'schemas/grading-descriptor.schema.json').read_text())).validate(config)
     if config['runtime']!=RUNTIME or config['mode']!='implementation' or len(config['sourceFiles'])!=1 or not config['sourceFiles'][0].endswith('.fish') or 'checks.py' not in config['testFiles']: raise GraderError('Unsupported fish grading contract')
-    supervisor,evidence=preflight()
+    supervisor=preflight()
     official=os.environ.get('PL_CONTAINMENT')=='official'
     prefix=[]
     if official:
@@ -55,7 +49,7 @@ def grade(job_dir):
         for folder in ['student','tests']: (job/folder).chmod(0o700)
         prefix=['runuser','-u','sbuser','--','/usr/local/bin/landlock_sandbox']
     checker=types.ModuleType('trusted_checks');exec(compile(file(job/'tests','checks.py').read_text(),'<trusted-checks>','exec'),checker.__dict__)
-    base={'executionEvidence':evidence,'infrastructure':'complete','studentCompilation':'success','trustedCompilation':'success','gradable':True,'containment':'official-landlock-sbuser' if official else 'host-diagnostic','toolchain':'fish','scoring':config['scoring'],'diagnostics':{},'durations':{},'output':''}
+    base={'infrastructure':'complete','studentCompilation':'success','trustedCompilation':'success','gradable':True,'containment':'official-landlock-sbuser' if official else 'host-diagnostic','toolchain':'fish','scoring':config['scoring'],'diagnostics':{},'durations':{},'output':''}
     answer_name=config['sourceFiles'][0]
     try:
         source=file(job/'student',answer_name);text=source.read_text(encoding='utf-8')

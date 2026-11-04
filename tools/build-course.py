@@ -15,8 +15,6 @@ import importlib.util
 
 _private_spec=importlib.util.spec_from_file_location('private_source',Path(__file__).with_name('prepare-private-source.py'))
 _private=importlib.util.module_from_spec(_private_spec);_private_spec.loader.exec_module(_private)
-_assembly_spec=importlib.util.spec_from_file_location('release_assembly',Path(__file__).with_name('release_assembly.py'))
-_assembly=importlib.util.module_from_spec(_assembly_spec);_assembly_spec.loader.exec_module(_assembly)
 
 PLATFORM = Path(__file__).resolve().parents[1]
 ID = re.compile(r'[a-z][a-z0-9-]*\Z')
@@ -278,13 +276,6 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     if len(entries)!=1:raise BuildError('Exactly one installed full owner exporter is required')
     if entries[0].resolve()!=entries[0]:raise BuildError('Installed full owner exporter must not use aliased parents')
     registry=Path(runtime_registry or PLATFORM/'runtime-profiles.json').absolute()
-    try:assembly=_assembly.for_build(PLATFORM,registry)
-    except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as error:raise BuildError('Release assembly rejected') from error
-    if assembly and candidate_image:raise BuildError('Local image candidate cannot enter release assembly')
-    def recheck_assembly():
-        if assembly:
-            try:assembly.recheck()
-            except (ValueError,OSError,KeyError,TypeError,subprocess.SubprocessError) as error:raise BuildError('Release assembly changed during export') from error
     immutable_inputs=[registry]+([Path(staging_receipt)] if staging_receipt else [])
     with _ExportStage(source,output,export_stage,immutable_inputs) as owned:
         stage=owned.path;native=stage/'native';checks=stage/'checks.json'
@@ -307,9 +298,8 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
             package_integrity(delivery,native,manifest)
         except (JobError,OSError,ValueError,KeyError,TypeError) as error:
             raise BuildError('Delivery/check package validation failed: '+str(error)) from error
-        if assembly and delivery.get('schemaVersion',999)>assembly.delivery_schema_version:raise BuildError('Delivery exceeds source-bound release protocol')
         validate_uuids_and_assessments(native,delivery['questions'])
-        provenance={'schema':'pl-provenance-v2' if assembly else 'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder':assembly.builder if assembly else {'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':assembly.images if assembly else read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
+        provenance={'schema':'pl-provenance-v1','source':{'repository':repository,'commit':commit,'dirty':False,'book':book,'instance':instance},'builder': {'repository':'https://github.com/Afonenko-Course-Tools/prairielearn-platform','commit':git(PLATFORM,'rev-parse','HEAD'),'dirty':bool(git(PLATFORM,'status','--porcelain','--untracked-files=all'))},'deliveryHash':delivery['deliveryHash'],'sourceSnapshotHash':delivery['sourceSnapshotHash'],'inventoryHash':delivery['inventoryHash'],'platformImages':read_json(PLATFORM/'images.lock.json'),'files':{n:hashlib.sha256(b).hexdigest() for n,b in files.items()}}
         if staging:
             provenance['source']={'mode':'private-stage','publicBase':staging['publicBase'],'privateStage':staging['privateStage'],'stagingReceiptSha256':staging_sha,'materialization':staging['materialization'],'seedFiles':staging['seedFiles'],'seedStorage':staging['seedStorage'],'dirty':False,'book':book,'instance':instance}
         if git(source,'status','--porcelain','--untracked-files=all') or git(source,'rev-parse','HEAD')!=commit:raise BuildError('Exporter changed clean source')
@@ -318,10 +308,6 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
                 if _private.validate(source,staging_receipt,allow_runtime=True)!=staging or hashlib.sha256(Path(staging_receipt).read_bytes()).hexdigest()!=staging_sha:raise _private.StageError('Receipt changed')
                 provenance['source']['runtimeInventory']=_private.runtime_inventory(source,staging)
             except (_private.StageError,OSError) as error:raise BuildError('Exporter changed private staging inventory') from error
-        recheck_assembly()
-        if assembly:
-            try:_assembly.validate_provenance(provenance,delivery,assembly)
-            except (ValueError,KeyError,TypeError) as error:raise BuildError('Invalid release provenance') from error
         owned.assert_current(products=True)
         write_json(native/'provenance.json',provenance)
         # Checks inventory stays private outside native payload.
@@ -334,7 +320,6 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
                 private_identity=_identity(os.fstat(f.fileno()))
                 try:
                     f.write(checks_text);f.flush()
-                    recheck_assembly()
                     if {n:b for n,b in tree(native).items() if n!='provenance.json'}!=files:raise BuildError('Native inventory changed before publication')
                     owned.assert_current(products=True)
                     owned.private_checks_current(checks_output.name,private_identity)

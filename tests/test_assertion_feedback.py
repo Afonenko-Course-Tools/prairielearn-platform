@@ -69,7 +69,7 @@ class ProductionCase(unittest.TestCase):
             params = None
             reports = {}
             jars = {}
-            if "PlatformJUnitAdapter" in command and "--module-path" in command:
+            if any(arg.endswith("PlatformJUnitAdapter") for arg in command) and "--module-path" in command:
                 module = Path(
                     command[command.index("--module-path") + 1].split(os.pathsep)[0]
                 )

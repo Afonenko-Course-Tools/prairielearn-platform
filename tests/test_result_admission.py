@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = json.loads(
     Path(
         os.environ.get(
-            "CLASS_INVENTORY_SCHEMA", ROOT / "schemas/check-result.schema.json"
+            "RESULT_ADMISSION_SCHEMA", ROOT / "schemas/check-result.schema.json"
         )
     ).read_text()
 )
@@ -57,15 +57,11 @@ def envelope(value, runtime="java25-junit-v1"):
         imageDigest=None,
         sourceHashes={},
         testsHashes={},
-        executionEvidence={
-            "dependencyHashes": {"runner/grade.py": "c" * 64},
-            "dependencyHash": "d" * 64,
-        },
         **value
     )
 
 
-class CompiledInventorySchemaTests(unittest.TestCase):
+class ResultAdmissionTests(unittest.TestCase):
     def check_both(self, value, valid, runtime="java25-junit-v1"):
         root = envelope(value, runtime)
         nested = copy.deepcopy(value)

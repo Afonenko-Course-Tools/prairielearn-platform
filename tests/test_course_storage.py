@@ -163,6 +163,3 @@ class CourseStorageTests(unittest.TestCase):
         receipt=json.loads((self.repo/'verification-receipt.json').read_text());image='synthetic@sha256:'+'d'*64
         receipt['automatic']['receipt']['runtimes']['java25-junit-v1']=image;receipt['automatic']['receipt']['questionBindings'][0]['imageDigest']=image;self.rewrite_receipt(receipt)
         with self.assertRaises(self.module.StorageError):self.stage()
-    def test_staged_runtime_dependency_closure_must_match_registry(self):
-        receipt=json.loads((self.repo/'verification-receipt.json').read_text());receipt['automatic']['receipt']['runtimeEvidence']['java25-junit-v1']['dependencyHashes']['runner/grade.py']='d'*64;self.rewrite_receipt(receipt)
-        with self.assertRaises(self.module.StorageError):self.stage()

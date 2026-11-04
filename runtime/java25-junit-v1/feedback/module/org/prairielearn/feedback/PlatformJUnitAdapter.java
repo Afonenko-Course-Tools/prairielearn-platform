@@ -1,3 +1,4 @@
+package org.prairielearn.feedback;
 import java.lang.reflect.*;
 import java.lang.classfile.ClassFile;
 import java.io.*;
@@ -9,11 +10,35 @@ import org.junit.platform.launcher.*;
 import org.junit.platform.engine.*;
 import org.junit.platform.engine.reporting.ReportEntry;
 import org.junit.platform.engine.support.descriptor.MethodSource;
+import org.junit.platform.engine.support.descriptor.ClassSource;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 import org.junit.platform.launcher.core.*;
+import org.junit.platform.reporting.legacy.xml.LegacyXmlReportGeneratingListener;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
-/** Adapts the unchanged official autograder's /grade main to explicit roots. */
+/** Полезная обратная связь рядом со штатным XML отчётом JUnit. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
+  private static void engineCall() {
+    var frames = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+        .walk(stream -> stream.toList());
+    boolean engine = false;
+    for (var frame : frames) {
+      Class<?> owner = frame.getDeclaringClass();
+      if (owner == PlatformJUnitAdapter.class) {
+        if (frame.getMethodName().equals("main") && engine) return;
+        continue;
+      }
+      Module module = owner.getModule();
+      if (module == org.junit.platform.launcher.Launcher.class.getModule()) engine = true;
+      else if (owner.getClassLoader() != null)
+        throw new SecurityException("Untrusted JUnit lifecycle intermediary");
+    }
+    throw new SecurityException("Missing trusted launcher entry");
+  }
   private final Map<String, String> outcomes = new TreeMap<>();
+  private final Set<String> successfulContainers = new LinkedHashSet<>();
   private final List<Map<String, String>> publicReports = new ArrayList<>();
   private List<?> publicCases = List.of();
   private Set<String> studentClasses = Set.of();
@@ -103,6 +128,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (!registered.add(test.getUniqueId()))
       eventErrors++;
     discovered = registered.size();
+    gradingMetadata(test);
     if (observeAssertions)
       org.prairielearn.feedback.Gate.register(test.getUniqueId());
   }
@@ -123,9 +149,55 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       return report;
     });
   }
+  private final Map<String, Map<String, Object>> grading = new LinkedHashMap<>();
+  private final Map<String, Double> classMaximums = new LinkedHashMap<>();
+  private void gradingMetadata(TestIdentifier test) {
+    double weight = 1;
+    String name = test.getDisplayName(), description = "";
+    for (var tag : test.getTags())
+      if (tag.getName().startsWith("points="))
+        weight = Double.parseDouble(tag.getName().substring(7));
+    if (test.getSource().orElse(null) instanceof MethodSource source) {
+      for (var annotation : source.getJavaMethod().getDeclaredAnnotations())
+        if (annotation.annotationType().getName().equals("org.prairielearn.autograder.AutograderInfo")) {
+          try {
+            Class<?> type = annotation.annotationType();
+            double points = (Double) type.getMethod("points").invoke(annotation);
+            String label = (String) type.getMethod("name").invoke(annotation);
+            if (points > 0) weight = points;
+            if (!label.isEmpty()) name = label;
+            description = (String) type.getMethod("description").invoke(annotation);
+          } catch (ReflectiveOperationException invalid) {
+            throw new IllegalStateException(invalid);
+          }
+        }
+    }
+    if (!Double.isFinite(weight) || weight < 0)
+      throw new IllegalArgumentException("Invalid JUnit points");
+    TestIdentifier owner = plan.getParent(test).orElse(null);
+    while (owner != null && !(owner.getSource().orElse(null) instanceof ClassSource))
+      owner = plan.getParent(owner).orElse(null);
+    String ownerId = owner == null ? "" : owner.getUniqueId();
+    grading.put(test.getUniqueId(), Map.of("weight", weight, "name", name,
+        "description", description, "owner", ownerId));
+  }
   private TestPlan plan;
   public synchronized void testPlanExecutionStarted(TestPlan plan) {
+    engineCall();
     this.plan = plan;
+    for (TestIdentifier root : plan.getRoots()) {
+      Set<TestIdentifier> nodes = new HashSet<>(plan.getDescendants(root));
+      nodes.add(root);
+      for (TestIdentifier node : nodes)
+        if (node.getSource().orElse(null) instanceof ClassSource)
+          for (var tag : node.getTags())
+            if (tag.getName().startsWith("maxpoints=")) {
+              double maximum = Double.parseDouble(tag.getName().substring(10));
+              if (!Double.isFinite(maximum) || maximum < 0)
+                throw new IllegalArgumentException("Invalid JUnit maxpoints");
+              classMaximums.put(node.getUniqueId(), maximum);
+            }
+    }
     if (this.complete || !registered.isEmpty())
       eventErrors++;
     for (TestIdentifier root : plan.getRoots()) {
@@ -137,10 +209,12 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     }
   }
   public synchronized void dynamicTestRegistered(TestIdentifier test) {
+    engineCall();
     if (test.isTest())
       register(test);
   }
   public synchronized void executionStarted(TestIdentifier test) {
+    engineCall();
     if (test.isTest()) {
       if (!registered.contains(test.getUniqueId()) || !started.add(test.getUniqueId()))
         eventErrors++;
@@ -150,6 +224,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     }
   }
   public synchronized void executionSkipped(TestIdentifier test, String reason) {
+    engineCall();
     Set<TestIdentifier> skippedTests = new HashSet<>();
     if (test.isTest())
       skippedTests.add(test);
@@ -162,9 +237,12 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         skipped++;
   }
   public synchronized void executionFinished(TestIdentifier test, TestExecutionResult result) {
+    engineCall();
     if (!test.isTest()) {
       if (result.getStatus() == TestExecutionResult.Status.FAILED)
         containerFailures++;
+      else if (result.getStatus() == TestExecutionResult.Status.SUCCESSFUL)
+        successfulContainers.add(test.getUniqueId());
       return;
     }
     String status = result.getStatus().name().toLowerCase(Locale.ROOT);
@@ -222,6 +300,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     }
   }
   public synchronized void testPlanExecutionFinished(TestPlan plan) {
+    engineCall();
     if (this.plan != plan || complete)
       eventErrors++;
     complete = true;
@@ -274,22 +353,14 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       params = (JSONObject) new JSONParser().parse(reader);
     }
     Files.delete(parameterFile);
+    byte[] reportKey = HexFormat.of().parseHex((String) params.remove("report_key"));
+    if (reportKey.length != 32) throw new IOException("Invalid result authentication key");
     if (!(params.get("observe_assertions") instanceof Boolean observe))
       throw new IOException("Missing private assertion mode");
     if (observe)
       org.prairielearn.feedback.Gate.bind();
-    String resultFile = (String) params.get("results_file"),
-           countsFile = (String) params.get("counts_file"),
-           signature = (String) params.get("signature");
-    String[] testClasses =
-        (String[]) ((JSONArray) params.get("test_classes")).toArray(new String[0]);
-    Object official = Class.forName("JUnitAutograder").getConstructor().newInstance();
-    Field files = official.getClass().getDeclaredField("testClasses");
-    files.setAccessible(true);
-    files.set(official, testClasses);
-    Field output = official.getClass().getDeclaredField("resultsFile");
-    output.setAccessible(true);
-    output.set(official, resultFile);
+    String feedbackFile = (String) params.get("feedback_file");
+    String[] testClasses = (String[]) ((JSONArray) params.get("test_classes")).toArray(new String[0]);
     PlatformJUnitAdapter listener = new PlatformJUnitAdapter();
     listener.bindConsoleSupport(params.get("trusted_console_support_root"));
     listener.bindStudentOrigin(params);
@@ -299,39 +370,34 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     Object publicCases = params.get("public_cases");
     if (publicCases instanceof List<?> cases)
       listener.publicCases = cases;
-    Field launcher = official.getClass().getDeclaredField("launcher");
-    launcher.setAccessible(true);
-    ((Launcher) launcher.get(official)).registerTestExecutionListeners(listener);
-    official.getClass().getMethod("runTests").invoke(official);
-    Method save = official.getClass().getDeclaredMethod("saveResults", String.class);
-    save.setAccessible(true);
-    save.invoke(official, signature);
-    JSONObject counts = new JSONObject();
-    counts.put("feedbackProtocolVersion", observe ? 2 : 1);
-    counts.put("discovered", listener.discovered);
-    counts.put("executed", listener.executed);
-    counts.put("passed", listener.passed);
-    counts.put("failed", listener.failed);
-    counts.put("skipped", listener.skipped);
-    counts.put("aborted", listener.aborted);
-    counts.put("containerFailures", listener.containerFailures);
-    counts.put("outcomes", listener.outcomes);
-    counts.put("registered", new ArrayList<>(listener.registered));
-    counts.put("started", new ArrayList<>(listener.started));
-    counts.put("eventErrors", listener.eventErrors);
-    counts.put("complete", listener.complete);
-    counts.put("cases",
-        "implementation".equals(listener.submissionMode)
-            ? new ArrayList<>(listener.caseReports.values())
-            : List.of());
-    counts.put("failureKinds", listener.failures);
+    Launcher launcher = LauncherFactory.create();
+    launcher.registerTestExecutionListeners(listener,
+        new LegacyXmlReportGeneratingListener(Path.of((String) params.get("reports_dir")),
+            new PrintWriter(System.err)));
+    var request = LauncherDiscoveryRequestBuilder.request().selectors(
+        Arrays.stream(testClasses).map(name -> selectClass(name)).toList()).build();
+    launcher.execute(request);
+    JSONObject feedback = new JSONObject();
+    feedback.put("feedbackProtocolVersion", observe ? 2 : 1);
+    feedback.put("complete", listener.complete && listener.eventErrors == 0);
+    feedback.put("verifiedOutcomes", listener.outcomes);
+    feedback.put("successfulContainers", new ArrayList<>(listener.successfulContainers));
+    feedback.put("cases", new ArrayList<>(listener.caseReports.values()));
+    feedback.put("failureKinds", listener.failures);
+    feedback.put("grading", listener.grading);
+    feedback.put("classMaximums", listener.classMaximums);
+    feedback.put("containerFailures", listener.containerFailures);
     for (Map<String, String> report : listener.publicReports)
-      report.put("status",
-          "successful".equals(listener.outcomes.get(report.remove("uniqueId"))) ? "passed"
-                                                                                : "failed");
-    counts.put("publicCaseObservations", listener.publicReports);
-    counts.put("signature", signature);
-    Files.writeString(Path.of(countsFile), counts.toJSONString());
+      report.put("status", "successful".equals(listener.outcomes.get(report.remove("uniqueId")))
+          ? "passed" : "failed");
+    feedback.put("publicCaseObservations", listener.publicReports);
+    byte[] payload = feedback.toJSONString().getBytes(StandardCharsets.UTF_8);
+    Mac authentication = Mac.getInstance("HmacSHA256");
+    authentication.init(new SecretKeySpec(reportKey, "HmacSHA256"));
+    Files.write(Path.of(feedbackFile), payload);
+    Files.writeString(Path.of(feedbackFile + ".signature"),
+        HexFormat.of().formatHex(authentication.doFinal(payload)));
+    Arrays.fill(reportKey, (byte) 0);
     System.exit(0);
   }
 }

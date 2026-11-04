@@ -160,60 +160,43 @@ public class AnswerTest {
             self.run_job()
 
     def test_missing_duplicate_and_inconsistent_event_records_are_rejected(self):
+        import tempfile
+        from pathlib import Path
+        import xml.etree.ElementTree as ET
         original = grader._run
-
-        def corrupt(command, *args, **kwargs):
+        captured = {}
+        def capture(command, *args, **kwargs):
             result = original(command, *args, **kwargs)
-            if "PlatformJUnitAdapter" in command:
-                # Fresh private reports only; mutation models a broken producer,
-                # never student access to params or report paths.
-                params_path = fixtures.Path(command[-1])
-                for path in params_path.parent.parent.glob("results/*.json"):
-                    value = json.loads(path.read_text())
-                    if "outcomes" in value:
-                        if mutation == "discovery":
-                            value["discovered"] += 1
-                        elif mutation == "executed":
-                            value["executed"] += 1
-                        elif mutation == "missing":
-                            value["outcomes"].clear()
-                        elif mutation == "duplicate":
-                            key = next(iter(value["outcomes"]))
-                            text = json.dumps(value)
-                            text = text.replace(
-                                '"outcomes": {',
-                                '"outcomes": {' + json.dumps(key) + ': "successful",',
-                                1,
-                            )
-                            path.write_text(text)
-                            continue
-                        elif mutation == "unfinished":
-                            value["complete"] = False
-                        elif mutation == "foreign":
-                            value["signature"] = "0" * 64
-                        elif mutation == "registered-duplicate":
-                            value["registered"].append(value["registered"][0])
-                        elif mutation == "malformed":
-                            path.write_text("{")
-                            continue
-                        path.write_text(json.dumps(value))
+            if any(arg.endswith("PlatformJUnitAdapter") for arg in command):
+                report_dir = Path(command[-1]).parent.parent/'results'
+                captured.update({p.name:p.read_bytes() for p in report_dir.iterdir()})
             return result
-
-        for mutation in (
-            "discovery",
-            "executed",
-            "missing",
-            "duplicate",
-            "unfinished",
-            "foreign",
-            "registered-duplicate",
-            "malformed",
-        ):
-            with self.subTest(mutation=mutation), patch.object(
-                grader, "_run", side_effect=corrupt
-            ):
-                with self.assertRaises(grader.GraderError):
-                    self.run_job()
+        with patch.object(grader, '_run', side_effect=capture):
+            self.run_job()
+        reader = runpy.run_path(str(fixtures.ROOT/'runtime/junit_result.py'))['read_junit_xml']
+        for mutation in ('missing-report','duplicate','discovery','status','unfinished','missing-feedback','malformed','external-entity'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                directory=Path(temporary)
+                for name,data in captured.items(): (directory/name).write_bytes(data)
+                path=next(p for p in directory.glob('TEST-*.xml') if b'<testcase' in p.read_bytes())
+                xml=ET.fromstring(path.read_bytes())
+                feedback_path=directory/'feedback.json'
+                feedback=json.loads(feedback_path.read_text())
+                if mutation=='missing-report':
+                    for report in directory.glob('TEST-*.xml'): report.unlink()
+                elif mutation=='duplicate':
+                    path.with_name('TEST-duplicate.xml').write_bytes(path.read_bytes())
+                elif mutation=='discovery':
+                    xml.set('tests',str(int(xml.get('tests'))+1)); path.write_bytes(ET.tostring(xml))
+                elif mutation=='status':
+                    ET.SubElement(xml.find('testcase'),'failure'); path.write_bytes(ET.tostring(xml))
+                elif mutation=='unfinished':
+                    feedback['complete']=False; feedback_path.write_text(json.dumps(feedback))
+                elif mutation=='missing-feedback':
+                    feedback['cases']=[]; feedback_path.write_text(json.dumps(feedback))
+                elif mutation=='malformed': path.write_text('<testsuite')
+                else: path.write_text('<!DOCTYPE testsuite [<!ENTITY ex SYSTEM "file:///etc/passwd">]><testsuite/>')
+                with self.assertRaises(ValueError): reader(directory,feedback_path)
 
     @unittest.skipUnless(
         os.environ.get("JAVA_CONSOLE_SUPPORT"),
@@ -399,7 +382,7 @@ class SharedRuntimeCompatibility(unittest.TestCase):
         ](result, {"runtime": "fish-git-v1"})
         self.assertFalse(public["gradable"])
         self.assertNotIn("score", public)
-        import test_compiled_inventory_schema as schema
+        import test_result_admission as schema
 
         value = schema.envelope(result, "fish-git-v1")
         schema.jsonschema.Draft202012Validator(schema.SCHEMA).validate(value)

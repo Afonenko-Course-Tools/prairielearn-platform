@@ -150,7 +150,6 @@ public final class Transform {
         || !bridge.methodTypeSymbol().equals(BRIDGE_TYPE))
       throw new IllegalStateException("Projection complete template");
     policy.setProperty("projection." + name, String.join("|", schema));
-    policy.setProperty("projectionBridgeInput." + name, digest(original));
     policy.setProperty("projectionGuard." + name, "1");
     return result;
   }
@@ -181,13 +180,6 @@ public final class Transform {
                     + i.innerName().map(n -> n.stringValue()).orElse("") + "|" + i.flagsMask())));
     return result;
   }
-  static String digest(byte[] bytes) {
-    try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
-    } catch (Exception e) {
-      throw new IllegalStateException(e);
-    }
-  }
   public static void main(String[] args) throws Exception {
     if (args[0].equals("reader")) {
       var model = ClassFile.of().parse(Path.of(args[1]));
@@ -212,8 +204,6 @@ public final class Transform {
     Path root = Path.of(args[0]);
     Properties map = new Properties();
     boolean adapter = args.length > 3 && args[3].equals("adapter");
-    Set<String> projections = args.length > 3 && !adapter ? Set.of(args[3].split(",")) : Set.of();
-    Set<String> missing = new HashSet<>(projections);
     Set<String> supported = new HashSet<>();
     var facade = ClassFile.of().parse(Path.of(args[1]));
     for (var method : facade.methods())
@@ -223,6 +213,7 @@ public final class Transform {
       var cf = ClassFile.of();
       var model = cf.parse(file);
       String name = model.thisClass().asInternalName().replace('/', '.');
+      if (name.equals("module-info")) continue;
       String source = model.findAttribute(Attributes.sourceFile())
                           .map(a -> a.sourceFile().stringValue())
                           .orElse("unknown.java");
@@ -253,14 +244,14 @@ public final class Transform {
             }));
       if (!adapter && !cf.verify(bytes).isEmpty())
         throw new IllegalStateException("Verifier rejected " + name);
-      if (!adapter && projections.contains(name)) {
-        missing.remove(name);
-        map.setProperty("projectionPre." + name, digest(Files.readAllBytes(file)));
+      if (!adapter && model.findAttribute(Attributes.record()).isPresent()
+          && model.findAttribute(Attributes.record()).get().components().size() <= 16
+          && !model.findAttribute(Attributes.record()).get().components().isEmpty()
+          && model.interfaces().isEmpty()
+          && model.methods().stream().noneMatch(m -> m.methodName().stringValue().equals(BRIDGE)))
         bytes = project(cf, bytes, name, map);
-      }
       Files.write(file, bytes);
-      map.setProperty((adapter ? "adapterClass." : "class.") + name,
-          HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+      map.setProperty((adapter ? "adapterClass." : "class.") + name, "true");
       for (var method : cf.parse(bytes).methods())
         if (method.code().isPresent()) {
           int bci = 0, line = 0, ordinal = 0, invokeOrdinal = 0;
@@ -285,8 +276,6 @@ public final class Transform {
           }
         }
     }
-    if (!missing.isEmpty())
-      throw new IllegalArgumentException("Missing qualified projection types: " + missing);
     try (var out = Files.newOutputStream(Path.of(args[2]))) {
       map.store(out, "F0 private exact output");
     }

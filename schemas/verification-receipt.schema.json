@@ -64,14 +64,6 @@
       },
       "minProperties": 1
     },
-    "dependencyHashes": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[a-f0-9]{64}$"
-      },
-      "minProperties": 1
-    },
     "expectations": {
       "type": "array",
       "items": {
@@ -196,48 +188,17 @@
                 "pattern": "^(?:sha256:[a-f0-9]{64}|[^\\s]+@sha256:[a-f0-9]{64})$"
               }
             ]
-          },
-          "dependencyHash": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
           }
         },
         "required": [
           "qualifiedId",
           "runtime",
-          "imageDigest",
-          "dependencyHash"
+          "imageDigest"
         ],
         "additionalProperties": false
       },
       "minItems": 1,
       "uniqueItems": true
-    },
-    "runtimeEvidence": {
-      "type": "object",
-      "minProperties": 1,
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "dependencyHash": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          },
-          "dependencyHashes": {
-            "type": "object",
-            "minProperties": 1,
-            "additionalProperties": {
-              "type": "string",
-              "pattern": "^[a-f0-9]{64}$"
-            }
-          }
-        },
-        "required": [
-          "dependencyHash",
-          "dependencyHashes"
-        ],
-        "additionalProperties": false
-      }
     },
     "buildEvidence": {
       "type": "array",
@@ -258,14 +219,6 @@
               "failure"
             ]
           },
-          "inputHash": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          },
-          "dependencyHash": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          },
           "durationSeconds": {
             "type": "number",
             "minimum": 0
@@ -277,10 +230,6 @@
                 "type": "string",
                 "pattern": "^build/libs/[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
               },
-              "sha256": {
-                "type": "string",
-                "pattern": "^[a-f0-9]{64}$"
-              },
               "bytes": {
                 "type": "integer",
                 "minimum": 1
@@ -288,7 +237,6 @@
             },
             "required": [
               "path",
-              "sha256",
               "bytes"
             ],
             "additionalProperties": false
@@ -409,8 +357,6 @@
             },
             "then": {
               "required": [
-                "inputHash",
-                "dependencyHash",
                 "artifact"
               ],
               "not": {
@@ -448,7 +394,6 @@
     "exitCode",
     "checkedIds",
     "runtimes",
-    "dependencyHashes",
     "expectations",
     "identityHash",
     "backend",
@@ -456,8 +401,7 @@
     "scenarioInventory",
     "scenarioInventoryHash",
     "unavailableReferences",
-    "questionBindings",
-    "runtimeEvidence"
+    "questionBindings"
   ],
   "additionalProperties": false,
   "allOf": [

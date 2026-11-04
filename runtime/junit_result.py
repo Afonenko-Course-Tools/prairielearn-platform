@@ -211,3 +211,131 @@ def validate_outcome(value, *, student_tests=False):
         validate_outcome(value["publicResult"], student_tests=student_tests)
     for variant in value.get("variants", {}).values():
         validate_outcome(variant, student_tests=True)
+
+
+def _read_junit_xml(directory, feedback_file):
+    """Статус и оценка из штатных отчётов; JSON содержит только feedback/origin."""
+    import json
+    import math
+    import re
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    feedback = json.loads(Path(feedback_file).read_text(), object_pairs_hook=unique_json_object)
+    if feedback.get('complete') is not True:
+        raise ValueError('Incomplete JUnit execution')
+    reports = sorted(Path(directory).glob('TEST-*.xml'))
+    if not reports:
+        raise ValueError('Missing JUnit XML report')
+    cases_by_id = {case['id']: case for case in feedback['cases']}
+    if len(cases_by_id) != len(feedback['cases']):
+        raise ValueError('Duplicate feedback case')
+    outcomes, cases, failures = {}, [], {}
+    container_failures = feedback.get('containerFailures', 0)
+    try:
+        for report in reports:
+            data = report.read_bytes()
+            if len(data) > 8 * 1024 * 1024 or b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+                raise ValueError('Unsafe or oversized JUnit XML')
+            suite = ET.fromstring(data)
+            if suite.tag != 'testsuite':
+                raise ValueError('Expected JUnit testsuite')
+            rows = suite.findall('testcase')
+            if int(suite.attrib['tests']) != len(rows):
+                raise ValueError('Inconsistent JUnit XML test count')
+            for counter, tag in (('failures','failure'),('errors','error'),('skipped','skipped')):
+                if int(suite.attrib[counter]) != sum(row.find(tag) is not None for row in rows):
+                    raise ValueError('Inconsistent JUnit XML aggregate ' + counter)
+            for row in rows:
+                if sum(row.find(tag) is not None for tag in ('skipped','failure','error')) > 1:
+                    raise ValueError('Contradictory JUnit XML case status')
+                output = '\n'.join(node.text or '' for node in row.findall('system-out'))
+                match = re.search(r'^unique-id: (.+)$', output, re.M)
+                if match is None:
+                    raise ValueError('Missing JUnit unique-id')
+                uid = match[1].strip()
+                if uid in outcomes:
+                    raise ValueError('Duplicate JUnit case')
+                skipped = row.find('skipped') is not None
+                failed = row.find('failure') is not None or row.find('error') is not None
+                # Legacy XML also emits successful childless non-test containers.
+                if (uid not in cases_by_id and not skipped and not failed
+                        and uid in feedback.get('successfulContainers', [])):
+                    continue
+                status = ('aborted' if uid in cases_by_id else 'skipped') if skipped else 'failed' if failed else 'successful'
+                # Legacy XML includes a synthetic testcase for a failed container.
+                if uid not in cases_by_id and failed:
+                    container_failures = max(container_failures, 1)
+                    continue
+                outcomes[uid] = status
+                if not skipped:
+                    case = dict(cases_by_id.get(uid, {}))
+                    if not case or case.get('status') != ('passed' if status == 'successful' else 'failed'):
+                        raise ValueError('JUnit XML and feedback differ')
+                    cases.append(case)
+                if failed:
+                    if uid not in feedback['failureKinds']:
+                        raise ValueError('Missing exception origin feedback')
+                    failures[uid] = feedback['failureKinds'][uid]
+    except (ET.ParseError, KeyError, TypeError) as error:
+        raise ValueError('Invalid JUnit XML report') from error
+    if outcomes != feedback['verifiedOutcomes']:
+        raise ValueError('JUnit XML differs from authenticated engine outcomes')
+    executed = [uid for uid, status in outcomes.items() if status != 'skipped']
+    if set(cases_by_id) != set(executed):
+        raise ValueError('Incomplete JUnit XML testcase set')
+    counts = dict(
+        complete=True, eventErrors=0, feedbackProtocolVersion=feedback['feedbackProtocolVersion'],
+        discovered=len(outcomes), executed=len(executed),
+        registered=list(outcomes), started=executed, outcomes=outcomes,
+        passed=sum(s == 'successful' for s in outcomes.values()),
+        failed=sum(s == 'failed' for s in outcomes.values()),
+        skipped=sum(s == 'skipped' for s in outcomes.values()),
+        aborted=sum(s == 'aborted' for s in outcomes.values()),
+        containerFailures=container_failures, failureKinds=failures,
+        cases=cases if feedback['feedbackProtocolVersion'] == 2 else [],
+        publicCaseObservations=feedback.get('publicCaseObservations', []),
+    )
+    grading = feedback.get('grading', {})
+    if set(grading) != set(outcomes):
+        raise ValueError('Incomplete JUnit grading metadata')
+    totals, points = {}, 0
+    tests = []
+    for uid, status in outcomes.items():
+        metadata = grading[uid]
+        weight = metadata['weight']
+        if type(weight) not in (int,float) or not math.isfinite(weight) or weight < 0:
+            raise ValueError('Invalid JUnit grading weight')
+        if any(not isinstance(metadata[field],str) for field in ('name','description','owner')):
+            raise ValueError('Invalid JUnit grading metadata')
+        owner = metadata['owner']
+        totals[owner] = totals.get(owner, 0) + weight
+        achieved = weight if status == 'successful' else 0
+        points += achieved
+        tests.append(dict(name=metadata['name'], description=metadata['description'],
+                          message='', output='', points=achieved, max_points=weight))
+    for owner, maximum in feedback.get('classMaximums', {}).items():
+        if type(maximum) not in (int,float) or not math.isfinite(maximum) or maximum < 0:
+            raise ValueError('Invalid JUnit class maximum')
+        totals[owner] = maximum
+    total = sum(totals.values())
+    raw = dict(gradable=True, tests=tests, score=min(points / total, 1) if total else 0,
+               points=min(points, total), max_points=total, message='', output='')
+    return raw, counts
+
+
+def read_junit_xml(directory, feedback_file, *, report_key=None):
+    """Единственная граница разбора недоверенной выдачи дочернего процесса."""
+    try:
+        if report_key is not None:
+            import hashlib
+            import hmac
+            from pathlib import Path
+            payload = Path(feedback_file).read_bytes()
+            expected = hmac.digest(bytes.fromhex(report_key), payload, 'sha256').hex()
+            actual = Path(str(feedback_file) + '.signature').read_text().strip()
+            if not hmac.compare_digest(actual, expected):
+                raise ValueError('Invalid JUnit result authentication')
+        return _read_junit_xml(directory, feedback_file)
+    except (AttributeError, KeyError, TypeError, OverflowError) as error:
+        raise ValueError('Invalid JUnit generated report shape') from error

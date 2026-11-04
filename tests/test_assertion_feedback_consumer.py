@@ -103,27 +103,28 @@ class SignedUnknownGuard(af.ProductionCase):
         def invoke(command, *args, **kwargs):
             params = (
                 json.loads(Path(command[-1]).read_text())
-                if "PlatformJUnitAdapter" in command
+                if any(arg.endswith("PlatformJUnitAdapter") for arg in command)
                 else None
             )
             outcome = original(command, *args, **kwargs)
             if params:
-                path = Path(params["counts_file"])
+                path = Path(params["feedback_file"])
                 counts = json.loads(path.read_text())
                 check = counts["cases"][0]["checks"][0]
                 self.assertEqual(check["availability"], "complete")
                 self.assertEqual(check["delegated"], "returned")
-                self.assertEqual(counts["signature"], params["signature"])
                 before = self.preserve(path)
                 check["delegated"] = "unknown"
                 path.write_text(json.dumps(counts))
+                import hmac
+                Path(str(path)+'.signature').write_text(hmac.digest(bytes.fromhex(params['report_key']),path.read_bytes(),'sha256').hex())
                 after = self.preserve(path)
                 corrupted.append(after)
                 self.calls[-1]["brokenProducer"] = {
                     "beforeSha256": before,
                     "afterSha256": after,
                     "mutation": "cases[0].checks[0].delegated returned→unknown",
-                    "signaturePreserved": True,
+                    "operatorAuthenticatedBrokenProducer": True,
                 }
             return outcome
 

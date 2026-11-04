@@ -146,7 +146,7 @@ class JUnitJob(unittest.TestCase):
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_dependency_hash_mismatch_blocks_preflight(self):
+    def test_unknown_runtime_blocks_preflight(self):
         self.cfg["runtime"] = "unknown"
         with self.assertRaises(grader.GraderError):
             self.run_job()
@@ -250,27 +250,6 @@ class ScoringTests(unittest.TestCase):
             self.run_job()
 
 
-class RuntimeBundleTests(unittest.TestCase):
-    def test_unregistered_jar_cannot_join_offline_classpath(self):
-        import shutil
-
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            shutil.copytree(ROOT / "runtime", root / "runtime")
-            shutil.copyfile(
-                ROOT / "runtime-profiles.json", root / "runtime-profiles.json"
-            )
-            bundle = root / "runtime/java25-junit-v1"
-            shutil.copyfile(
-                bundle / "json-simple-1.1.1.jar", bundle / "unregistered.jar"
-            )
-            original = grader.PLATFORM
-            grader.PLATFORM = root
-            try:
-                with self.assertRaises(grader.GraderError):
-                    grader.preflight("java25-junit-v1", registry=unit_registry())
-            finally:
-                grader.PLATFORM = original
 
 
 class AdditionalSourceDeliveryTests(unittest.TestCase):

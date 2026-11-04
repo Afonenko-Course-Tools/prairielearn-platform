@@ -29,7 +29,7 @@ class LaunchContract(unittest.TestCase):
    self.calls.append((args,kw));raise subprocess.CalledProcessError(73,args)
   return self.original_run(args,*a,**kw)
  def call(self,**kw):
-  with patch('subprocess.run',self.run_spy),patch.object(builder._assembly,'for_build',return_value=None):
+  with patch('subprocess.run',self.run_spy):
    return builder.build_course(self.source,'tasks','test',self.output,runtime_registry=self.registry,**kw)
  def test_first_child_has_absolute_installed_entry_and_owner_cwd(self):
   with self.assertRaisesRegex(builder.BuildError,'Installed full owner export failed'):self.call()
