@@ -21,7 +21,7 @@ def registry():
   native['sharedFiles'][p]=hashlib.sha256((ROOT/p).read_bytes()).hexdigest()
  value['profiles']['java25-gradle-junit-v1']=native
  spec=importlib.util.spec_from_file_location('fixture_preparation',ROOT/'tools/prepare_native_toolchain.py');preparation=importlib.util.module_from_spec(spec);spec.loader.exec_module(preparation)
- fish=preparation._fish_view(ROOT)['profiles']['fish-git-v1'];fish['image']='unit.invalid/synthetic-fixture@sha256:'+'1'*64
+ fish=preparation._fish_view(ROOT,read=lambda path:path.read_bytes())['profiles']['fish-git-v1'];fish['image']='unit.invalid/synthetic-fixture@sha256:'+'1'*64
  value['profiles']['fish-git-v1']=fish
  return value
 

@@ -596,22 +596,23 @@ def preflight(runtime, registry=None):
         code, output, reason = _run([_grading_java(), "-version"], PLATFORM, 5)
         if code or reason or not re.search(r'version "25(?:[.\"+\-])', output):
             raise GraderError("The grader requires an actual JDK 25 runtime")
-        compiler_code, compiler_output, compiler_reason = _run(
-            [
-                _grading_java(),
-                "-XX:TieredStopAtLevel=1",
-                "com.sun.tools.javac.Main",
-                "-version",
-            ],
-            PLATFORM,
-            5,
-        )
-        if (
-            compiler_code
-            or compiler_reason
-            or not re.search(r"javac 25(?:[.\s+\-]|$)", compiler_output)
-        ):
-            raise GraderError("The grader requires the actual JDK25 compiler")
+        if os.environ.get("PL_CONTAINMENT") != "official":
+            compiler_code, compiler_output, compiler_reason = _run(
+                [
+                    _grading_java(),
+                    "-XX:TieredStopAtLevel=1",
+                    "com.sun.tools.javac.Main",
+                    "-version",
+                ],
+                PLATFORM,
+                5,
+            )
+            if (
+                compiler_code
+                or compiler_reason
+                or not re.search(r"javac 25(?:[.\s+\-]|$)", compiler_output)
+            ):
+                raise GraderError("The grader requires the actual JDK25 compiler")
         return profile, bundle, output.strip()
     except (KeyError, OSError, ValueError) as error:
         raise GraderError("Missing or invalid versioned runtime bundle") from error

@@ -1,6 +1,7 @@
 """R1–R3: отдельные контрпримеры private provenance; Gradle doubles только unit."""
 import copy
 import json
+import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -49,9 +50,16 @@ class RecipeMembershipTests(unittest.TestCase):
     with patch.object(grader,'_run',side_effect=AssertionError('Java child ran before recipe membership admission')):
      with self.assertRaisesRegex(grader.GraderError,'recipe'):grader.preflight('java25-gradle-junit-v1',value)
  def test_complete_native_pins_and_plain_profiles_remain_admissible(self):
-  value=registry()
-  for rid in ('java25-gradle-junit-v1','java25-junit-v1','java25-mutation-v1'):
-   with self.subTest(runtime=rid):self.assertTrue(grader.preflight(rid,value)[2])
+  value=registry();output='openjdk version "25.0.1"\n'
+  def official_version(command,*args):
+   self.assertEqual(command,[str(grader.HARDENED_JDK/'bin/java'),'-version'])
+   return 0,output,None
+  with patch.dict(os.environ,{'PL_CONTAINMENT':'official'}),patch.object(grader,'_verify_landlock_helper'),patch.object(grader,'_run',side_effect=official_version):
+   for rid in ('java25-gradle-junit-v1','java25-junit-v1','java25-mutation-v1'):
+    with self.subTest(runtime=rid):self.assertEqual(grader.preflight(rid,value)[2],output.strip())
+  with patch.dict(os.environ,{'PL_CONTAINMENT':'host'}),patch.object(grader,'_run',side_effect=[(0,output,None),(0,'javac 24',None)]) as run:
+   with self.assertRaisesRegex(grader.GraderError,'actual JDK25 compiler'):grader.preflight('java25-junit-v1',value)
+   self.assertEqual(run.call_args.args[0],['java','-XX:TieredStopAtLevel=1','com.sun.tools.javac.Main','-version'])
 
 class DurableBuildProofTests(native.BuildEvidenceTests):
  def test_rehashed_reference_or_behavior_proof_downgrade_is_rejected(self):
