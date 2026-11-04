@@ -276,9 +276,9 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
       if (test.getSource().orElse(null) instanceof MethodSource method) {
         String binding = method.getClassName() + "#" + method.getMethodName();
         String observed = switch (kind) {
-          case "runtime" -> "Выполнение прервано ошибкой программы; результат не получен.";
-          case "timeout" -> "Выполнение остановлено по пределу времени; результат не получен.";
-          case "output-limit" -> "Выполнение остановлено по пределу вывода; результат не получен.";
+          case "runtime" -> "Выполнение прервано ошибкой программы;\nрезультат не получен.";
+          case "timeout" -> "Выполнение остановлено\nпо пределу времени; результат не получен.";
+          case "output-limit" -> "Выполнение остановлено\nпо пределу вывода; результат не получен.";
           default -> null;
         };
         if (observed != null)

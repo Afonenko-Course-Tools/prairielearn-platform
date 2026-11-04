@@ -6,7 +6,7 @@ import textwrap
 
 
 def _prose(value):
-    return textwrap.fill(value, width=60, break_long_words=False, break_on_hyphens=False)
+    return textwrap.fill(value, width=50, break_long_words=False, break_on_hyphens=False)
 
 _EXPLANATIONS = {
     "compile": (
@@ -272,7 +272,7 @@ def student_result(result, descriptor):
                 if not checks and case["status"] != "passed":
                     complete = False
                     if not case.get("reporter"):
-                        lines.append("Подробности сравнения не получены: проверка завершилась до поддержанного наблюдения.")
+                        lines.append(_prose("Подробности сравнения не получены: проверка завершилась до поддержанного наблюдения."))
                 for check in checks:
                     complete &= check["availability"] == "complete"
                     lines.extend(["Проверка: " + check["property"], "Источник: " + check["site"],

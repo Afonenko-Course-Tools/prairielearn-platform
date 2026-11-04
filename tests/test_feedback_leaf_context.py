@@ -91,7 +91,7 @@ class LeafContext(unittest.TestCase):
                                          'gradable': True, 'score': 0}, descriptor)
         self.assertIn('Ожидается: ' + 'X' * 400 + '\nвторая строка', native['message'])
         explanation = native['message'].split('\n\nЧто проверяется:', 1)[0]
-        self.assertTrue(all(len(line) <= 60 for line in explanation.splitlines()))
+        self.assertTrue(all(len(line) <= 50 for line in explanation.splitlines()))
 
     def test_executed_leaf_does_not_deny_its_assertion_observation(self):
         source = result()

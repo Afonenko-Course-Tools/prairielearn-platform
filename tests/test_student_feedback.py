@@ -370,6 +370,8 @@ public class AnswerTest {
         fixture = fixtures.JUnitJob()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
+        fixture.cfg['publicCases'] = [{'id': 'normal', 'test': 'AnswerTest#right',
+                                      'name': 'Выполнение программы', 'action': 'Вызвать answer()', 'expected': '42'}]
         (fixture.job / "student/Student.java").write_text(
             'public class Student {public static int answer(){throw new IllegalStateException("CLOSED_RUNTIME_CANARY");}}'
         )
@@ -388,6 +390,10 @@ public class AnswerTest {
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads((fixture.job / "results/results.json").read_text())
         self.assertEqual(result["feedback"]["kind"], "runtime")
+        actual = result['feedback']['publicCases'][0]['actual']
+        self.assertIn(';\nрезультат не получен.', actual)
+        self.assertTrue(all(len(line) <= 50 for line in ('Получено: ' + actual).splitlines()))
+        self.assertTrue(all(len(line) <= 50 for line in result['tests'][0]['message'].splitlines()))
         self.assertNotIn("CLOSED_", json.dumps(result) + run.stdout + run.stderr)
 
 
@@ -406,19 +412,19 @@ class ActualFailureBoundary(unittest.TestCase):
                 "infrastructure",
                 'public class Student {public static int answer(){System.out.print("CLOSED_TIMEOUT_CANARY");while(true){}}}',
                 fixtures.TEST,
-                2,
+                0,
             ),
             (
                 "infrastructure",
                 "public class Student {public static int answer(){return 42;}}",
                 "CLOSED_INFRASTRUCTURE_CANARY",
-                2,
+                0,
             ),
             (
                 "infrastructure",
                 "public class Student {public static int answer(){return 42;}}",
                 'import org.junit.jupiter.api.Test; public class AnswerTest { @Test void broken(){throw new NullPointerException("CLOSED_TRUSTED_SETUP_CANARY");}}',
-                2,
+                0,
             ),
         ]:
             with self.subTest(kind=kind):
@@ -446,6 +452,9 @@ class ActualFailureBoundary(unittest.TestCase):
                         (fixture.job / "results/results.json").read_text()
                     )
                     self.assertEqual(result["feedback"]["kind"], kind)
+                    if kind == 'infrastructure':
+                        self.assertFalse(result['gradable'])
+                        self.assertNotIn('score', result)
                     self.assertNotIn(
                         "CLOSED_", json.dumps(result) + run.stdout + run.stderr
                     )
@@ -488,7 +497,9 @@ class ActualFailureBoundary(unittest.TestCase):
             self.assertNotIn("executionEvidence", private)
             config.write_text(json.dumps(dict(fixture.cfg, verification=True)))
             run, native = execute()
-            self.assertEqual(run.returncode, 2)
+            self.assertEqual(run.returncode, 0)
+            self.assertFalse(native['gradable'])
+            self.assertNotIn('score', native)
             self.assertNotIn("rawResult", native)
             self.assertNotIn("CLOSED_", json.dumps(native) + run.stderr)
             (fixture.job / "student/Student.java").rename(
