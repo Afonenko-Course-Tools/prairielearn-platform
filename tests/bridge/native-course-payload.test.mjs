@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {existsSync} from 'node:fs';
-import {mkdtemp,mkdir,writeFile,rm,symlink} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,writeFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -35,4 +35,24 @@ if(existsSync(modulePath)) {
  test('candidate payload cannot create a production native institution',()=>fixture(async path=>{
   await assert.rejects(()=>readNativeCoursePayload(path),/Candidate/);
  },true));
+ test('own __proto__ inventory preserves raw hash and cannot use cleaned hash',()=>fixture(async(path,root)=>{
+  const {deliveryHash,...payload}=JSON.parse(await readFile(join(path,'delivery.json'),'utf8'));
+  const info=await readFile(join(path,'infoCourse.json'));
+  const content='Synthetic inventory file';
+  payload.files={...payload.files,['__proto__']:hash(content)};
+  const rawHash=hash(canonicalJSONString(payload)),rawPath=join(root,rawHash);
+  await mkdir(rawPath);
+  await writeFile(join(rawPath,'infoCourse.json'),info);
+  await writeFile(join(rawPath,'__proto__'),content);
+  await writeFile(join(rawPath,'delivery.json'),JSON.stringify({...payload,deliveryHash:rawHash}));
+  assert.deepEqual(Object.entries((await readNativeCoursePayload(rawPath)).delivery.files),Object.entries(payload.files));
+
+  const cleaned={...payload,files:{'infoCourse.json':payload.files['infoCourse.json']}};
+  const cleanedHash=hash(canonicalJSONString(cleaned)),cleanedPath=join(root,cleanedHash);
+  // Очищенный hash совпадает с исходной fixture, её каталог уже существует.
+  await writeFile(join(cleanedPath,'infoCourse.json'),info);
+  // Файл __proto__ отсутствует: parser не должен удалением inventory скрывать это.
+  await writeFile(join(cleanedPath,'delivery.json'),JSON.stringify({...payload,deliveryHash:cleanedHash}));
+  await assert.rejects(()=>readNativeCoursePayload(cleanedPath),/Delivery hash mismatch/);
+ }));
 }
