@@ -51,12 +51,8 @@ def envelope(value, runtime="java25-junit-v1"):
         backend="host",
         qualifiedId="probe/exr-guard",
         scenario="contract:guard",
-        sourceSnapshotHash="a" * 64,
-        inventoryHash="b" * 64,
         runtime=runtime,
         imageDigest=None,
-        sourceHashes={},
-        testsHashes={},
         **value
     )
 

@@ -17,7 +17,7 @@ class GatewayBridgeLive(unittest.TestCase):
         except urllib.error.HTTPError as e:
             with e: return e.code,json.load(e)
     def assignment(self,**overrides):
-        return {'version':1,'userUid':'not-an-existing-verified-user','instance':'pilot','deliveryHash':self.delivery['deliveryHash'],'oldWork':None,'newWork':self.delivery['instances']['pilot']['works'][0],**overrides}
+        return {'version':1,'userUid':'not-an-existing-verified-user','instance':'pilot','courseKey':self.delivery['courseId'],'oldWork':None,'newWork':self.delivery['instances']['pilot']['works'][0],**overrides}
     def test_service_auth_required(self):
         self.assertEqual(self.request('/internal/gateway/results?assignmentId=test&version=1',token=False)[0],401)
     def test_browser_identity_headers_do_not_authenticate(self):
@@ -32,7 +32,7 @@ class GatewayBridgeLive(unittest.TestCase):
     def test_unknown_verified_identity_denied(self):
         self.assertEqual(self.request('/internal/gateway/assignments/unknown','PUT',self.assignment())[0],404)
     def test_foreign_delivery_denied(self):
-        self.assertEqual(self.request('/internal/gateway/assignments/unknown','PUT',self.assignment(deliveryHash='0'*64))[0],403)
+        self.assertEqual(self.request('/internal/gateway/assignments/unknown','PUT',self.assignment(courseKey='0'*64))[0],403)
     def test_foreign_assessment_denied(self):
         self.assertEqual(self.request('/internal/gateway/assignments/unknown','PUT',self.assignment(newWork='not-in-manifest'))[0],409)
     def test_unknown_assignment_has_no_results(self):

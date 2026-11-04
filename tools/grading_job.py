@@ -131,6 +131,23 @@ def _selection(items):
     return [dict(item) for item in items]
 
 
+def _fixture_selection(items):
+    if not isinstance(items,list) or len(items)>4096:
+        raise JobError("Selected fixture count limit")
+    selected={};total=0
+    for item in items:
+        row=_selection([item])[0];key=(row["target"],row["name"])
+        data=selected_bytes(row)
+        if key in selected:
+            if selected_bytes(selected[key]) != data:
+                raise JobError("Conflicting selected fixture bytes")
+            continue
+        total+=len(data)
+        if total>64*1024**2:raise JobError("Selected fixture total size limit")
+        selected[key]=row
+    return list(selected.values())
+
+
 def _cases(project):
     record = project.get("contractCases")
     if not record:
@@ -173,7 +190,7 @@ def prepare_job(
     sources = _selection(p.get("sources", []))
     tests = _selection(p.get("trustedTests", []))
     public = _selection(p.get("verificationTests", []))
-    fixtures = _selection(p.get("contractFixtures", []))
+    fixtures = _fixture_selection(p.get("contractFixtures", []))
     if p.get("readiness", {}).get("ready") is False or not sources or not tests:
         raise ProjectDefect("Selected project is incomplete: " + id)
     selected = sources

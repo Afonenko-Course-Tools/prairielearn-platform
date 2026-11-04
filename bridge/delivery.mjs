@@ -4,7 +4,7 @@ const idsSchema = z
   .array(z.string().min(1))
   .refine((v) => new Set(v).size === v.length, 'Duplicate IDs');
 const relativePath=z.string().min(1).refine(p=>!p.startsWith('/')&&!/^[A-Za-z]:/.test(p)&&!/[\x00-\x1f\x7f]/.test(p)&&!p.includes('\\')&&!p.split('/').some(s=>['','.','..'].includes(s)));
-const submission=z.strictObject({mode:z.enum(['upload','editor']),aceMode:z.string().regex(/^ace\/mode\/[a-z][a-z0-9_]*$/).optional()}).refine(s=>s.mode==='editor'||s.aceMode===undefined);
+const submission=z.strictObject({mode:z.enum(['upload','editor']),aceMode:z.string().regex(/^ace\/mode\/[a-z][a-z0-9_]*$/).optional(),layout:z.enum(['files','zip','files-or-zip']).optional()}).refine(s=>s.mode==='editor'||s.aceMode===undefined).refine(s=>s.mode==='upload'||s.layout===undefined);
 const commonBinding={uuid:z.string().uuid(),submission,sourceRoot:relativePath};
 const gradingBinding=z.union([
  z.strictObject({...commonBinding,grading:z.strictObject({method:z.literal('manual')})}).refine(b=>b.submission.mode==='upload'),

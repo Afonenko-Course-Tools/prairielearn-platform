@@ -14,6 +14,9 @@ Moodle Gateway. Платформа независима от конкретно�
 `{name,target,data}`. Данные trusted-тестов и эталонов не входят в публичный
 каталог вопросов. В delivery остаются UUID, параметры grading/runtime,
 Native response slots, работы, экземпляры курса и список выбранных путей `files`.
+Для `submission.mode: upload` поле `layout` выбирает `files`, `zip` или
+`files-or-zip`. Оно описывает способ прикрепления; обязательный API и runtime
+проверки допустимого ответа задаются отдельно.
 
 Собственные SHA содержимого, source/check/scenario inventories, staging/provenance
 и итоговые release receipts удалены. Список файлов служит чтению выбранного

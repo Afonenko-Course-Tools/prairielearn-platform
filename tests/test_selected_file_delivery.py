@@ -44,6 +44,15 @@ class SelectedDelivery(unittest.TestCase):
  def test_named_reference_uses_its_selected_bytes(self):
   p=self.m['projects'][0];p['check']['references']=[{'name':'correct','root':'author/correct','optional':False}];p['references']=[{'name':'correct','root':'author/correct','optional':False,'available':True,'group':'correct','targets':['author/correct/Answer.java'],'sources':[row('Answer.java',b'REFERENCE','author/correct/Answer.java')]}]
   self.assertEqual((self.prepare('reference:correct').root/'student/Answer.java').read_bytes(),b'REFERENCE')
+ def test_different_cases_can_replace_same_submission_from_distinct_fixtures(self):
+  p=self.m['projects'][0];p['check']['contract-cases']='cases.json';cases={'schemaVersion':1,'cases':[{'id':name,'sources':[{'fixture':'tests/fixtures/'+name+'.java','submission':'Answer.java'}],'expected':{'student-compilation':'failure'}} for name in ['one','two']]};p['contractCases']=row('cases.json',json.dumps(cases).encode(),'tests/cases.json');p['contractFixtures']=[row('Answer.java',name.encode(),'tests/fixtures/'+name+'.java') for name in ['one','two']]
+  self.assertEqual((self.prepare().root/'student/Answer.java').read_bytes(),b'public class Answer {}')
+  for name in ['one','two']:self.assertEqual((self.prepare('contract:'+name).root/'student/Answer.java').read_bytes(),name.encode())
+ def test_same_fixture_reused_by_cases_is_one_functional_pair(self):
+  p=self.m['projects'][0];p['check']['contract-cases']='cases.json';p['contractCases']=row('cases.json',json.dumps({'schemaVersion':1,'cases':[{'id':name,'sources':[{'fixture':'tests/fixtures/shared.java','submission':'Answer.java'}],'expected':{'student-compilation':'failure'}} for name in ['one','two']]}).encode(),'tests/cases.json');fixture=row('Answer.java',b'SHARED','tests/fixtures/shared.java');p['contractFixtures']=[dict(fixture),dict(fixture)]
+  self.assertEqual((self.prepare('contract:two').root/'student/Answer.java').read_bytes(),b'SHARED')
+  p['contractFixtures'][1]=row('Answer.java',b'CONFLICT','tests/fixtures/shared.java')
+  with self.assertRaises(g.JobError):self.prepare('contract:one')
  def test_contract_scenario_uses_functional_fixture_targets(self):
   p=self.m['projects'][0];p['check']['contract-cases']='cases.json';p['contractCases']=row('cases.json',json.dumps({'schemaVersion':1,'cases':[{'id':'bad','sources':[{'fixture':'tests/fixtures/bad.java','submission':'Answer.java'}],'expected':{'student-compilation':'failure'}}]}).encode(),'author/cases.json');p['contractFixtures']=[row('Answer.java',b'BAD','tests/fixtures/bad.java')]
   scenarios=g.scenario_inventory(self.m,Path(self.tmp.name));self.assertEqual([x['scenario'] for x in scenarios],['contract:bad','starter']);self.assertEqual((self.prepare('contract:bad').root/'student/Answer.java').read_bytes(),b'BAD')

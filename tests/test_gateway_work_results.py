@@ -15,11 +15,11 @@ class OrdinaryLabResults(unittest.TestCase):
         status,result=self.read();self.assertEqual(status,200)
         schema=json.loads((pathlib.Path(__file__).parents[1]/'schemas/gateway-work-results.schema.json').read_text())
         jsonschema.validate(result,schema)
-        for key in ('userUid','instance','deliveryHash','workId'):self.assertEqual(result[key],self.f['query'][key])
+        for key in ('userUid','instance','courseKey','workId'):self.assertEqual(result[key],self.f['query'][key])
         self.assertNotIn('assignmentId',result);self.assertNotIn('version',result)
     def test_missing_enrollment_denied(self):self.assertEqual(self.read(userUid=self.f['unenrolledUid'])[0],403)
     def test_foreign_work_denied(self):self.assertEqual(self.read(workId='foreign-work')[0],403)
-    def test_foreign_delivery_denied(self):self.assertEqual(self.read(deliveryHash='0'*64)[0],403)
+    def test_foreign_delivery_denied(self):self.assertEqual(self.read(courseKey='0'*64)[0],403)
     def test_defense_cannot_bypass_assignment_via_lab_endpoint(self):self.assertEqual(self.read(workId='defense-a')[0],403)
     def test_query_cannot_supply_staff_role(self):self.assertEqual(self.read(role='Administrator')[0],400)
     def test_unattempted_does_not_invent_grade(self):
@@ -41,7 +41,7 @@ class OrdinaryLabResults(unittest.TestCase):
     def test_launch_cannot_supply_native_id_or_path(self):self.assertEqual(self.launch(assessmentId='1',path='/pl/administrator')[0],400)
 
     def enroll(self,**overrides):
-        body={k:self.f['query'][k] for k in ('userUid','instance','deliveryHash')};body.update(overrides)
+        body={k:self.f['query'][k] for k in ('userUid','instance','courseKey')};body.update(overrides)
         token=pathlib.Path(self.f['tokenFile']).read_text().strip()
         req=urllib.request.Request(self.f['bridgeUrl']+'/internal/gateway/enrollment',method='PUT',data=json.dumps(body).encode(),headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
         try:r=urllib.request.urlopen(req,timeout=20)
@@ -50,7 +50,7 @@ class OrdinaryLabResults(unittest.TestCase):
     def test_basic_enrollment_is_idempotent_and_has_no_assignment_grant(self):
         for _ in range(2):
             status,result=self.enroll(userUid=self.f['bootstrapUid']);self.assertEqual(status,200)
-            self.assertEqual(set(result),{'schemaVersion','userUid','instance','deliveryHash','enrolled'});self.assertTrue(result['enrolled'])
+            self.assertEqual(set(result),{'schemaVersion','userUid','instance','courseKey','enrolled'});self.assertTrue(result['enrolled'])
     def test_basic_enrollment_cannot_supply_role_or_labels(self):self.assertEqual(self.enroll(role='Administrator',labels=['defense-a'])[0],400)
     def test_enrollment_requires_existing_community_identity(self):self.assertEqual(self.enroll(userUid='unverified-user-does-not-exist')[0],404)
 

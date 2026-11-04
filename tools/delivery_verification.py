@@ -67,7 +67,8 @@ def classification(delivery):
   if not isinstance(grading,dict) or set(grading)!={'method'} or grading['method'] not in ('external','mixed','manual'):raise JobError('Explicit canonical grading method required')
   method=grading['method'];allowed={'uuid','grading','submission','sourceRoot'}|({'projectCheck','runtime','sources'} if method!='manual' else set())
   if set(binding)!=allowed:raise JobError('Closed method-specific question binding required')
-  if not isinstance(submission,dict) or set(submission)-{'mode','aceMode'} or submission.get('mode') not in ('upload','editor') or submission.get('mode')=='upload' and 'aceMode' in submission:raise JobError('Closed canonical submission required')
+  if not isinstance(submission,dict) or set(submission)-{'mode','aceMode','layout'} or submission.get('mode') not in ('upload','editor') or submission.get('mode')=='upload' and 'aceMode' in submission:raise JobError('Closed canonical submission required')
+  if 'layout' in submission and (submission['mode']!='upload' or submission['layout'] not in ('files','zip','files-or-zip')):raise JobError('Invalid native upload layout')
   if 'aceMode' in submission and (not isinstance(submission['aceMode'],str) or not submission['aceMode']):raise JobError('Invalid editor mode')
   if method=='manual' and submission['mode']!='upload':raise JobError('Manual requires actual native upload')
   try:valid_uuid=isinstance(binding['uuid'],str) and str(uuid.UUID(binding['uuid']))==binding['uuid'].lower()
@@ -188,14 +189,24 @@ def package_integrity(delivery,native,checks=None):
    if not required and not extra and not globs:raise JobError('Native upload input missing or empty')
    names.extend(required);optional.extend(extra);patterns.extend(globs)
   if len(set(names+optional))!=len(names+optional):raise JobError('Duplicate native upload name')
+  layout=binding['submission'].get('layout')
   if method!='manual':
    extra_policy=descriptor.get('additionalJavaSources');optional_primary=extra_policy is not None and extra_policy.get('primaryRequired',True) is False
-   expected_optional=([*[source['submissionRelativePath'] for source in binding['sources'] if '/' not in source['submissionRelativePath']],extra_policy['archive']] if optional_primary else [extra_policy['archive']]) if extra_policy else []
-   if optional_primary and binding['submission']['mode']!='upload':raise JobError('Optional primary requires upload')
-   if patterns or sorted(optional)!=sorted(expected_optional):raise JobError('Native upload optional files differ from declared policy')
+   if layout is not None:
+    expected_names=[source['submissionRelativePath'] for source in binding['sources']]
+    if editors or not uploads:raise JobError('Native upload layout requires upload controls')
+    if layout=='files-or-zip':
+     if not extra_policy or names or optional!=[extra_policy['archive']] or patterns!=['*.java']:raise JobError('Native free file/ZIP controls differ from layout')
+    elif layout=='zip':
+     if not extra_policy or names!=[extra_policy['archive']] or optional or patterns:raise JobError('Native ZIP controls differ from layout')
+    elif set(names)!=set(expected_names) or optional or patterns:raise JobError('Native fixed files differ from layout')
+   else:
+    expected_optional=([*[source['submissionRelativePath'] for source in binding['sources'] if '/' not in source['submissionRelativePath']],extra_policy['archive']] if optional_primary else [extra_policy['archive']]) if extra_policy else []
+    if optional_primary and binding['submission']['mode']!='upload':raise JobError('Optional primary requires upload')
+    if patterns or sorted(optional)!=sorted(expected_optional):raise JobError('Native upload optional files differ from declared policy')
   if binding['submission']['mode']=='upload':
    if editors or not uploads:raise JobError('Native upload input missing or empty')
-   if method!='manual' and set(names)!=(set() if optional_primary else {source['submissionRelativePath'] for source in binding['sources']}):raise JobError('Native upload inputs differ from bound source files')
+   if method!='manual' and layout is None and set(names)!=(set() if optional_primary else {source['submissionRelativePath'] for source in binding['sources']}):raise JobError('Native upload inputs differ from bound source files')
   else:
    if names:raise JobError('Editor cannot add required upload names')
    expected=[source['submissionRelativePath'] for source in binding['sources']]
@@ -207,7 +218,7 @@ def package_integrity(delivery,native,checks=None):
    if checks is not None:
     fact=facts.get(q)
     if not fact or not fact.get('check') or fact.get('readiness',{}).get('ready') is False:raise JobError('Automatic question needs ready private check')
-    if binding['sourceRoot']!=fact.get('projectRoot') or binding['runtime']!=fact['check'].get('runtime') or binding['projectCheck']!=fact['check'].get('profile') or [x['submissionRelativePath'] for x in binding['sources']]!=[x['name'] for x in fact.get('sources',[])]:raise JobError('Automatic source/check binding differs')
+    if binding['sourceRoot']!=fact.get('projectRoot') or binding['runtime']!=fact['check'].get('runtime') or binding['projectCheck']!=fact['check'].get('profile') or [(x['projectRelativePath'],x['submissionRelativePath']) for x in binding['sources']]!=[(x['target'],x['name']) for x in fact.get('sources',[])]:raise JobError('Automatic source/check binding differs')
    if descriptor['runtime']!=binding['runtime'] or not info.get('externalGradingOptions',{}).get('image') or not any(tag=='pl-external-grader-results' for tag,_ in controls):raise JobError('Automatic runtime/native control missing')
   result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':binding['submission']['mode']})
  return {'status':'success','questionBindings':result}

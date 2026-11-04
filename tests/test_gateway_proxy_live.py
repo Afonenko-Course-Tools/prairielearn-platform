@@ -38,5 +38,5 @@ class OrdinaryStudentAcl(unittest.TestCase):
             jsonschema.validate(result,schema)
             self.assertEqual(result['userUid'],student['userUid'])
             self.assertEqual(result['workId'],student['ownWork'])
-            self.assertEqual(result['deliveryHash'],self.fixture['deliveryHash'])
+            self.assertEqual(result['courseKey'],self.fixture['courseKey'])
             self.assertEqual(result['version'],student['version'])

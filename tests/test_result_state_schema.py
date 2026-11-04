@@ -8,7 +8,7 @@ class ResultStateSchema(unittest.TestCase):
  def test_not_started_has_zero_completed_and_null_lab_aggregate(self):
   for name in ['gateway-results','gateway-work-results']:
    schema=json.loads((ROOT/'schemas'/f'{name}.schema.json').read_text())
-   base={'schemaVersion':2,'source':'per-slot-results-v2','userUid':'u','instance':'fixture','deliveryHash':'a'*64,'workId':'lab','state':'not-started','currentAttempt':None,'slots':[],'completion':{'completedRequired':0,'requiredCount':3,'atLeast':2,'passed':False}}
+   base={'schemaVersion':2,'source':'per-slot-results-v2','userUid':'u','instance':'fixture','courseKey':'demo','workId':'lab','state':'not-started','currentAttempt':None,'slots':[],'completion':{'completedRequired':0,'requiredCount':3,'atLeast':2,'passed':False}}
    if name=='gateway-results':base.update(assignmentId='a',version=1)
    else:base.update(scoreGiven=None,scoreMaximum=None)
    jsonschema.validate(base,schema)

@@ -7,9 +7,15 @@ const IQ_FIELDS=[...AI_FIELDS,'questionUUID','questionId','assessmentQuestionId'
 const fail=(s)=>{throw new Error(s);};
 function canonical(v){if(v instanceof Date){if(!Number.isFinite(v.getTime()))fail('Invalid native timestamp');return JSON.stringify(v.toISOString());}if(v===undefined||typeof v==='function'||typeof v==='symbol')fail('Noncanonical mapping value');if(v===null||typeof v!=='object'){if(typeof v==='number'&&!Number.isFinite(v))fail('Nonfinite mapping');return JSON.stringify(v);}if(Array.isArray(v))return '['+v.map(canonical).join(',')+']';return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';}
 const sameMapping=(a,b)=>['source','target','mapping'].every(k=>canonical(a[k])===canonical(b[k]));
+function closed(value,required,optional=[]){if(!value||typeof value!=='object'||Array.isArray(value)||required.some(k=>!Object.hasOwn(value,k))||Object.keys(value).some(k=>!required.includes(k)&&!optional.includes(k)))fail('Closed functional Native mapping required');}
 function shape(input){
  if(!input||typeof input!=='object'||!input.source||!input.target||!input.mapping)fail('Missing exact source/final mapping');
  const {source:s,target:t,mapping:m}=input;
+ closed(input,['source','target','mapping','actorUserId'],['checkModifiedAt','destinationSubmissionId','format','explanation']);
+ closed(s,['database','autoJobId','submissionId','variantId','instanceQuestionId','assessmentInstanceId','questionUUID','workUUID','uid','userId']);
+ closed(t,['courseId','courseUUID','courseInstanceUUID','courseInstanceId','workId','assessmentUUID','assessmentId','questionUUID','questionId','assessmentQuestionId','assessmentInstanceId','instanceQuestionId','userId','uid'],['courseKey']);
+ closed(m,['kind','canonicalExerciseId'],['privateFiles']);
+ if(m.privateFiles!==undefined){if(!Array.isArray(m.privateFiles))fail('Selected Native file references required');for(const ref of m.privateFiles)closed(ref,['sourceReference','source','relativeName','uid'],['bytes']);}
  for(const [v,keys]of [[s,['autoJobId','submissionId','variantId','instanceQuestionId','assessmentInstanceId','userId']],[t,['courseId','courseInstanceId','assessmentId','questionId','assessmentQuestionId','assessmentInstanceId','instanceQuestionId','userId']]])for(const k of keys)if(typeof v[k]!=='string'||!/^[1-9][0-9]*$/.test(v[k]))fail('Missing exact native mapping '+k);
  for(const [v,keys]of [[s,['questionUUID','workUUID']],[t,['courseUUID','courseInstanceUUID','assessmentUUID','questionUUID']]])for(const k of keys)if(typeof v[k]!=='string'||! /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(v[k]))fail('Missing final UUID mapping '+k);
  if(typeof s.database!=='string'||!s.database||s.uid!==t.uid||s.userId!==t.userId||typeof s.uid!=='string'||!s.uid||typeof t.workId!=='string'||!t.workId||!['identity','accepted-rename'].includes(m.kind)||typeof m.canonicalExerciseId!=='string'||!m.canonicalExerciseId)fail('Unproven UID/task mapping');
