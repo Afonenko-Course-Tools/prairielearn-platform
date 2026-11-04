@@ -87,7 +87,6 @@ AND (
   AND al.new_state->'target'->>'workId'=$work_id
   AND al.new_state->'target'->>'userId'=$user_id::text
   AND al.new_state->'target'->>'uid'=$user_uid
-  AND al.new_state->'target'->>'deliveryHash'=$delivery_hash
  ))
 )
 ORDER BY ai.number DESC,ai.id DESC LIMIT 1;

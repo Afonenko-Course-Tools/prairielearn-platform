@@ -75,7 +75,7 @@ const requestSchema = z.strictObject({
   version: z.number().int().positive(),
   userUid: z.string().min(1).max(512),
   instance: z.string().min(1),
-  deliveryHash: z.string().regex(/^[a-f0-9]{64}$/),
+  courseKey: z.string().regex(/^[a-z][a-z0-9-]*$/),
   oldWork: z.string().nullable(),
   newWork: z.string().nullable(),
 });
@@ -99,7 +99,7 @@ const workResultRow = resultRow.extend({
 async function context(request, assignment = true) {
   const binding = bindings.find(
     (b) =>
-      b.delivery.deliveryHash === request.deliveryHash && b.delivery.instances[request.instance],
+      b.delivery.courseId === request.courseKey && b.delivery.instances[request.instance],
   );
   if (!binding) throw new BridgeError(403, 'Unknown delivery/instance');
   if (assignment) resolveAssignment(request, binding.delivery);
@@ -211,7 +211,7 @@ async function results(id, version) {
       !(await labels.selectStudentLabelsForEnrollment(enrollment)).some((l) => l.name === label)
     )
       throw new BridgeError(403, 'Assignment ACL absent');
-    const attemptRow=await db.queryOptionalRow(sql.select_assignment_attempt,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,user_uid:user.uid,activated_at:row.activated_at,recognized_assessment_instance_id:row.recognized_assessment_instance_id,delivery_hash:request.deliveryHash},z.strictObject({id:z.string(),number:z.number().int()}));
+    const attemptRow=await db.queryOptionalRow(sql.select_assignment_attempt,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,user_uid:user.uid,activated_at:row.activated_at,recognized_assessment_instance_id:row.recognized_assessment_instance_id,course_key:request.courseKey},z.strictObject({id:z.string(),number:z.number().int()}));
     if(recognized&&!attemptRow)throw new BridgeError(409,'Bound native recognition is absent or stale');
     const rows = attemptRow ? await db.queryRows(sql.select_results,{course_instance_id:ci.id,work_id:work.id,user_id:user.id,assessment_instance_id:attemptRow.id},resultRow) : [];
     const slots=assignedSlots(work,rows,attemptRow,work.nativeGroups);
@@ -222,7 +222,7 @@ async function results(id, version) {
       version,
       userUid: user.uid,
       instance: request.instance,
-      deliveryHash: request.deliveryHash,
+      courseKey: request.courseKey,
       workId: work.id,
       state: attemptRow ? 'started' : 'not-started',
       currentAttempt: attemptRow,
@@ -234,7 +234,7 @@ async function results(id, version) {
 const workQuerySchema = z.strictObject({
   userUid: z.string().min(1).max(512),
   instance: z.string().min(1),
-  deliveryHash: z.string().regex(/^[a-f0-9]{64}$/),
+  courseKey: z.string().regex(/^[a-z][a-z0-9-]*$/),
   workId: z.string().min(1),
 });
 async function nativeStudentWorkContext(request, allowAssignment = false) {
@@ -261,7 +261,7 @@ async function nativeStudentWorkContext(request, allowAssignment = false) {
     );
     if (
       !slot ||
-      slot.request.deliveryHash !== request.deliveryHash ||
+      slot.request.courseKey !== request.courseKey ||
       slot.request.newWork !== work.id ||
       slot.request.userUid !== user.uid
     )
@@ -325,7 +325,7 @@ async function workResults(request) {
     source: 'per-slot-results-v2',
     userUid: user.uid,
     instance: request.instance,
-    deliveryHash: request.deliveryHash,
+    courseKey: request.courseKey,
     workId: work.id,
     state: currentAttempt ? 'started' : 'not-started',
     currentAttempt,
@@ -341,7 +341,7 @@ async function workLaunch(request) {
     workId: work.id,
     userUid: user.uid,
     instance: request.instance,
-    deliveryHash: request.deliveryHash,
+    courseKey: request.courseKey,
     path: `/pl/course_instance/${ci.id}/assessment/${assessment.id}/`,
   };
 }
@@ -384,7 +384,7 @@ async function enrollBasic(request) {
       schemaVersion: 1,
       userUid: user.uid,
       instance: request.instance,
-      deliveryHash: request.deliveryHash,
+      courseKey: request.courseKey,
       enrolled: true,
     };
   });
@@ -421,11 +421,11 @@ const server = createServer(async (req, res) => {
       const version = z.coerce.number().int().positive().parse(url.searchParams.get('version'));
       answer = await results(id, version);
     } else if (req.method === 'GET' && url.pathname === '/internal/gateway/work-results') {
-      if ([...url.searchParams.keys()].sort().join(',') !== 'deliveryHash,instance,userUid,workId')
+      if ([...url.searchParams.keys()].sort().join(',') !== 'courseKey,instance,userUid,workId')
         throw new BridgeError(400, 'Invalid work result query');
       answer = await workResults(workQuerySchema.parse(Object.fromEntries(url.searchParams)));
     } else if (req.method === 'GET' && url.pathname === '/internal/gateway/work-launch') {
-      if ([...url.searchParams.keys()].sort().join(',') !== 'deliveryHash,instance,userUid,workId')
+      if ([...url.searchParams.keys()].sort().join(',') !== 'courseKey,instance,userUid,workId')
         throw new BridgeError(400, 'Invalid work launch query');
       answer = await workLaunch(workQuerySchema.parse(Object.fromEntries(url.searchParams)));
     } else if (req.method === 'PUT' && url.pathname === '/internal/gateway/enrollment') {

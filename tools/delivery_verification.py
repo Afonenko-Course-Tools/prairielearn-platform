@@ -136,12 +136,14 @@ def package_integrity(delivery,native,checks=None):
    if used!=set(range(len(groups))):raise JobError('Unbound native assessment group')
    completion=work['completion'];ordered=[slot['id'] for slot in slots];required=[slot['id'] for slot in slots if slot['assignment']['requirement']=='required']
    if not isinstance(completion,dict) or set(completion)!={'schemaVersion','mode','source','slotIds','requiredSlotIds','atLeast','fullyCompletedScore'} or type(completion['schemaVersion']) is not int or completion['schemaVersion']!=2 or completion['mode']!='required-slot-completion' or completion['source']!='per-slot-results-v2' or type(completion['fullyCompletedScore']) is not int or completion['fullyCompletedScore']!=1 or completion['slotIds']!=ordered or completion['requiredSlotIds']!=required or type(completion['atLeast']) is not int or not 1<=completion['atLeast']<=len(required):raise JobError('Canonical completion differs from native slot catalog')
+   optional_ids={q for slot in slots if slot['assignment']['requirement']=='optional' for q in slot['candidates']}
    for zone,group in groups:
     for question in group.get('alternatives',[group]):
      q=question['id'];covered.add(q);method=methods[q];auto=question.get('autoPoints',group.get('autoPoints',question.get('points',group.get('points'))));manual=question.get('manualPoints',group.get('manualPoints'))
-     if method=='manual' and (auto not in (None,0) or type(manual) not in (int,float) or manual<=0):raise JobError('Manual component mismatch')
-     if method=='mixed' and (type(auto) not in (int,float) or auto<=0 or type(manual) not in (int,float) or manual<=0):raise JobError('Mixed requires both native components')
-     if method=='external' and manual is not None:raise JobError('External cannot hide a manual component')
+     zero_optional=q in optional_ids and type(auto) in (int,float) and auto==0 and (manual is None or type(manual) in (int,float) and manual==0)
+     if not zero_optional and method=='manual' and (auto not in (None,0) or type(manual) not in (int,float) or manual<=0):raise JobError('Manual component mismatch')
+     if not zero_optional and method=='mixed' and (type(auto) not in (int,float) or auto<=0 or type(manual) not in (int,float) or manual<=0):raise JobError('Mixed requires both native components')
+     if not zero_optional and method=='external' and manual is not None:raise JobError('External cannot hide a manual component')
  if covered!=set(methods):raise JobError('Exact assessment question coverage required')
  facts={}
  for project in (checks or {}).get('projects',[]):
@@ -209,5 +211,3 @@ def package_integrity(delivery,native,checks=None):
    if descriptor['runtime']!=binding['runtime'] or not info.get('externalGradingOptions',{}).get('image') or not any(tag=='pl-external-grader-results' for tag,_ in controls):raise JobError('Automatic runtime/native control missing')
   result.append({'qualifiedId':q,'method':method,'uuid':binding['uuid'],'submissionMode':binding['submission']['mode']})
  return {'status':'success','questionBindings':result}
-
-

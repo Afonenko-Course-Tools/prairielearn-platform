@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Stage exact native delivery commits and emit a read-only Compose mount override."""
 import argparse
-import hashlib
 import importlib.util
 import json
 import os
@@ -15,7 +14,7 @@ import tempfile
 TOOLS=Path(__file__).resolve().parent
 sys.path.insert(0,str(TOOLS))
 from check_registry import RegistryError, validate_registry, INSTITUTIONS
-from grading_job import JobError, validate_release_receipt, load_runtime_registry
+from grading_job import JobError
 spec=importlib.util.spec_from_file_location('native_builder',TOOLS/'build-course.py')
 builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 
@@ -35,39 +34,19 @@ def validate_checkout(path,course):
     if path.is_symlink() or not path.is_dir() or git(path,'rev-parse','HEAD')!=course['commit'] or git(path,'remote','get-url','origin')!=course['repository'] or git(path,'status','--porcelain','--untracked-files=all'):
         raise StorageError('Existing checkout does not match its clean exact pin')
     try:
-        info=builder.read_json(path/'infoCourse.json'); provenance=builder.read_json(path/'provenance.json')
-        if not isinstance(info.get('name'),str) or provenance.get('schema') != 'pl-provenance-v1' or not isinstance(provenance.get('files'),dict) or not provenance['files']:
-            raise StorageError('Native delivery requires course metadata and content provenance')
-        for key in ('source','builder'):
-            record=provenance.get(key)
-            if not isinstance(record,dict) or record.get('dirty') is not False or not isinstance(record.get('commit'),str) or not re.fullmatch(r'[a-f0-9]{40}',record['commit']):
-                raise StorageError('Accepted native deliveries require clean source and builder commits')
+        info=builder.read_json(path/'infoCourse.json')
         delivery=builder.read_json(path/'delivery.json')
-        receipt=builder.read_json(path/'verification-receipt.json')
-        validate_release_receipt(receipt,delivery,path,load_runtime_registry())
-        for field in ('deliveryHash','sourceSnapshotHash','inventoryHash'):
-            if receipt.get(field)!=delivery.get(field) or receipt.get(field)!=provenance.get(field):
-                raise StorageError('Receipt does not match exact delivery/source/inventory')
-        actual=set()
+        if not isinstance(info.get('name'),str):raise StorageError('Native course metadata required')
+        from delivery_verification import package_integrity
+        package_integrity(delivery,path)
         for root,dirs,files in os.walk(path):
-            relative=Path(root).relative_to(path)
-            if relative==Path('.'):
-                dirs[:]=[d for d in dirs if d!='.git']
+            if Path(root)==path:dirs[:]=[d for d in dirs if d!='.git']
             for name in dirs+files:
-                if (Path(root)/name).is_symlink():raise StorageError('Native payload symlinks are forbidden')
-            for name in files:
-                p=Path(root)/name
-                if not p.is_file():raise StorageError('Native payload special files are forbidden')
-                actual.add(p.relative_to(path).as_posix())
-        for name,digest in provenance['files'].items():
-            p=builder.relative_path(path,name)
-            if not isinstance(digest,str) or not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest()!=digest:
-                raise StorageError('Native payload does not match its provenance hashes')
-        allowed=set(provenance['files'])|{'provenance.json','README.md','LICENSE','AGENTS.md','.gitignore'}
-        if actual-allowed:raise StorageError('Native checkout contains unrecorded payload files')
+                entry=Path(root)/name
+                if entry.is_symlink() or not (entry.is_dir() or entry.is_file()):raise StorageError('Unsafe native payload path')
         return None
     except (builder.BuildError,JobError,OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:
-        raise StorageError('Invalid native delivery or provenance') from error
+        raise StorageError('Invalid native course package') from error
 
 def stage_course(course,storage,institutions=None,images=None):
     try:

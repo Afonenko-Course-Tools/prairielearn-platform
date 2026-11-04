@@ -1,5 +1,5 @@
 """Полное авторское решение не расширяет student source policy."""
-import hashlib
+import base64
 import importlib.util
 import json
 from pathlib import Path
@@ -32,17 +32,16 @@ class ReferenceCompleteSources(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
         def selected(name, target):
-            return {"projectRelativePath": name, "submissionRelativePath": target,
-                    "sha256": hashlib.sha256((self.project / name).read_bytes()).hexdigest()}
+            return {"name":target,"target":name,"data":base64.b64encode((self.project/name).read_bytes()).decode()}
         self.fact = {
-            "qualifiedId": "demo/exr-reference", "projectRoot": "p",
+            "exerciseId":"exr-reference","source":"lab.qmd","bankMember":True,"qualifiedId": "demo/exr-reference", "projectRoot": "p",
             "check": {"runtime": "java25-junit-v1", "sourceProfile": {"mode": "implementation", "root": "student", "include": ["**/*.java"]},
                       "references": [{"name": "complete", "root": "reference", "optional": False}]},
             "sources": [selected("student/Copy.java", "Copy.java"), selected("student/Study.java", "Study.java")],
             "trustedTests": [selected("tests/AnswerTest.java", "AnswerTest.java")],
-            "references": [{"name": "complete", "sources": [selected("reference/Study.java", "Study.java"), selected("reference/Renamed.java", "Renamed.java"), selected("reference/support/Helper.java", "support/Helper.java")]}],
+            "references": [{"name": "complete", "root":"reference","optional":False,"available":True,"group":"complete","targets":["reference/Study.java","reference/Renamed.java","reference/support/Helper.java"],"sources": [selected("reference/Study.java", "Study.java"), selected("reference/Renamed.java", "Renamed.java"), selected("reference/support/Helper.java", "support/Helper.java")]}],
         }
-        self.manifest = {"schemaVersion": 1, "bookRoot": "tasks", "sourceSnapshotHash": "a" * 64, "inventoryHash": "b" * 64, "projects": [self.fact]}
+        self.manifest = {"schemaVersion":3,"courseId":"demo","bookRoot":"tasks","projects":[self.fact]}
         self.registry = registry()
     def prepare(self, scenario):
         job = jobs.prepare_job(self.manifest, self.snapshot, self.fact["qualifiedId"], scenario, registry=self.registry)
@@ -58,7 +57,7 @@ class ReferenceCompleteSources(unittest.TestCase):
         self.assertFalse((reference.root / "student/Copy.java").exists())
     def test_undeclared_changed_nonjava_reference_refused(self):
         with self.assertRaises(jobs.JobError): self.prepare("reference:foreign")
-        (self.project / "reference/Renamed.java").write_text("changed")
+        self.fact["references"][0]["sources"][1]["name"]="Renamed.txt"
         with self.assertRaises(jobs.JobError): self.prepare("reference:complete")
     def test_reference_compiles_with_existing_grader(self):
         reference = self.prepare("reference:complete")

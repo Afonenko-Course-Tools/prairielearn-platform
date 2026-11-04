@@ -70,7 +70,7 @@
       ]
     },
     "deliverySchemaVersion": {
-      "const": 4
+      "const": 5
     },
     "resultsSchemaVersion": {
       "const": 2

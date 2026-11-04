@@ -16,7 +16,7 @@ async function nativeServices(args,bindingSettings){
  const bindings=await loadVerifiedBindings(bindingSettings),system=dangerousFullSystemAuthz();
  const sql=db.loadSqlEquiv(new URL('../bridge/native.mjs',import.meta.url).href);
  async function context(request){
-  const binding=bindings.find(b=>b.delivery.deliveryHash===request.deliveryHash&&b.delivery.instances[request.instance]);
+  const binding=bindings.find(b=>b.delivery.courseId===request.courseKey&&b.delivery.instances[request.instance]);
   if(!binding)throw Error('Exact source/final delivery binding missing');
   // The source oldWork is historical. Only this bounded operation validates
   // old/new delivered works separately; ordinary policy still forbids migration.
@@ -28,7 +28,7 @@ async function nativeServices(args,bindingSettings){
   const work=binding.delivery.works.find(w=>w.id===request.newWork);
   const groups=await db.queryRows(sql.validate_assessment,{course_instance_id:ci.id,work_id:work.id},z.any());validateNativeGroups(work,groups);
   const managed=new Set(binding.delivery.instances[request.instance].works.map(id=>binding.delivery.works.find(w=>w.id===id)?.policy?.assignment?.['student-label']).filter(Boolean));
-  return{binding,ci,user,work,managed,courseInstanceId:ci.id,uid:user.uid,workId:work.id,deliveryHash:binding.delivery.deliveryHash};
+  return{binding,ci,user,work,managed,courseInstanceId:ci.id,uid:user.uid,workId:work.id,courseKey:binding.delivery.courseId};
  }
  async function enrollment(c,ensure=false){
   const options={userId:c.user.id,courseInstance:c.ci,authzData:system,requiredRole:['System']};
@@ -46,7 +46,7 @@ async function nativeServices(args,bindingSettings){
   recognition:async(input,approval)=>{
    const credit=await verifyRecognizedCredit(input,approval);
    const api=await recognizedPrivateFilesApi(input,approval);
-   await verifyRecognizedPrivateFiles({refs:input.mapping.privateFiles,target:input.target,actorUserId:input.actorUserId,approvedManifestSha256:approval.fileManifestSha256},api);
+   await verifyRecognizedPrivateFiles({refs:input.mapping.privateFiles,target:input.target,actorUserId:input.actorUserId},api);
    return credit;
   },
   reconcileNativeAcl:async({prior,request,destination})=>{

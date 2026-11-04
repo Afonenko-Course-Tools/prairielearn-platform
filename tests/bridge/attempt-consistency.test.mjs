@@ -8,7 +8,7 @@ const work = { id:'lab',slots:[{id:'fixture/lab/exr-q1',selection:'fixed',candid
 const attempt = { id: '100', number: 1, points: 1, max_points: 4 };
 const authorized = { attempt_id: '100', attempt_number: 1, group_id:'7',qualified_id: 'fixture/q1', points: 2, max_points: 4, score: .5, native_status: 'complete',requires_manual_grading:false, attempt_points: 2, attempt_max_points: 4 };
 const newer = { ...authorized, attempt_id: '200', attempt_number: 2, points: 4, score: 1, attempt_points: 4 };
-const request = { userUid: 'fixture-user', instance: 'fixture', deliveryHash: 'a'.repeat(64), workId: 'lab' };
+const request = { userUid: 'fixture-user', instance: 'fixture', courseKey: 'a'.repeat(64), workId: 'lab' };
 for (const captured of [attempt, null]) {
   const db = { queryRows: async (_sql, params) => [params.assessment_instance_id === attempt.id ? authorized : newer] };
   const context = async () => ({ ci: { id: '1' }, user: { id: '1', uid: 'fixture-user' }, work, attemptRow: captured ? { attempt: captured } : null });

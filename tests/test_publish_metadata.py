@@ -39,7 +39,7 @@ class PublishedMetadata(unittest.TestCase):
         receipt=files['runtime-image.json']
         self.assertEqual(receipt['images'], IMAGES)
         self.assertNotIn('runtimeProfilesSha256', receipt)
-        self.assertEqual(receipt['deliverySchemaVersion'], 4)
+        self.assertEqual(receipt['deliverySchemaVersion'], 5)
 
     def test_workspace_uses_its_own_image_role(self):
         workspace='ghcr.io/example/sp-git-workspace@sha256:'+'4'*64

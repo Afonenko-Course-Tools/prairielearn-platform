@@ -16,9 +16,9 @@
       "type": "string",
       "minLength": 1
     },
-    "deliveryHash": {
+    "courseKey": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-z][a-z0-9-]*$"
     },
     "path": {
       "type": "string",
@@ -29,7 +29,7 @@
     "workId",
     "userUid",
     "instance",
-    "deliveryHash",
+    "courseKey",
     "path"
   ]
 }

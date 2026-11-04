@@ -26,14 +26,14 @@ class BuilderContract(unittest.TestCase):
    root=Path(d);source=root/'from';source.mkdir();target=root/'target';target.mkdir();(target/'keep').write_text('keep')
    with self.assertRaises(builder.BuildError):builder.publish_directory(source,target)
    self.assertEqual((target/'keep').read_text(),'keep')
- def test_full_exporter_generates_fresh_candidate_and_private_checks(self):
-  # Полный closed3 пакет вместо прежнего незамкнутого UUID-only stub.
-  import json
-  import test_delivery4_corrections as focused
-  helper=focused.BuildReader();helper.setUp();old=focused.legacy.DeliveryPackage();old.setUp()
+ def test_full_exporter_copies_native_and_private_checks_without_receipts(self):
+  import test_build_course_launch as launch
+  helper=launch.LaunchContract();helper.setUp()
   try:
-   old.put('delivery.json',old.delivery);row=helper.build(old.root,old.delivery,old.checks,'legacy-candidate')
-   self.assertTrue(row['accepted'],row);output=helper.root/'legacy-candidate'
-   self.assertTrue((output/('questions/'+old.q+'/info.json')).is_file());self.assertTrue((helper.root/'legacy-candidate-checks.json').is_file());self.assertFalse((output/'checks.json').exists())
-   provenance=json.loads((output/'provenance.json').read_text());self.assertEqual(provenance['deliveryHash'],old.delivery['deliveryHash']);self.assertFalse(provenance['source']['dirty'])
-  finally:old.doCleanups();helper.doCleanups()
+   helper.run_spy=helper.emit_package;helper.call(export_stage=helper.stage)
+   self.assertTrue((helper.output/'delivery.json').is_file())
+   self.assertFalse((helper.output/'provenance.json').exists())
+   private=helper.output.with_name(helper.output.name+'-checks.json')
+   self.assertTrue(private.is_file());self.assertEqual(private.stat().st_mode&0o777,0o600)
+   self.assertFalse((helper.output/'checks.json').exists())
+  finally:helper.doCleanups()

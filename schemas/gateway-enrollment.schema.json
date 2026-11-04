@@ -13,14 +13,14 @@
       "type": "string",
       "minLength": 1
     },
-    "deliveryHash": {
+    "courseKey": {
       "type": "string",
-      "pattern": "^[a-f0-9]{64}$"
+      "pattern": "^[a-z][a-z0-9-]*$"
     }
   },
   "required": [
     "userUid",
     "instance",
-    "deliveryHash"
+    "courseKey"
   ]
 }

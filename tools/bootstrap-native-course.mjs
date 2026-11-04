@@ -6,7 +6,7 @@ import {authorizeAdministrator,assertProductionRuntime} from '../bridge/policy.m
 import {authorizeCourseSync} from './course-sync-policy.mjs';
 import {readNativeCoursePayload} from './native-course-payload.mjs';
 
-const usage='Use --registry PATH --course-key KEY --path /course/KEY/DELIVERY_HASH [--institutions PATH]';
+const usage='Use --registry PATH --course-key KEY --path /course/KEY/CURRENT [--institutions PATH]';
 const args=process.argv.slice(2);
 if(args.length===1&&args[0]==='--help'){console.log(usage);process.exit(0);}
 const options={};
@@ -19,12 +19,11 @@ const catalog=JSON.parse(await readFile(options['--institutions']??new URL('../c
 const registry=JSON.parse(await readFile(options['--registry'],'utf8'));
 const courseKey=options['--course-key'],path=options['--path'];
 selectRegistryCourse(registry,courseKey,catalog);
-if(!new RegExp('^/course/'+courseKey+'/[a-f0-9]{64}$').test(path))throw new Error('Unknown immutable native path');
+if(!path.startsWith('/course/'+courseKey+'/'))throw new Error('Unknown immutable native path');
 // Validate the actual immutable payload before any DB connection or mutation.
 const {delivery,info}=await readNativeCoursePayload(path);
-const {deliveryHash}=delivery;
 const settings=JSON.parse(await readFile(process.env.PL_GATEWAY_CONFIG,'utf8'));
-authorizeCourseSync({path,deliveryHash,courseUuid:null,infoUuid:info.uuid},settings.bindings);
+authorizeCourseSync({path,courseUuid:null,infoUuid:info.uuid},settings.bindings);
 const {bridgeDeliverySchema}=await import('../bridge/delivery.mjs');bridgeDeliverySchema.parse(delivery);
 const db=await import('@prairielearn/postgres');
 const namedLocks=await import('@prairielearn/named-locks');
@@ -45,5 +44,5 @@ try {
  const institutions=await native('models/institution'),courses=await native('models/course');
  const adapter={...institutions,...courses,withLock:(name,fn)=>namedLocks.doWithLock(name,{timeout:30000},fn)};
  const course=await bootstrapNativeCourse({registry,catalog,courseKey,path,info,actorId:actor.id},adapter);
- process.stdout.write(JSON.stringify({courseKey,courseId:course.id,institutionKey:registry.courses.find(c=>c.id===courseKey).institution,institutionId:course.institution_id,path,deliveryHash,syncRequired:true})+'\n');
+ process.stdout.write(JSON.stringify({courseKey,courseId:course.id,institutionKey:registry.courses.find(c=>c.id===courseKey).institution,institutionId:course.institution_id,path,syncRequired:true})+'\n');
 } finally {await namedLocks.close();await db.closeAsync();}

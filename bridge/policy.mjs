@@ -14,7 +14,7 @@ const fail = (message) => {
   throw new BridgeError(409, message);
 };
 export function resolveAssignment(request, delivery) {
-  const keys = ['version', 'userUid', 'instance', 'deliveryHash', 'oldWork', 'newWork'];
+  const keys = ['version', 'userUid', 'instance', 'courseKey', 'oldWork', 'newWork'];
   if (
     !request ||
     Object.keys(request).length !== keys.length ||
@@ -31,8 +31,8 @@ export function resolveAssignment(request, delivery) {
   )
     fail('Invalid identity or version');
   if (
-    request.deliveryHash !== delivery.deliveryHash ||
-    !/^[a-f0-9]{64}$/.test(request.deliveryHash)
+    request.courseKey !== delivery.courseId ||
+    !/^[a-z][a-z0-9-]*$/.test(request.courseKey)
   )
     fail('Delivery mismatch');
   const instance = delivery.instances[request.instance];
@@ -61,14 +61,14 @@ export function assignmentTransition(request, prior) {
   for (const key of ['userUid', 'instance'])
     if (request[key] !== prior[key]) fail('Assignment identity is immutable');
   if (request.version === prior.version) {
-    if (['deliveryHash', 'oldWork', 'newWork'].some((k) => request[k] !== prior[k]))
+    if (['courseKey', 'oldWork', 'newWork'].some((k) => request[k] !== prior[k]))
       fail('Version conflict');
     return 'duplicate';
   }
   if (request.version !== prior.version + 1 || request.oldWork !== prior.newWork)
     fail('Stale assignment transition');
   // Cross-delivery replacement needs an explicit migration of its old ACL binding.
-  if (request.deliveryHash !== prior.deliveryHash) fail('Delivery migration required');
+  if (request.courseKey !== prior.courseKey) fail('Delivery migration required');
   return 'apply';
 }
 export function validateNativeGroups(work, groups) {
@@ -169,7 +169,7 @@ export function validateBindings(bindings) {
   const seen = new Set();
   for (const binding of bindings)
     for (const instance of Object.keys(binding.delivery.instances)) {
-      const key = binding.delivery.deliveryHash + '/' + instance;
+      const key = binding.delivery.courseId + '/' + instance;
       if (seen.has(key)) fail('Ambiguous delivery/instance binding');
       seen.add(key);
     }

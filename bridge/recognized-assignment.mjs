@@ -1,18 +1,16 @@
 // Ограниченный административный переход E; обычный assignmentTransition не меняется.
-import {createHash} from 'node:crypto';
 import {canonicalJSONString} from './policy.mjs';
-export const assignmentDigest=request=>createHash('sha256').update(canonicalJSONString(request)).digest('hex');
 const fail=message=>{throw new Error(message);};
-const equal=(a,b)=>assignmentDigest(a)===assignmentDigest(b);
+const equal=(a,b)=>canonicalJSONString(a)===canonicalJSONString(b);
 function approved({id,request,input,approval}){
- if(typeof id!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(id)||approval?.assignmentId!==id||approval.assignmentRequestSha256!==assignmentDigest(request))fail('Closed assignment mapping differs');
- if(! /^[1-9][0-9]*$/.test(input?.actorUserId)||approval.actorUserId!==input.actorUserId||! /^[a-f0-9]{64}$/.test(input.mappingRowHash)||approval.mappingRowHash!==input.mappingRowHash)fail('Approved native administrator/map differs');
- const keys=['deliveryHash','instance','newWork','oldWork','userUid','version'];
- if(!request||Object.keys(request).sort().join(',')!==keys.join(',')||!Number.isSafeInteger(request.version)||request.version<1||! /^[a-f0-9]{64}$/.test(request.deliveryHash)||typeof request.newWork!=='string'||!request.newWork||(request.oldWork!==null&&typeof request.oldWork!=='string')||typeof request.instance!=='string'||!request.instance||typeof request.userUid!=='string'||!request.userUid||request.userUid.length>512||request.userUid!==input?.target?.uid||request.newWork!==input.target.workId||request.deliveryHash!==input.target.deliveryHash)fail('Final assignment ownership/work/delivery differs');
+ if(typeof id!=='string'||! /^[A-Za-z0-9_-]{1,128}$/.test(id)||approval?.assignmentId!==id||!equal(approval.request,request))fail('Closed assignment mapping differs');
+ if(! /^[1-9][0-9]*$/.test(input?.actorUserId)||approval.actorUserId!==input.actorUserId)fail('Approved native administrator/map differs');
+ const keys=['courseKey','instance','newWork','oldWork','userUid','version'];
+ if(!request||Object.keys(request).sort().join(',')!==keys.join(',')||!Number.isSafeInteger(request.version)||request.version<1||! /^[a-z][a-z0-9-]*$/.test(request.courseKey)||typeof request.newWork!=='string'||!request.newWork||(request.oldWork!==null&&typeof request.oldWork!=='string')||typeof request.instance!=='string'||!request.instance||typeof request.userUid!=='string'||!request.userUid||request.userUid.length>512||request.userUid!==input?.target?.uid||request.newWork!==input.target.workId||request.courseKey!==input.target.courseKey)fail('Final assignment ownership/work/delivery differs');
 }
 async function context(request,input,service){
  const current=await service.verifiedContext(request);
- if(current.uid!==input.target.uid||current.courseInstanceId!==input.target.courseInstanceId||current.workId!==input.target.workId||current.deliveryHash!==request.deliveryHash)fail('Verified native assignment context differs');
+ if(current.uid!==input.target.uid||current.courseInstanceId!==input.target.courseInstanceId||current.workId!==input.target.workId||current.courseKey!==request.courseKey)fail('Verified native assignment context differs');
  return current;
 }
 async function verifiedRecognition(input,approval,service){
@@ -37,7 +35,7 @@ export async function bindRecognizedAssignment(args,service){
 export async function migrateRecognizedAssignment(args,service){
  const {id,priorRequest:prior,request,input,approval}=args;
  approved(args);
- if(approval.priorAssignmentRequestSha256!==assignmentDigest(prior)||!Number.isSafeInteger(prior?.version)||request.version!==prior.version+1||request.userUid!==prior.userUid||request.instance!==prior.instance||request.oldWork!==prior.newWork)fail('Exact prior assignment transition differs');
+ if(!equal(approval.priorRequest,prior)||!Number.isSafeInteger(prior?.version)||request.version!==prior.version+1||request.userUid!==prior.userUid||request.instance!==prior.instance||request.oldWork!==prior.newWork)fail('Exact prior assignment transition differs');
  return service.transaction(async()=>{
   await service.lock(id,input);
   const row=await service.read(id);

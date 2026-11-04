@@ -6,7 +6,7 @@ const validateBody=source.slice(source.indexOf('async function validateWork('),s
 const chain=source.slice(source.indexOf('async function nativeStudentWorkContext('),source.indexOf('async function workLaunch('));
 const work={id:'lab',slots:[{id:'fixture/lab/exr-q1',selection:'fixed',candidates:['fixture/q1'],assignment:{requirement:'required',workMode:'individual'}}],completion:{slotIds:['fixture/lab/exr-q1'],requiredSlotIds:['fixture/lab/exr-q1'],atLeast:1,fullyCompletedScore:1}};
 const groups=[{group_id:'7',question_ids:['fixture/q1'],number_choose:null,zone_number_choose:null,zone_number_choose:null,zone_best_questions:null}];
-const request={userUid:'u',instance:'fixture',deliveryHash:'a'.repeat(64),workId:'lab'};
+const request={userUid:'u',instance:'fixture',courseKey:'demo',workId:'lab'};
 const shape=new Proxy(()=>shape,{get:()=>shape,apply:()=>shape});
 const z=new Proxy({},{get:()=>shape});
 for (const started of [false,true]) {

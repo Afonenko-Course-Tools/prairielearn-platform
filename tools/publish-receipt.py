@@ -65,7 +65,7 @@ def main():
         source_commit, version = os.environ['GITHUB_SHA'], os.environ['VERSION']
         registry = release_registry(ROOT, images, source_commit, version)
         receipt: RuntimeImage = {'schemaVersion':3, 'sourceCommit':source_commit,
-            'version':version, 'images':images, 'deliverySchemaVersion':4, 'resultsSchemaVersion':2}
+            'version':version, 'images':images, 'deliverySchemaVersion':5, 'resultsSchemaVersion':2}
         for name, value in (('published-runtime-profiles.json',registry), ('runtime-image.json',receipt)):
             Path(name).write_text(json.dumps(value, ensure_ascii=False, indent=2)+'\n')
         return 0

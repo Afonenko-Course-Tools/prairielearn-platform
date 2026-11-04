@@ -1,126 +1,69 @@
-# PrairieLearn platform
+# Платформа PrairieLearn
 
-Исходники кандидата **2.5.4** сохраняют опубликованную Community 2.5.3, qualified launch и reference-complete source tools. Java-фасад дополняется тремя штатными JUnit overload с прежним независимым leaf-feedback; bundle SHA двух Java-профилей обновлены по фактическому фасаду. [Порядок выпуска 2.5.4](docs/releases/java-2.5.4.md) предусматривает новый Java OCI и registry/assets, сохраняя Community/fish/Workspace digest. Старые receipts не переназначаются. Новый OCI/readback и новая Native delivery подтверждаются отдельно; локальная проверка не выдаётся за публикацию.
+Средства сборки Native-курса, приватного оценивания и входа через настроенный
+Moodle Gateway. Платформа независима от конкретного курса. Для Java используются
+настоящий JDK 25 и `--release 25`; ошибка студента и сбой инструмента дают разные
+результаты. Ручные оценки, лучший результат альтернативы и обязательные веса
+сохраняются средствами Native PrairieLearn.
 
-Принятые publication/private-source изменения из a42728c3534a65d77a5e7ca55ae4a81f83d3a36e включены локально.
-Новая runtime поставка требует собственного source/image/asset proof; старые receipts не переназначаются.
+## Поставка курса
 
-Shared platform for native PrairieLearn courses, with a Java 25 grader.
-The candidate provides local verification, a private Community Gateway bridge and
-portable development TLS. Published release pins remain a separate acceptance gate.
+Установленный полный экспортёр course-prairielearn создаёт Native-каталог
+`delivery.json` версии 5 и отдельные приватные выбранные файлы проверок версии 3.
+Проверки содержат реальные bytes в base64 и относительные имена/targets:
+`{name,target,data}`. Данные trusted-тестов и эталонов не входят в публичный
+каталог вопросов. В delivery остаются UUID, параметры grading/runtime,
+Native response slots, работы, экземпляры курса и список выбранных путей `files`.
 
-Java courses require JDK 25 or newer. The reference grader uses a pinned JDK 25.
-Runtime credentials, identities, jobs and OpenTofu state belong outside this checkout.
-The current pilot excludes backup and restore workflows.
-
-Local verification:
-
-```sh
-JAVA_HOME=/usr/lib/jvm/java-25-openjdk PATH=/usr/lib/jvm/java-25-openjdk/bin:$PATH python3 -m unittest discover -s tests -v
-```
-
-Build an immutable native candidate with the installed full exporter:
-
-```sh
-python3 tools/build-course.py --source /path/to/clean/source --book tasks \
-  --instance pilot --output /path/to/fresh-delivery
-python3 tools/check-course.py inventory --manifest /private/checks.json \
-  --scope declared --output /private/inventory.json
-JAVA_HOME=/usr/lib/jvm/java-25-openjdk PATH=/usr/lib/jvm/java-25-openjdk/bin:$PATH \
-  python3 tools/check-course.py verify --manifest /private/checks.json \
-  --snapshot /path/to/source --scope declared --ready-only --backend host \
-  --output /private/host-report.json
-```
-
-Declared checks include only opted-in profiles. Incomplete projects stay visible in
-inventory; explicit verification refuses them. `--ready-only` is a diagnostic
-selection available only in declared scope. Delivery verification additionally
-requires `--delivery /path/to/native/delivery.json`; it compares the exported
-starter, trusted sources, and normalized grading descriptor to the source snapshot.
-Container verification is authoritative and uses offline 0.9 CPU/512 MiB jobs.
-The canonical scenario inventory includes starter, every named reference and every
-declared contract case; optional reference absence is recorded in the receipt.
-`--scenario` subsets produce partial diagnostic receipts and cannot satisfy staging.
-The exporter binds this inventory with delivery.verificationInventoryHash.
-Receipts bind every question to its runtime, exact image and the dependency closure
-reported by the executing runner; staging rechecks all bindings against the native
-question descriptors and current published runtime registry.
-For an explicit local image candidate, set `PL_LOCAL_IMAGE_ID` to an actual Docker
-image ID. Local IDs cannot satisfy the staging gate for a published image digest.
-
-`runtime-profiles.json` pins the official Java25 base, official JUnit1.14.1/JSON
-libraries and unchanged upstream grader sources. Host preflight checks every bundle
-hash and actual JDK25. Both backends execute the same explicit JUnit runner and
-retain raw outcomes independently of weighted/all-pass/contract-group/threshold
-policy. Trusted and student compilation failures have separate classifications;
-zero/disabled trusted execution and missing reports are infrastructure failures.
-Student-tests profiles isolate each mutation fixture in its own classpath.
-
-Exit0 means declared expectations matched; exit1 is a project/result defect; exit2
-means prerequisites or infrastructure prevented complete verification. Ordinary
-starter behavior failures alone do not imply a failed verification receipt.
-Staging requires a successful complete delivery receipt from the container,
-matching delivery/source/inventory hashes and immutable published runtime digests.
-Private checks, references, runtime identities and secrets stay outside native/site
-payloads. Native import and actual Moodle results need independent live evidence.
-
-Local stack:
+Собственные SHA содержимого, source/check/scenario inventories, staging/provenance
+и итоговые release receipts удалены. Список файлов служит чтению выбранного
+пакета; он не подтверждает неизменность содержимого. Обычные Git, OCI, package
+и криптографические механизмы входа сохраняются.
 
 ```sh
-HOST_JOBS_DIR=/absolute/private/jobs \
-COURSE1_DIR=/absolute/course-a COURSE2_DIR=/absolute/course-b \
-docker compose --project-name prairielearn-local \
-  -f compose/compose.yml -f compose/compose.local.yml up -d
+python tools/build-course.py --source /private/source --book tasks \
+  --instance 2026-2027-s1 --output /private/native-course \
+  --runtime-registry /private/runtime-profiles.json
+python tools/check-course.py verify --manifest /private/native-course-checks.json \
+  --scope delivery --delivery /private/native-course/delivery.json \
+  --backend container --output /private/check-report.json
 ```
 
-The local development UI listens on `127.0.0.1:3000`. The PL service receives the
-host Docker socket to create isolated grading containers; grading containers do
-not receive the socket. Development authentication proves no Moodle identity.
-Real native Java import and browser grading have passed locally: compile-invalid keeps three attempts, wrong answer/timeout consume attempts, and a correct third attempt receives 1/1. These tests used the synthetic Dev User with staff override; Student ACL and Moodle login remain pending.
+Source должен быть отдельным чистым Git checkout с установленным полным
+экспортёром. Выход создаётся новым каталогом; существующая пользовательская
+работа не перезаписывается. Приватные checks находятся рядом с Native-каталогом,
+с правами 0600. Отчёт проверки содержит фактические результаты сценариев,
+ошибки инструмента и полноту выбранного запуска. Он не является receipt допуска.
+Малая проба не подтверждает весь курс или рабочую среду.
 
-Exact course storage and the local HTTPS proxy are described in [development.md](docs/development.md).
+## Native Bridge и синхронизация
 
-The jobs directory must exist on the Docker host and use an absolute path.
-Compose refuses a missing bind source; the entrypoint refuses relative paths.
+Bridge читает настроенные Native-каталоги и маршрутизирует по `courseKey`,
+равному существующему `delivery.courseId`, вместе с `instance`. Проверяются
+Native UUID и настоящий numeric course instance, пользователь, попытка,
+принадлежность слотов и действующие права. Путь задаётся конфигурацией без
+суффикса SHA. Синхронизация не заменяет курс с другим Native UUID.
 
-The Java grading descriptor is `tests/grading-job.json`, schemaVersion1, with
-explicit sourceFiles/testFiles, mode, runtime, java, limits, scoring and discovery.
-The platform owns the JUnit entrypoint; courses supply trusted suites or declared
-mutation fixtures, and never a grading main. Standard PL `/grade/results/results.json`
-is retained. Host verification is diagnostic: its JDK25 patch build can differ from
-the pinned production container and the receipt records exact toolchain evidence.
+Для Java существующая Moodle-ссылка ведёт в PrairieLearn. Все десять
+лабораторных доступны одновременно; студент переключается сам, преподаватель
+вручную закрывает приём. Добровольные задания с нулевым весом не увеличивают
+обязательную нагрузку. Сохранённые административные средства переноса работают
+по настоящим user/attempt/file refs и не запускаются сборкой или входом.
 
-Container execution preserves the official root supervisor, unprivileged sbuser,
-Landlock and root-owned read-only compiled classpath. Actual tests verify denied
-proc reads/trusted writes and unprivileged child processes. Host execution is
-explicitly diagnostic. These tested boundaries do not prove containment against
-all adversarial reflection within the same JVM.
+Workspace читает `{schema,files:string[]}` и реальный Git seed. При первом
+запуске проверяются безопасность ZIP и замыкание начального Git-состояния;
+повторный запуск сохраняет staged, unstaged и untracked файлы. Изменение
+заготовки не блокирует восстановление сохранённой работы.
 
-The private Community assignment/results bridge is documented in
-[community-gateway-bridge.md](docs/community-gateway-bridge.md). It uses native
-enrollment/label models and actual Student sessions. Its published image pin and
-bounded spike evidence are recorded separately from final Gateway/AGS release acceptance.
+## Проверки и границы среды
 
-## Local TLS and future LAN deployment
+Тесты используют вымышленные аккаунты, отдельные временные каталоги и
+изолированные локальные контейнеры. Старые БД, студенческие тома и история не
+мигрируются. Проверки Source, локального grader и Native-пакета различаются;
+они не подтверждают Moodle auth/AGS, публикацию образа или production.
 
-Use the [repeatable CachyOS certificate quickstart](docs/local-tls.md) on each development laptop. It creates that laptop’s own CA, reuses it on subsequent starts, renews the server certificate, and checks system/NSS trust explicitly. The [Proxmox LAN guide](docs/proxmox-lan-tls.md) covers a static VM IP without DNS and separates the VM HTTPS proxy from the hypervisor management certificate. [Moodle PHP trust setup](https://github.com/Afonenko-Course-Tools/moodle-prairielearn-gateway/pull/1) and [student Windows/macOS/Linux instructions](https://github.com/BSU-RFCT-Afonenko-Courses/Java/pull/8) live in their owner repositories.
-
-Версии контрактов и проверенный порядок публикации описаны в
-[releasing.md](docs/releasing.md). [runtime-image.json](runtime-image.json) закрепляет фактический исходный commit сборки и опубликованные Java/Community/fish digests версии 2.2.0. Delivery/results v2 описывают позиции работы. [runtime-profiles.json](runtime-profiles.json) связывает профили с соответствующими образами. Локальные config IDs позволяют сверить загруженные образы; production использует опубликованные digest pins.
-
-## Серверный пилот и дополнительные runtime
-
-[Proxmox, Ansible и обновление одного курса](docs/proxmox-pilot.md) описывают
-production стенд с двумя native-курсами. [Текстовый fish runtime](docs/fish-text-runtime.md)
-использует проверки из репозитория курса. Опубликованный image закреплён в runtime registry и release receipt.
-
-## Текущий контракт v2
-
-Версия 2.2.0 (`VERSION`) использует delivery/results v2 и случайные позиции;
-прежние transports отклоняются до операций sync/Bridge. Все кандидаты позиции
-проверяются и сохраняются в delivery. Порядок сборки трёх собственных образов,
-соответствие runtime-профилей и registry receipts описаны в [выпуске](docs/releasing.md).
-Образы 2.2.0 опубликованы из `b7fd40c42f3bbe03d0bb94111cde392c74c11b32`;
-source tag выпускается после проверки metadata commit. Каждая следующая версия
-требует новых фактических digests и полного порядка выпуска; прежние выпуски
-сохраняют собственные pins.
+Закреплённые runtime-профили находятся в `runtime-profiles.json`, Native schemas
+— в `schemas/native-upstream/`. Их стандартные upstream/package pins не входят
+в удалённый собственный contentproof. Старые документы о receipt допуска и
+delivery v3/v4 описывают прежнюю реализацию; текущий договор изложен здесь и в
+схемах `native-checks`, `grading-job-v3`, `grading-descriptor` и `gateway-*`.

@@ -362,6 +362,7 @@ def prepare_job(
                 if "primary-required" in extra_policy
                 else {}
             ),
+            **({"allowAdditional": extra_policy["allow-additional"]} if "allow-additional" in extra_policy else {}),
             "archive": archive_name,
             **{
                 new: extra_policy[old]
@@ -982,5 +983,3 @@ def verify_results(
             native_builds, key=lambda r: (r["qualifiedId"], r["scenario"])
         )
     return summary
-
-

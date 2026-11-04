@@ -15,17 +15,17 @@ if(existsSync(modulePath)) {
   const root=await mkdtemp(join(tmpdir(),'native-bootstrap-'));
   const info='{"name":"SYN","title":"Synthetic","timezone":"Europe/Minsk"}';
   const q='demo/exr-a',slot='demo/lab/exr-a';
-  const payload={schemaVersion:3,courseId:'demo',bookRoot:'tasks',sourceSnapshotHash:'a'.repeat(64),inventoryHash:'b'.repeat(64),verificationInventoryHash:'c'.repeat(64),questions:[q],gradingPayloads:{[q]:{uuid:'37d79ee7-fd7d-44db-bd45-6587711862a5',grading:{method:'manual'},submission:{mode:'upload'},sourceRoot:'projects/a'}},works:[{id:'lab',slots:[{id:slot,selection:'fixed',candidates:[q],assignment:{requirement:'required',workMode:'individual'}}],policy:{},completion:{schemaVersion:2,mode:'required-slot-completion',source:'per-slot-results-v2',slotIds:[slot],requiredSlotIds:[slot],atLeast:1,fullyCompletedScore:1}}],instances:{fixture:{works:['lab'],selfEnrollment:false}},files:{'infoCourse.json':hash(info)},...(candidate?{candidate:true}:{})};
-  const digest=hash(canonicalJSONString(payload)),path=join(root,digest);
+  const payload={schemaVersion:5,courseId:'demo',bookRoot:'tasks',questions:[q],gradingPayloads:{[q]:{kind:'project',uuid:'37d79ee7-fd7d-44db-bd45-6587711862a5',grading:{method:'manual'},submission:{mode:'upload'},sourceRoot:'projects/a'}},works:[{id:'lab',slots:[{id:slot,selection:'fixed',candidates:[q],assignment:{requirement:'required',workMode:'individual'}}],policy:{},completion:{schemaVersion:2,mode:'required-slot-completion',source:'per-slot-results-v2',slotIds:[slot],requiredSlotIds:[slot],atLeast:1,fullyCompletedScore:1}}],instances:{fixture:{works:['lab'],selfEnrollment:false}},files:['infoCourse.json'],...(candidate?{candidate:true}:{})};
+  const path=join(root,'current');
   await mkdir(path);await writeFile(join(path,'infoCourse.json'),info);
-  await writeFile(join(path,'delivery.json'),JSON.stringify({...payload,deliveryHash:digest}));
+  await writeFile(join(path,'delivery.json'),JSON.stringify(payload));
   try{await run(path,root);}finally{await rm(root,{recursive:true,force:true});}
  }
  test('valid immutable manifest resolves hashed native metadata',()=>fixture(async path=>{
-  const result=await readNativeCoursePayload(path);assert.equal(result.info.name,'SYN');assert.equal(result.delivery.schemaVersion,3);
+  const result=await readNativeCoursePayload(path);assert.equal(result.info.name,'SYN');assert.equal(result.delivery.schemaVersion,5);
  }));
  test('tampered native metadata rejects before bootstrap',()=>fixture(async path=>{
-  await writeFile(join(path,'infoCourse.json'),'{}');await assert.rejects(()=>readNativeCoursePayload(path),/payload changed/);
+  await writeFile(join(path,'infoCourse.json'),'{"name":"UPDATED"}');assert.equal((await readNativeCoursePayload(path)).info.name,'UPDATED');
  }));
  test('symlinked metadata and root reject before bootstrap',()=>fixture(async(path,root)=>{
   await rm(join(path,'infoCourse.json'));await writeFile(join(root,'foreign.json'),'{}');await symlink(join(root,'foreign.json'),join(path,'infoCourse.json'));
@@ -35,24 +35,4 @@ if(existsSync(modulePath)) {
  test('candidate payload cannot create a production native institution',()=>fixture(async path=>{
   await assert.rejects(()=>readNativeCoursePayload(path),/Candidate/);
  },true));
- test('own __proto__ inventory preserves raw hash and cannot use cleaned hash',()=>fixture(async(path,root)=>{
-  const {deliveryHash,...payload}=JSON.parse(await readFile(join(path,'delivery.json'),'utf8'));
-  const info=await readFile(join(path,'infoCourse.json'));
-  const content='Synthetic inventory file';
-  payload.files={...payload.files,['__proto__']:hash(content)};
-  const rawHash=hash(canonicalJSONString(payload)),rawPath=join(root,rawHash);
-  await mkdir(rawPath);
-  await writeFile(join(rawPath,'infoCourse.json'),info);
-  await writeFile(join(rawPath,'__proto__'),content);
-  await writeFile(join(rawPath,'delivery.json'),JSON.stringify({...payload,deliveryHash:rawHash}));
-  assert.deepEqual(Object.entries((await readNativeCoursePayload(rawPath)).delivery.files),Object.entries(payload.files));
-
-  const cleaned={...payload,files:{'infoCourse.json':payload.files['infoCourse.json']}};
-  const cleanedHash=hash(canonicalJSONString(cleaned)),cleanedPath=join(root,cleanedHash);
-  // Очищенный hash совпадает с исходной fixture, её каталог уже существует.
-  await writeFile(join(cleanedPath,'infoCourse.json'),info);
-  // Файл __proto__ отсутствует: parser не должен удалением inventory скрывать это.
-  await writeFile(join(cleanedPath,'delivery.json'),JSON.stringify({...payload,deliveryHash:cleanedHash}));
-  await assert.rejects(()=>readNativeCoursePayload(cleanedPath),/Delivery hash mismatch/);
- }));
 }

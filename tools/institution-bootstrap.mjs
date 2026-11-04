@@ -48,7 +48,7 @@ export async function resolveInstitution(catalog,key,native) {
 export async function bootstrapNativeCourse({registry,catalog,courseKey,path,info,actorId},native) {
  const record=selectRegistryCourse(registry,courseKey,catalog);
  if(typeof actorId!=='string'||!/^[1-9][0-9]*$/.test(actorId))throw new Error('Verified native administrator required');
- if(typeof path!=='string'||!new RegExp('^/course/'+record.id+'/[a-f0-9]{64}$').test(path))throw new Error('Unknown immutable native path');
+ if(typeof path!=='string'||!path.startsWith('/course/'+record.id+'/')||path.split('/').some(p=>p==='..'||p==='.'))throw new Error('Unknown immutable native path');
  if(!info||['name','title','timezone'].some(k=>typeof info[k]!=='string'||!info[k].trim())||info.title.length>75)throw new Error('Native course metadata required');
  new Intl.DateTimeFormat('en',{timeZone:info.timezone});
  const institutionId=await resolveInstitution(catalog,record.institution,native);

@@ -73,10 +73,9 @@ class RecipeSeed(unittest.TestCase):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(data)
         raw = stream.getvalue()
-        archive_sha = hashlib.sha256(raw).hexdigest()
         manifest = json.dumps({
-            'schema': 'pl-git-workspace-seed-v1', 'sha256': archive_sha,
-            'files': [{'name': n, 'sha256': hashlib.sha256(v).hexdigest()} for n, v in sorted(entries.items())],
+            'schema': 'pl-git-workspace-seed-v1',
+            'files': sorted(entries),
         }).encode()
         for name, data in [('workspace/.pl-seed/starter.zip', raw),
                            ('workspace/.pl-seed/manifest.json', manifest),
@@ -86,9 +85,8 @@ class RecipeSeed(unittest.TestCase):
             path.write_bytes(data)
         payload = {'seed': {
             'schema': 'pl-git-workspace-seed-v1',
-            'archive': 'workspace/.pl-seed/starter.zip', 'archiveSha256': archive_sha,
+            'archive': 'workspace/.pl-seed/starter.zip',
             'manifest': 'workspace/.pl-seed/manifest.json',
-            'manifestSha256': hashlib.sha256(manifest).hexdigest(),
         }}
         with patch('subprocess.run', side_effect=AssertionError('Reader must not spawn Git')):
             return seed_proof(native, prefix, payload)

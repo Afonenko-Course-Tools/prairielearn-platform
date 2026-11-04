@@ -31,6 +31,10 @@ class SelectedDelivery(unittest.TestCase):
    with self.subTest(rows=[r['name'] for r in rows]):
     self.m=copy.deepcopy(original);self.m['projects'][0]['sources']=rows
     with self.assertRaises(g.JobError):self.prepare()
+ def test_fixed_archive_additional_flag_survives_profile_translation(self):
+  self.m['projects'][0]['check']['additional-java-sources']={'archive':'answer.zip','primary-required':True,'allow-additional':False,'max-files':128,'max-file-bytes':1048576,'max-total-bytes':4194304,'max-archive-bytes':2097152}
+  job=self.prepare();self.assertIs(job['grading']['additionalJavaSources']['allowAdditional'],False)
+  self.assertIs(json.loads((job.root/'tests/grading-job.json').read_text())['additionalJavaSources']['allowAdditional'],False)
  def test_missing_required_check_is_project_defect(self):
   self.m['projects'][0]['readiness']={'ready':False,'missing':['tests']}
   with self.assertRaises(g.ProjectDefect):self.prepare()

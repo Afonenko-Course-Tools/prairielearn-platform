@@ -27,6 +27,20 @@ class Delivery5(unittest.TestCase):
  def test_native_uuid_and_actual_slot_bindings_still_checked(self):
   self.d['gradingPayloads'][self.q]['uuid']='66baa636-0dd7-4658-aa90-c9f893181d29'
   with self.assertRaises(g.JobError):v.package_integrity(self.d,self.root)
+ def test_optional_zero_weight_mixed_question_keeps_native_grader_and_required_weight(self):
+  import shutil
+  import test_selected_file_delivery as selected
+  from gradle_unit_fixtures import registry
+  q2='demo/exr-required';shutil.copytree(self.root/'questions'/self.q,self.root/'questions'/q2)
+  info=json.loads((self.root/'questions'/q2/'info.json').read_text());info['uuid']='66baa636-0dd7-4658-aa90-c9f893181d29';self.put('questions/'+q2+'/info.json',info)
+  self.d['questions'].append(q2);self.d['gradingPayloads'][q2]=copy.deepcopy(self.d['gradingPayloads'][self.q]);self.d['gradingPayloads'][q2]['uuid']=info['uuid']
+  work=self.d['works'][0];work['slots'][0]['assignment']['requirement']='optional';required='demo/lab/exr-required';work['slots'].append({'id':required,'selection':'fixed','candidates':[q2],'assignment':{'requirement':'required','workMode':'individual'}});work['completion'].update(slotIds=[s['id'] for s in work['slots']],requiredSlotIds=[required])
+  m=selected.manifest();p=m['projects'][0];p.update(qualifiedId=self.q,projectRoot='projects/manual');job=g.prepare_job(m,self.root,self.q,'starter',registry=registry())
+  self.addCleanup(lambda:shutil.rmtree(job.root));descriptor=job['grading']
+  self.d['gradingPayloads'][self.q].update(grading={'method':'mixed'},submission={'mode':'editor'},projectCheck='junit',runtime='java25-junit-v1',sources=[{'projectRelativePath':'student/Answer.java','submissionRelativePath':'Answer.java'}])
+  self.put('questions/'+self.q+'/tests/grading-job.json',descriptor);info=json.loads((self.root/'questions'/self.q/'info.json').read_text());info.update(gradingMethod='External',externalGradingOptions={'enabled':True,'image':job['imageDigest']});self.put('questions/'+self.q+'/info.json',info);self.put('questions/'+self.q+'/question.html','<pl-file-editor file-name="Answer.java"></pl-file-editor><pl-external-grader-results></pl-external-grader-results>')
+  path='courseInstances/fixture/assessments/lab/infoAssessment.json';a=json.loads((self.root/path).read_text());a['zones']=[{'questions':[{'id':self.q,'autoPoints':0,'manualPoints':0}]},{'questions':[{'id':q2,'autoPoints':0,'manualPoints':2}]}];self.put(path,a)
+  self.d['files']=sorted(f.relative_to(self.root).as_posix() for f in self.root.rglob('*') if f.is_file());self.assertEqual(v.package_integrity(self.d,self.root,m)['status'],'success')
  def test_selected_paths_cannot_escape_or_follow_symlink(self):
   for name in ['../secret','/absolute','C:/evil','a\\b']:
    with self.subTest(name=name),self.assertRaises(g.JobError):v.package_integrity(dict(self.d,files=[name]),self.root)
