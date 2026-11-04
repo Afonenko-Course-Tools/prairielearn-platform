@@ -2,6 +2,11 @@
 
 import math
 import re
+import textwrap
+
+
+def _prose(value):
+    return textwrap.fill(value, width=60, break_long_words=False, break_on_hyphens=False)
 
 _EXPLANATIONS = {
     "compile": (
@@ -123,7 +128,7 @@ def student_result(result, descriptor):
             else "infrastructure-failure"
         ),
         "feedback": feedback,
-        "message": reason + " " + observed + " " + what_check,
+        "message": "\n".join(_prose(value) for value in (reason, observed, what_check)),
     }
     admission_failure = (
         result.get("classification")
@@ -223,21 +228,26 @@ def student_result(result, descriptor):
         for key, label in (("input", "Вход"), ("state", "Состояние"), ("action", "Действие"),
                            ("expected", "Ожидается"), ("actual", "Получено")):
             if key in case:
+                if key == "actual" and case[key] is None and case["status"] in ("passed", "failed"):
+                    continue
                 lines.append(label + ": " + ("не получено" if case[key] is None else case[key]))
         lines.append("Статус: " + statuses[case["status"]])
         if case["statusReason"]:
-            lines.append("Причина: " + case["statusReason"])
+            lines.append(_prose("Причина: " + case["statusReason"]))
         return lines
 
-    if feedback["publicCases"]:
+    has_leaf_results = kind != "infrastructure" and isinstance(case_results, list) and counts.get("complete") is True
+    if feedback["publicCases"] and not has_leaf_results:
         native["tests"] = []
         for case in feedback["publicCases"]:
             card = {"name": case["name"], "description": "Публичный сценарий: " + statuses[case["status"]],
                     "message": "\n".join(public_lines(case))}
             if case["status"] in ("passed", "failed"):
                 card.update(points=int(case["status"] == "passed"), max_points=1)
-            native["tests"].append(card)
-    if (kind != "infrastructure" and isinstance(case_results, list) and counts.get("complete") is True):
+                native["tests"].append(card)
+            else:
+                native["message"] += "\n\n" + card["message"]
+    if has_leaf_results:
         feedback["cases"] = []
         native["tests"] = []
         complete = True
@@ -363,8 +373,8 @@ def student_result(result, descriptor):
                     break
         if errors:
             feedback["compileErrors"] = errors
-            native["message"] += " " + " ".join(
-                error["file"] + ":" + str(error["line"]) + ": " + error["reason"]
+            native["message"] += "\n\n" + "\n".join(
+                _prose(error["file"] + ":" + str(error["line"]) + ": " + error["reason"])
                 for error in errors
             )
     if result.get("classification") == "student-api-mismatch":

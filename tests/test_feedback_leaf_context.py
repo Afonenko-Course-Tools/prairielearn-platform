@@ -66,6 +66,8 @@ class LeafContext(unittest.TestCase):
         self.assertEqual(native['feedback']['publicCases'][0]['status'], 'unknown')
         self.assertFalse(native['gradable'])
         self.assertNotIn('score', native)
+        self.assertFalse(native.get('tests'))
+        self.assertIn('Изменение состояния', native['message'])
         for card in native.get('tests', []):
             self.assertNotIn('points', card)
             self.assertNotIn('max_points', card)
@@ -75,9 +77,33 @@ class LeafContext(unittest.TestCase):
                                          'gradable': True, 'score': 0}, DESCRIPTOR)
         self.assertEqual(native['feedback']['publicCases'][0]['status'], 'not-run')
         self.assertEqual(native['score'], 0)
+        self.assertFalse(native.get('tests'))
+        self.assertIn('Вход: 2\n3', native['message'])
+        self.assertIn('не запускался', native['message'])
         for card in native.get('tests', []):
             self.assertNotIn('points', card)
             self.assertNotIn('max_points', card)
+
+    def test_explanatory_prose_wraps_without_rewriting_public_values(self):
+        descriptor = copy.deepcopy(DESCRIPTOR)
+        descriptor['publicCases'][0]['expected'] = 'X' * 400 + '\nвторая строка'
+        native = feedback.student_result({'classification': 'student-compilation-failure',
+                                         'gradable': True, 'score': 0}, descriptor)
+        self.assertIn('Ожидается: ' + 'X' * 400 + '\nвторая строка', native['message'])
+        explanation = native['message'].split('\n\nЧто проверяется:', 1)[0]
+        self.assertTrue(all(len(line) <= 60 for line in explanation.splitlines()))
+
+    def test_executed_leaf_does_not_deny_its_assertion_observation(self):
+        source = result()
+        source['counts']['cases'][0]['checks'] = [{
+            'site': 'AnswerTest.java:12:1', 'property': 'равенство',
+            'availability': 'complete', 'delegated': 'returned',
+            'expected': '12', 'actual': '12',
+        }]
+        native = feedback.student_result(source, DESCRIPTOR)
+        self.assertIsNone(native['feedback']['publicCases'][0]['actual'])
+        self.assertNotIn('Получено: не получено', native['tests'][0]['message'])
+        self.assertIn('Получено: 12', native['tests'][0]['message'])
 
     def test_protocol_two_unbound_observation_does_not_borrow_another_outcome(self):
         source = result()

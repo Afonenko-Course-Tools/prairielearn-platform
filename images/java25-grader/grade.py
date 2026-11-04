@@ -1729,8 +1729,19 @@ def _native_build(job, config, sources, extra_names, stage, runtime, durations, 
             target.chmod(0o444)
         (work / "native-config.json").write_text(json.dumps(build))
         (work / "native-config.json").chmod(0o444)
-        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData\n")
-        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+        # Landlock excludes /dev/random. Give each trusted build JVM its own
+        # fresh OS entropy instead of the JDK's costly threaded fallback.
+        entropy = {}
+        for role in ("client", "daemon"):
+            path = work / (role + ".seed")
+            with path.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(secrets.token_bytes(65536))
+                os.fchown(stream.fileno(), uid, -1)
+                os.fchmod(stream.fileno(), 0o400)
+            entropy[role] = "-Djava.security.egd=" + path.as_uri()
+        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData " + entropy["daemon"] + "\n")
+        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "JAVA_OPTS": entropy["client"], "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
         try:
             code, text, reason = _run([*prefix, "/opt/gradle/bin/gradle", "--offline", "--no-daemon", "--console=plain", "--project-cache-dir", str(work / "project-cache"), "jar"], work, limits.get("compile-seconds", 15), int(limits["max-output-bytes"]), env=environment)
         finally:
@@ -2236,7 +2247,10 @@ def main():
     tmp = path / "results.json.tmp"
     tmp.write_text(json.dumps(result))
     tmp.replace(path / "results.json")
-    return status
+    # Native workers discard results.json on nonzero process exit. A safely
+    # delivered ungradable result is still a successful protocol response;
+    # operator verification retains the infrastructure failure exit status.
+    return status if args.verification else 0
 
 
 if __name__ == "__main__":
