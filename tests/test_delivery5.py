@@ -51,6 +51,8 @@ class Delivery5(unittest.TestCase):
   for layout,control in [('files-or-zip','<pl-file-upload optional-file-patterns="*.java" optional-file-names="solution.zip"></pl-file-upload>'),('zip','<pl-file-upload file-names="solution.zip"></pl-file-upload>'),('files','<pl-file-upload file-names="Answer.java"></pl-file-upload>')]:
    with self.subTest(layout=layout):
     self.d['gradingPayloads'][self.q]['submission']={'mode':'upload','layout':layout};self.put('questions/'+self.q+'/question.html',control+'<pl-external-grader-results></pl-external-grader-results>');self.assertEqual(v.package_integrity(self.d,self.root,m)['status'],'success')
+  self.d['gradingPayloads'][self.q]['submission']={'mode':'upload','layout':'files-or-zip'};self.put('questions/'+self.q+'/question.html','<pl-file-upload file-patterns="*.java" optional-file-names="solution.zip"></pl-file-upload><pl-external-grader-results></pl-external-grader-results>')
+  with self.assertRaises(g.JobError):v.package_integrity(self.d,self.root,m)
   self.d['gradingPayloads'][self.q]['submission']={'mode':'upload','layout':'zip'};self.put('questions/'+self.q+'/question.html','<pl-file-upload file-names="Answer.java"></pl-file-upload><pl-external-grader-results></pl-external-grader-results>')
   with self.assertRaises(g.JobError):v.package_integrity(self.d,self.root,m)
  def test_selected_target_mapping_agrees_with_bound_submission(self):

@@ -182,13 +182,15 @@ def package_integrity(delivery,native,checks=None):
    descriptor=read(prefix+'tests/grading-job.json')
    from grading_job import validate
    validate('grading-descriptor',descriptor)
-  names=[];optional=[];patterns=[]
+  names=[];optional=[];required_patterns=[];optional_patterns=[]
   for attrs in uploads:
    required=upload_values(attrs,'file-names');extra=upload_values(attrs,'optional-file-names')
-   globs=upload_values(attrs,'file-patterns',False)+upload_values(attrs,'optional-file-patterns',False)
+   required_globs=upload_values(attrs,'file-patterns',False);optional_globs=upload_values(attrs,'optional-file-patterns',False)
+   globs=required_globs+optional_globs
    if not required and not extra and not globs:raise JobError('Native upload input missing or empty')
-   names.extend(required);optional.extend(extra);patterns.extend(globs)
+   names.extend(required);optional.extend(extra);required_patterns.extend(required_globs);optional_patterns.extend(optional_globs)
   if len(set(names+optional))!=len(names+optional):raise JobError('Duplicate native upload name')
+  patterns=required_patterns+optional_patterns
   layout=binding['submission'].get('layout')
   if method!='manual':
    extra_policy=descriptor.get('additionalJavaSources');optional_primary=extra_policy is not None and extra_policy.get('primaryRequired',True) is False
@@ -196,7 +198,7 @@ def package_integrity(delivery,native,checks=None):
     expected_names=[source['submissionRelativePath'] for source in binding['sources']]
     if editors or not uploads:raise JobError('Native upload layout requires upload controls')
     if layout=='files-or-zip':
-     if not extra_policy or names or optional!=[extra_policy['archive']] or patterns!=['*.java']:raise JobError('Native free file/ZIP controls differ from layout')
+     if not extra_policy or names or optional!=[extra_policy['archive']] or required_patterns or optional_patterns!=['*.java']:raise JobError('Native free file/ZIP controls differ from layout')
     elif layout=='zip':
      if not extra_policy or names!=[extra_policy['archive']] or optional or patterns:raise JobError('Native ZIP controls differ from layout')
     elif set(names)!=set(expected_names) or optional or patterns:raise JobError('Native fixed files differ from layout')
