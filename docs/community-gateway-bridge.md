@@ -62,13 +62,13 @@ The localhost-only patch permits a null cookieDomain in production solely when h
 
 ## Зачисление и чтение обычных работ
 
-`PUT /internal/gateway/enrollment` принимает ровно `userUid`, `instance` и `courseKey`
+В стандартном режиме `PUT /internal/gateway/enrollment` принимает ровно `userUid`, `instance` и `courseKey`
 по схеме `schemas/gateway-enrollment.schema.json`. Нужен существующий пользователь
 Community из проверенного callback. Bridge проверяет зарегистрированный binding,
 UUID и отсутствие удаления native экземпляра, обеспечивает joined enrollment,
 отклоняет blocked membership и проверяет опубликованный native Student доступ.
 Повторный запрос сохраняет ту же учётную запись; неизвестный native UID получает 404.
-Роли, labels и assignment нельзя передать в запросе. Зачисление не выдаёт права
+В стандартном режиме роли, labels и assignment нельзя передать в запросе. Такое зачисление не выдаёт права
 администратора, label или слот защиты.
 
 Успешный ответ соответствует `schemas/gateway-enrollment-response.schema.json`:
@@ -79,6 +79,64 @@ UUID и отсутствие удаления native экземпляра, об�
 `92584fe426ececb84bc2d09de9975c7056c0c5f6`, `apps/prairielearn/src/server.ts:1486`.
 Gateway сначала выполняет проверенный Community handoff, затем использует этот
 путь для открытия списка курса. Work, assignment и AGS для этого входа не нужны.
+
+## Режим login-only и доверенные Moodle роли
+
+Прежний config без `mode` сохраняет стандартный grading режим: полный
+`loadVerifiedBindings`, проверки grading payload/candidate/OCI, прежние routes и
+явный `administratorUid` остаются. Для отдельного входа в уже импортированный
+native курс доступен только явный `mode: "login-only"`; пример —
+`config/pl.gateway.login-only.example.json`. Вымышленные IDs и UUID примера
+оператор заменяет результатом actual native DB join.
+
+Login-only регистрирует private связку `courseKey`, `instance`, `courseId`,
+`courseInstanceId`, `courseInstanceUuid`. Неоднозначная пара course/instance
+отклоняется при запуске. На каждом входе native CI должен совпасть по ID,
+принадлежности курсу, UUID и short name; удалённый CI отклоняется. Поля
+`deliveryPath` и `administratorUid` в этом варианте запрещены: grading manifest
+не становится источником доверия для identity. Production, bearer, existing UID,
+blocked/joined enrollment и native Student publishing/access guards сохраняются.
+
+Единственный разрешённый route — `PUT /internal/gateway/enrollment`. После bearer
+проверки все остальные методы и assignment/results/work/admin routes получают 404
+до разбора тела и native операций. Assignment DDL migrate при этом не запускается;
+native enrollment, permission API и audit logs по-прежнему могут изменять native DB.
+
+Private запрос содержит ровно пять полей: `userUid`, `instance`, `courseKey`,
+`role: "student" | "teacher"`, `email: string | null`. Gateway получает роль и email
+из проверенного подписанного LTI контекста своей регистрации и связывает email с
+исходной сессией. Bridge доверяет этому private контексту только за прежним service
+bearer. Публичные query/body поля, произвольный `email_verified` и role overrides
+не добавляются в этот протокол.
+
+Email уже должен быть canonical lowercase ASCII mailbox без пробелов/управляющих
+символов: до 254 символов, local part до 64 без начальной/конечной или двойной точки,
+домен минимум из двух DNS labels до 63 символов. Bridge адрес не нормализует и
+отклоняет неверный формат с 400; `+alias` остаётся отдельным адресом. Gateway передаёт
+`null`, если signed email отсутствует или не прошёл его проверку доверия.
+
+Одна private policy `administratorEmail` задаёт такой же canonical адрес либо
+`null` (по умолчанию). Его точное совпадение с подтверждённым session email выдаёт
+global native Administrator **при любой из двух Moodle ролей** через существующий
+administrator SQL/audit механизм. Конкретный адрес человека не встроен в код или
+пример. Для остальных Teacher штатные `insertCoursePermissionsByUserUid` и
+`insertCourseInstancePermissions` обеспечивают `Editor` курса и `Student Data Editor`
+экземпляра; новые Owner/staff-management права и global admin им не выдаются.
+Student с другим email новых staff/admin прав не получает.
+
+До API, способного создать пользователя, проверяется existing UID; возвращённые
+native ID и UID должны совпасть с исходными. Проверяются фактические записанные
+permissions, audit actor — тот же проверенный native user ID. Grant выполняется
+в той же native транзакции после membership/access guards. Штатные API только
+повышают права; прежние Owner/admin/другие роли при следующем входе не отзываются.
+Email не меняет issuer/client/deployment/subject UID и не объединяет учётные записи.
+
+Ответ остаётся прежним из шести полей: `schemaVersion`, `userUid`, `instance`,
+`courseKey`, `enrolled`, `path`; роль и email не отражаются. Успешные native вход,
+grant и список курса не подтверждают grading candidate, OCI или проверку всех задач.
+`login-only` не превращает импортированный private candidate в production grading
+delivery. Handler tests с изолированными native boundaries не заменяют настоящий
+Moodle/DB/UI smoke и проверку реальных audit records.
 
 `GET /internal/gateway/work-results` accepts exactly userUid, instance, deliveryHash
 and workId query parameters. This reads an ordinary, unlabelled manifest work without

@@ -26,6 +26,7 @@ async function fixture(t, changes = {}) {
   const user = changes.missingUser ? null : { id: '21', uid: request.userUid };
   let handler;
   const args = {
+    settings: {},
     bindings: [{ courseInstanceId: '73', deliveryPath, delivery: { courseId: 'demo', instances: { fall: { works: [] } } } }],
     instances: { selectCourseInstanceById: async id => { assert.equal(id, '73'); return ci; } },
     users: { selectOptionalUserByUid: async uid => { state.identities.push(uid); return user; } },

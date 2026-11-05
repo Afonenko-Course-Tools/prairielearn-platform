@@ -1,0 +1,16 @@
+{
+  "mode": "login-only",
+  "listenHost": "0.0.0.0",
+  "listenPort": 3001,
+  "tokenFile": "/run/secrets/pl-gateway-token",
+  "administratorEmail": "owner@example.invalid",
+  "bindings": [
+    {
+      "courseKey": "demo",
+      "instance": "fixture",
+      "courseId": "1",
+      "courseInstanceId": "1",
+      "courseInstanceUuid": "514a8336-f599-47bf-ae63-822cbac36f0b"
+    }
+  ]
+}

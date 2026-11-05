@@ -10,6 +10,7 @@ import {
   canonicalJSONString as canonical,
   assertProductionRuntime,
   authorizeAdministrator,
+  isCanonicalEmail,
 } from './policy.mjs';
 const root = process.env.PL_ROOT ?? '/PrairieLearn';
 const native = (path) => import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
@@ -29,6 +30,7 @@ const [
   native('lib/authz-data-lib'),
 ]);
 const studentAccess = await native('lib/authz-data');
+const coursePermissions = await native('models/course-permissions');
 const nativeAssessment = await native('models/assessment');
 const assessmentAccess = await native('lib/assessment-access-control/authz');
 const { AssessmentInstanceSchema } = await native('lib/db-types');
@@ -45,13 +47,29 @@ const settingsSchema = z.strictObject({
       }),
     )
     .min(1),
-});
+}).or(z.strictObject({
+  mode: z.literal('login-only'),
+  administratorEmail: z.string().refine(isCanonicalEmail).nullable().default(null),
+  listenHost: z.string(),
+  listenPort: z.number().int().min(1).max(65535),
+  tokenFile: z.string(),
+  bindings: z.array(z.strictObject({
+    courseKey: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    instance: z.string().min(1),
+    courseId: z.string().regex(/^[1-9][0-9]*$/),
+    courseInstanceId: z.string().regex(/^[1-9][0-9]*$/),
+    courseInstanceUuid: z.string().uuid(),
+  })).min(1).refine(rows => new Set(rows.map(b => JSON.stringify([b.courseKey, b.instance]))).size === rows.length,
+    'Неоднозначная регистрация native курса и экземпляра'),
+}));
 const settings = settingsSchema.parse(
   JSON.parse(await readFile(process.env.PL_GATEWAY_CONFIG, 'utf8')),
 );
 const token = (await readFile(settings.tokenFile, 'utf8')).trim();
 if (token.length < 32) throw new Error('Service token needs at least 32 characters');
-const bindings = await loadVerifiedBindings(settings.bindings);
+const bindings = settings.mode === 'login-only'
+  ? settings.bindings
+  : await loadVerifiedBindings(settings.bindings);
 await loadConfig([`${root}/config.json`]);
 assertProductionRuntime(process.env.NODE_ENV, config);
 await db.initAsync(
@@ -69,7 +87,7 @@ await db.initAsync(
 await db.setRandomSearchSchemaAsync('gateway-bridge');
 await (await native('sprocs/index')).init();
 const sql = db.loadSqlEquiv(new URL('./native.mjs', import.meta.url).href);
-await db.execute(sql.migrate, {});
+if (settings.mode !== 'login-only') await db.execute(sql.migrate, {});
 const system = dangerousFullSystemAuthz();
 const requestSchema = z.strictObject({
   version: z.number().int().positive(),
@@ -97,6 +115,18 @@ const workResultRow = resultRow.extend({
   attempt_max_points: z.number().nullable(),
 });
 async function context(request, assignment = true) {
+  if (settings.mode === 'login-only') {
+    const binding = bindings.find(b => b.courseKey === request.courseKey && b.instance === request.instance);
+    if (!binding) throw new BridgeError(403, 'Неизвестный native курс или экземпляр');
+    const ci = await instances.selectCourseInstanceById(binding.courseInstanceId);
+    if (ci.deleted_at !== null || ci.id !== binding.courseInstanceId ||
+        ci.course_id !== binding.courseId || ci.uuid !== binding.courseInstanceUuid ||
+        ci.short_name !== binding.instance)
+      throw new BridgeError(403, 'Native экземпляр не соответствует регистрации');
+    const user = await users.selectOptionalUserByUid(request.userUid);
+    if (!user) throw new BridgeError(404, 'Verified user must exist');
+    return { binding, ci, user };
+  }
   const binding = bindings.find(
     (b) =>
       b.delivery.courseId === request.courseKey && b.delivery.instances[request.instance],
@@ -345,7 +375,12 @@ async function workLaunch(request) {
     path: `/pl/course_instance/${ci.id}/assessment/${assessment.id}/`,
   };
 }
-const enrollmentQuerySchema = workQuerySchema.omit({ workId: true });
+const enrollmentQuerySchema = settings.mode === 'login-only'
+  ? workQuerySchema.omit({ workId: true }).extend({
+      role: z.enum(['student', 'teacher']),
+      email: z.string().refine(isCanonicalEmail).nullable(),
+    })
+  : workQuerySchema.omit({ workId: true });
 async function grantAdministrator(request) {
   const uid = authorizeAdministrator(request.userUid, settings.administratorUid);
   const user = await users.selectOptionalUserByUid(uid);
@@ -353,6 +388,28 @@ async function grantAdministrator(request) {
   const answer = await db.queryRow(sql.grant_administrator, {uid, user_id: user.id}, z.object({administrator: z.boolean()}));
   if (!answer.administrator) throw new BridgeError(409, 'Administrator bootstrap failed');
   return {schemaVersion:1, userUid:uid, administrator:true, path:'/pl/administrator/courses'};
+}
+async function grantTrustedLoginRole(request, ci, user) {
+  if (settings.administratorEmail !== null && request.email === settings.administratorEmail) {
+    const answer = await db.queryRow(sql.grant_administrator,
+      { uid: user.uid, user_id: user.id }, z.object({ administrator: z.boolean() }));
+    if (!answer.administrator) throw new BridgeError(409, 'Не удалось выдать native Administrator');
+    return;
+  }
+  if (request.role !== 'teacher') return;
+  const teacher = await coursePermissions.insertCoursePermissionsByUserUid({
+    course_id: ci.course_id, uid: user.uid, course_role: 'Editor', authn_user_id: user.id,
+  });
+  if (teacher.id !== user.id || teacher.uid !== user.uid)
+    throw new BridgeError(409, 'Native identity изменилась при выдаче роли');
+  await coursePermissions.insertCourseInstancePermissions({
+    course_id: ci.course_id, course_instance_id: ci.id, user_id: user.id,
+    course_instance_role: 'Student Data Editor', authn_user_id: user.id,
+  });
+  const courseRole = await coursePermissions.selectCoursePermissionForUser({ course_id: ci.course_id, user_id: user.id });
+  const instanceRole = await coursePermissions.selectCourseInstancePermissionForUser({ course_instance_id: ci.id, user_id: user.id });
+  if (!['Editor', 'Owner'].includes(courseRole) || instanceRole !== 'Student Data Editor')
+    throw new BridgeError(409, 'Native преподавательские права не подтверждены');
 }
 async function enrollBasic(request) {
   const { ci, user } = await context(request, false);
@@ -382,6 +439,7 @@ async function enrollBasic(request) {
         .has_student_access_with_enrollment
     )
       throw new BridgeError(403, 'Native Student instance access denied');
+    if (settings.mode === 'login-only') await grantTrustedLoginRole(request, ci, user);
     return {
       schemaVersion: 1,
       userUid: user.uid,
@@ -407,6 +465,9 @@ const server = createServer(async (req, res) => {
     if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
       throw new BridgeError(401, 'Service authentication required');
     const url = new URL(req.url, 'http://bridge');
+    if (settings.mode === 'login-only' &&
+        !(req.method === 'PUT' && url.pathname === '/internal/gateway/enrollment'))
+      throw new BridgeError(404, 'Unknown route');
     let answer;
     const match = url.pathname.match(/^\/internal\/gateway\/assignments\/([^/]+)$/);
     if (req.method === 'PUT' && match) {
