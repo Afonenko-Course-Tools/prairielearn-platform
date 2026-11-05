@@ -48,9 +48,13 @@ class OrdinaryLabResults(unittest.TestCase):
         except urllib.error.HTTPError as e:r=e
         with r:return r.status,json.load(r)
     def test_basic_enrollment_is_idempotent_and_has_no_assignment_grant(self):
+        schema=json.loads((pathlib.Path(__file__).parents[1]/'schemas/gateway-enrollment-response.schema.json').read_text())
         for _ in range(2):
             status,result=self.enroll(userUid=self.f['bootstrapUid']);self.assertEqual(status,200)
-            self.assertEqual(set(result),{'schemaVersion','userUid','instance','courseKey','enrolled'});self.assertTrue(result['enrolled'])
+            jsonschema.validate(result,schema)
+            self.assertEqual(result['userUid'],self.f['bootstrapUid'])
+            for key in ('instance','courseKey'):self.assertEqual(result[key],self.f['query'][key])
+            self.assertEqual(result['path'],self.f['expectedLaunchPath'].split('/assessment/')[0]+'/assessments')
     def test_basic_enrollment_cannot_supply_role_or_labels(self):self.assertEqual(self.enroll(role='Administrator',labels=['defense-a'])[0],400)
     def test_enrollment_requires_existing_community_identity(self):self.assertEqual(self.enroll(userUid='unverified-user-does-not-exist')[0],404)
 

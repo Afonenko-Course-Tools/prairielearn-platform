@@ -356,6 +356,8 @@ async function grantAdministrator(request) {
 }
 async function enrollBasic(request) {
   const { ci, user } = await context(request, false);
+  if (typeof ci.id !== 'string' || !/^[1-9][0-9]*$/.test(ci.id))
+    throw new BridgeError(409, 'Invalid native instance identifier');
   return db.runInTransactionAsync(async () => {
     await db.execute(sql.lock, { lock_key: `gateway:${ci.id}:${user.uid}` });
     const prior = await enrollments.selectOptionalEnrollmentByUserId({
@@ -386,6 +388,7 @@ async function enrollBasic(request) {
       instance: request.instance,
       courseKey: request.courseKey,
       enrolled: true,
+      path: `/pl/course_instance/${ci.id}/assessments`,
     };
   });
 }

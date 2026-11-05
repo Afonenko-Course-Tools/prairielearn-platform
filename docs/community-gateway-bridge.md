@@ -60,14 +60,25 @@ The localhost-only patch permits a null cookieDomain in production solely when h
 
 Приёмка выпуска на изолированном стенде проверяет native Student список, прямые URL и повторное назначение, реальные оценки встроенного grader и интеграцию Gateway/AGS. Следуйте [порядку выпуска](releasing.md). Работающий listener и синтетическая строка оценки не подтверждают прохождение этих проверок.
 
-## Ordinary work reads and bootstrap
+## Зачисление и чтение обычных работ
 
-`PUT /internal/gateway/enrollment` accepts only userUid, instance and deliveryHash.
-It requires an existing Community user from the verified callback, ensures joined
-native enrollment, rejects blocked membership and verifies native published Student
-instance access. It grants no label or defense slot. Identical calls are idempotent.
-Gateway must perform the initial verified Community handoff before this bootstrap;
-unknown native identities return 404. Roles and labels cannot be supplied.
+`PUT /internal/gateway/enrollment` принимает ровно `userUid`, `instance` и `courseKey`
+по схеме `schemas/gateway-enrollment.schema.json`. Нужен существующий пользователь
+Community из проверенного callback. Bridge проверяет зарегистрированный binding,
+UUID и отсутствие удаления native экземпляра, обеспечивает joined enrollment,
+отклоняет blocked membership и проверяет опубликованный native Student доступ.
+Повторный запрос сохраняет ту же учётную запись; неизвестный native UID получает 404.
+Роли, labels и assignment нельзя передать в запросе. Зачисление не выдаёт права
+администратора, label или слот защиты.
+
+Успешный ответ соответствует `schemas/gateway-enrollment-response.schema.json`:
+`schemaVersion: 1`, те же `userUid`, `instance`, `courseKey`, `enrolled: true` и
+`path: /pl/course_instance/<native id>/assessments`. Числовой ID берётся из
+проверенного native экземпляра; курс и экземпляр из запроса не становятся URL.
+Это штатный маршрут `studentAssessments` в закреплённом PrairieLearn source
+`92584fe426ececb84bc2d09de9975c7056c0c5f6`, `apps/prairielearn/src/server.ts:1486`.
+Gateway сначала выполняет проверенный Community handoff, затем использует этот
+путь для открытия списка курса. Work, assignment и AGS для этого входа не нужны.
 
 `GET /internal/gateway/work-results` accepts exactly userUid, instance, deliveryHash
 and workId query parameters. This reads an ordinary, unlabelled manifest work without
