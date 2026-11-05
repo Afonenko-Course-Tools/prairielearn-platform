@@ -31,6 +31,21 @@ class Controls(HTMLParser):
    self.elements.append((tag,dict(attrs)))
 
 
+class EditorStarters(HTMLParser):
+ def __init__(self,html):
+  super().__init__(convert_charrefs=True);self.values=[];self.current=None;self.feed(html);self.close()
+  if self.current is not None:raise JobError('Unclosed manual editor')
+ def handle_starttag(self,tag,attrs):
+  if self.current is not None:raise JobError('Manual editor starter must be escaped text')
+  if tag=='pl-file-editor':
+   self.current=[];self.values.append((dict(attrs).get('file-name'),self.current))
+ def handle_endtag(self,tag):
+  if self.current is not None and tag!='pl-file-editor':raise JobError('Manual editor starter must be escaped text')
+  if tag=='pl-file-editor':self.current=None
+ def handle_data(self,data):
+  if self.current is not None:self.current.append(data)
+
+
 def upload_values(attrs,key,paths=True):
  if key not in attrs:return []
  value=attrs[key]
@@ -70,7 +85,6 @@ def classification(delivery):
   if not isinstance(submission,dict) or set(submission)-{'mode','aceMode','layout'} or submission.get('mode') not in ('upload','editor') or submission.get('mode')=='upload' and 'aceMode' in submission:raise JobError('Closed canonical submission required')
   if 'layout' in submission and (submission['mode']!='upload' or submission['layout'] not in ('files','zip','files-or-zip')):raise JobError('Invalid native upload layout')
   if 'aceMode' in submission and (not isinstance(submission['aceMode'],str) or not submission['aceMode']):raise JobError('Invalid editor mode')
-  if method=='manual' and submission['mode']!='upload':raise JobError('Manual requires actual native upload')
   try:valid_uuid=isinstance(binding['uuid'],str) and str(uuid.UUID(binding['uuid']))==binding['uuid'].lower()
   except (ValueError,TypeError,AttributeError):valid_uuid=False
   if not valid_uuid or binding['uuid'] in uuids:raise JobError('Unique canonical question UUIDs required')
@@ -163,7 +177,8 @@ def package_integrity(delivery,native,checks=None):
   info=read(prefix+'info.json');native_schema('infoQuestion.json',info)
   expected_method=binding.get('upstreamGradingMethod', 'Manual' if method=='manual' else 'External')
   if info['uuid']!=binding['uuid'] or info.get('gradingMethod')!=expected_method:raise JobError('Native method/UUID differs from canonical binding')
-  controls=Controls(file_bytes(native,prefix+'question.html').decode('utf-8')).elements
+  question_html=file_bytes(native,prefix+'question.html').decode('utf-8')
+  controls=Controls(question_html).elements
   if delivery['schemaVersion']==5 and binding['kind']!='project':
    if q in facts or 'externalGradingOptions' in info:raise JobError('Non-project cannot accept code Job')
    if binding['kind']=='native-answer':
@@ -192,6 +207,16 @@ def package_integrity(delivery,native,checks=None):
   if len(set(names+optional))!=len(names+optional):raise JobError('Duplicate native upload name')
   patterns=required_patterns+optional_patterns
   layout=binding['submission'].get('layout')
+  mirror='serverFilesQuestion/starter/'
+  manual_sources=sorted(name[len(mirror):] for name in question_files if name.startswith(mirror) and name.endswith('.java')) if method=='manual' else []
+  if manual_sources:
+   if any(not relative_name(name) for name in manual_sources):raise JobError('Unsafe manual Java starter path')
+   if len(manual_sources)<=2:
+    if binding['submission']['mode']!='editor':raise JobError('One or two manual Java sources require editors')
+   else:
+    expected_layout='zip' if any('/' in name for name in manual_sources) else 'files'
+    expected_names=['solution.zip'] if expected_layout=='zip' else manual_sources
+    if binding['submission']['mode']!='upload' or layout!=expected_layout or sorted(names)!=sorted(expected_names) or optional or patterns:raise JobError('Manual Java upload differs from actual starter files')
   if method!='manual':
    extra_policy=descriptor.get('additionalJavaSources');optional_primary=extra_policy is not None and extra_policy.get('primaryRequired',True) is False
    if layout is not None:
@@ -202,17 +227,26 @@ def package_integrity(delivery,native,checks=None):
     elif layout=='zip':
      if not extra_policy or names!=[extra_policy['archive']] or optional or patterns:raise JobError('Native ZIP controls differ from layout')
     elif set(names)!=set(expected_names) or optional or patterns:raise JobError('Native fixed files differ from layout')
-   else:
+   elif binding['submission']['mode']=='upload':
     expected_optional=([*[source['submissionRelativePath'] for source in binding['sources'] if '/' not in source['submissionRelativePath']],extra_policy['archive']] if optional_primary else [extra_policy['archive']]) if extra_policy else []
-    if optional_primary and binding['submission']['mode']!='upload':raise JobError('Optional primary requires upload')
     if patterns or sorted(optional)!=sorted(expected_optional):raise JobError('Native upload optional files differ from declared policy')
   if binding['submission']['mode']=='upload':
    if editors or not uploads:raise JobError('Native upload input missing or empty')
    if method!='manual' and layout is None and set(names)!=(set() if optional_primary else {source['submissionRelativePath'] for source in binding['sources']}):raise JobError('Native upload inputs differ from bound source files')
   else:
-   if names:raise JobError('Editor cannot add required upload names')
-   expected=[source['submissionRelativePath'] for source in binding['sources']]
+   if uploads:raise JobError('Editor cannot include upload controls')
+   expected=manual_sources if method=='manual' else [source['submissionRelativePath'] for source in binding['sources']]
    if not editors or len({a.get('file-name') for a in editors})!=len(editors) or {a.get('file-name') for a in editors}!=set(expected):raise JobError('Native editor inputs differ from bound source files')
+   if method=='manual':
+    if not 1<=len(expected)<=2:raise JobError('Manual editor requires one or two actual Java starter files')
+    if any(attrs.get('normalize-to-ascii')!='false' for attrs in editors):raise JobError('Manual editor must preserve UTF-8 source')
+    starters=EditorStarters(question_html).values
+    if len(starters)!=len(expected):raise JobError('Manual editor starter count differs')
+    for name,parts in starters:
+     data=file_bytes(native,prefix+mirror+name)
+     try:data.decode('utf-8')
+     except UnicodeDecodeError as error:raise JobError('Manual editor starter must be UTF-8') from error
+     if len(data)>1048576 or b'\0' in data or ''.join(parts).encode('utf-8')!=data:raise JobError('Manual editor starter bytes differ from actual source')
   if not any(name.startswith('clientFilesQuestion/') for name in question_files):raise JobError('Public starter/resource files missing')
   if method=='manual':
    if q in facts or 'externalGradingOptions' in info or any(name.startswith('tests/') or name in ('server.py','server.js','server.ts') for name in question_files) or any(tag=='pl-external-grader-results' for tag,_ in controls):raise JobError('Manual no-grader contract violated')
