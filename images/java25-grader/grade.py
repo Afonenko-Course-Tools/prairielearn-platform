@@ -586,7 +586,6 @@ def validate_config(config):
         "variants",
         "apiPrecheck",
         "additionalJavaSources",
-        "feedback",
         "javaBuild",
     }
     if (

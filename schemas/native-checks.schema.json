@@ -675,26 +675,6 @@
                 ],
                 "additionalProperties": false
               },
-              "feedback": {
-                "type": "object",
-                "properties": {
-                  "requirement": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 8192
-                  },
-                  "what-check": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 8192
-                  }
-                },
-                "required": [
-                  "requirement",
-                  "what-check"
-                ],
-                "additionalProperties": false
-              },
               "java-build": {
                 "type": "object",
                 "properties": {

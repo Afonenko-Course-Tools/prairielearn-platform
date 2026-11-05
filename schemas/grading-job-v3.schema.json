@@ -433,26 +433,6 @@
             "artifact"
           ],
           "additionalProperties": false
-        },
-        "feedback": {
-          "type": "object",
-          "properties": {
-            "requirement": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8192
-            },
-            "whatCheck": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 8192
-            }
-          },
-          "required": [
-            "requirement",
-            "whatCheck"
-          ],
-          "additionalProperties": false
         }
       },
       "required": [

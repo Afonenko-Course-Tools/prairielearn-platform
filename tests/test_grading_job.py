@@ -482,10 +482,6 @@ class PreparationMetadataTests(unittest.TestCase):
                 "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
             }
 
-        self.feedback = {
-            "requirement": "Return the required answer.",
-            "what-check": "The answer equals 42.",
-        }
         fact = {
             "qualifiedId": "demo/exr-metadata",
             "projectRoot": "p",
@@ -496,7 +492,6 @@ class PreparationMetadataTests(unittest.TestCase):
                     "root": "student",
                     "include": ["*.java"],
                 },
-                "feedback": self.feedback,
             },
             "sources": [selected("student/Student.java", "Student.java")],
             "trustedTests": [selected("tests/AnswerTest.java", "AnswerTest.java")],
@@ -517,23 +512,20 @@ class PreparationMetadataTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, job.root)
         return job
 
-    def test_prepare_preserves_feedback_without_description_cards(self):
+    def test_prepare_omits_author_description_metadata(self):
         job = self.prepare()
-        expected = {
-            "requirement": "Return the required answer.",
-            "whatCheck": "The answer equals 42.",
-        }
-        self.assertEqual(job["grading"]["feedback"], expected)
+        self.assertNotIn('feedback', job['grading'])
         self.assertNotIn('publicCases', job['grading'])
         written = json.loads((job.root / "tests/grading-job.json").read_text())
-        self.assertEqual(written["feedback"], expected)
+        self.assertNotIn('feedback', written)
         self.assertNotIn('publicCases', written)
 
-    def test_embedded_feedback_rejects_malformed_nested_values(self):
+    def test_embedded_author_feedback_is_rejected(self):
         import copy
 
         job = self.prepare()
         for bad in [
+            {"requirement": "Required", "whatCheck": "Check"},
             {"requirement": "", "whatCheck": "Check"},
             {"requirement": "Required", "whatCheck": "Check", "unknown": True},
         ]:

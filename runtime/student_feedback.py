@@ -74,15 +74,6 @@ def student_result(result, descriptor):
     if result.get("infrastructure") == "failure" or result.get("grading_error"):
         kind = "infrastructure"
     reason, observed, what_check = _EXPLANATIONS[kind]
-    subject = descriptor.get("feedback")
-    if (
-        isinstance(subject, dict)
-        and set(subject) == {"requirement", "whatCheck"}
-        and all(isinstance(v, str) and 0 < len(v) <= 8192 for v in subject.values())
-        and kind not in ("infrastructure", "success")
-    ):
-        reason += " Проверяемое требование: " + subject["requirement"]
-        what_check = subject["whatCheck"]
     feedback = {
         "kind": kind,
         "reason": reason,

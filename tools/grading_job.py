@@ -363,11 +363,6 @@ def prepare_job(
         check.get("verification-api-precheck")
     ) != bool(public_api):
         raise JobError("API precheck selection missing or undeclared")
-    if "feedback" in check:
-        grading["feedback"] = {
-            "requirement": check["feedback"]["requirement"],
-            "whatCheck": check["feedback"]["what-check"],
-        }
     if api:
         grading["apiPrecheck"] = api
     if extra_policy:
