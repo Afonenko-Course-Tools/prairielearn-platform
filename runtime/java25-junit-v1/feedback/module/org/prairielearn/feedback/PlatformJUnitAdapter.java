@@ -39,8 +39,6 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
   }
   private final Map<String, String> outcomes = new TreeMap<>();
   private final Set<String> successfulContainers = new LinkedHashSet<>();
-  private final List<Map<String, String>> publicReports = new ArrayList<>();
-  private List<?> publicCases = List.of();
   private Set<String> studentClasses = Set.of();
   private String submissionMode;
   private boolean observeAssertions;
@@ -269,23 +267,6 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (result.getStatus() == TestExecutionResult.Status.FAILED) {
       String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
       failures.put(test.getUniqueId(), kind);
-      // Throwable and its mutable stack do not prove who observed assertion values.
-      // Keep only values explicitly published through the trusted check's reporter.
-      // A trusted public test can fail before publishing an actual value. Record
-      // only its signed execution outcome, never Throwable text or private output.
-      if (test.getSource().orElse(null) instanceof MethodSource method) {
-        String binding = method.getClassName() + "#" + method.getMethodName();
-        String observed = switch (kind) {
-          case "runtime" -> "Выполнение прервано ошибкой программы;\nрезультат не получен.";
-          case "timeout" -> "Выполнение остановлено\nпо пределу времени; результат не получен.";
-          case "output-limit" -> "Выполнение остановлено\nпо пределу вывода; результат не получен.";
-          default -> null;
-        };
-        if (observed != null)
-          for (Object entry : publicCases)if(entry instanceof Map<?,?> item&&binding.equals(item.get("test"))&&item.get("id") instanceof String id&&publicReports.stream().noneMatch(observation->id.equals(observation.get("id"))&&binding.equals(observation.get("test"))))
-              publicReports.add(new HashMap<>(Map.of(
-                  "id", id, "test", binding, "actual", observed, "uniqueId", test.getUniqueId())));
-      }
     }
     switch (result.getStatus()) {
       case SUCCESSFUL:
@@ -336,15 +317,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         if (values.containsKey(key))
           report.put(key, bounded(values.get(key)));
     }
-    if (test.getSource().orElse(null) instanceof MethodSource method) {
-      Map<String, String> values = entry.getKeyValuePairs();
-      if (values.containsKey("public-case") && values.containsKey("actual"))
-        publicReports.add(new HashMap<>(Map.of("id", values.get("public-case"), "test",
-            method.getClassName() + "#" + method.getMethodName(), "actual",
-            values.get("actual").substring(0, Math.min(8192, values.get("actual").length())),
-            "uniqueId", test.getUniqueId())));
-    }
   }
+
   @SuppressWarnings("unchecked")
   public static void main(String[] args) throws Exception {
     Path parameterFile = Path.of(args[0]);
@@ -367,9 +341,6 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     if (observe != "implementation".equals(listener.submissionMode))
       throw new IOException("Private assertion mode mismatch");
     listener.observeAssertions = observe;
-    Object publicCases = params.get("public_cases");
-    if (publicCases instanceof List<?> cases)
-      listener.publicCases = cases;
     Launcher launcher = LauncherFactory.create();
     launcher.registerTestExecutionListeners(listener,
         new LegacyXmlReportGeneratingListener(Path.of((String) params.get("reports_dir")),
@@ -387,10 +358,6 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     feedback.put("grading", listener.grading);
     feedback.put("classMaximums", listener.classMaximums);
     feedback.put("containerFailures", listener.containerFailures);
-    for (Map<String, String> report : listener.publicReports)
-      report.put("status", "successful".equals(listener.outcomes.get(report.remove("uniqueId")))
-          ? "passed" : "failed");
-    feedback.put("publicCaseObservations", listener.publicReports);
     byte[] payload = feedback.toJSONString().getBytes(StandardCharsets.UTF_8);
     Mac authentication = Mac.getInstance("HmacSHA256");
     authentication.init(new SecretKeySpec(reportKey, "HmacSHA256"));

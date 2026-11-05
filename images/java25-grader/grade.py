@@ -586,7 +586,6 @@ def validate_config(config):
         "variants",
         "apiPrecheck",
         "additionalJavaSources",
-        "publicCases",
         "feedback",
         "javaBuild",
     }
@@ -1400,7 +1399,6 @@ def _execute(
                     "student_classes": sorted(_compiled_class_names(student)),
                     "student_classes_root": str(student.resolve()),
                     "submission_mode": config["mode"],
-                    "public_cases": config.get("publicCases", []),
                     "observe_assertions": not student_tests,
                     **(
                         {"trusted_console_support_root": str(trusted.resolve())}
@@ -1517,7 +1515,6 @@ def _execute(
                 "Trusted check raised an unexpected exception outside student code"
             )
         base.update(
-            publicCaseObservations=counts.get("publicCaseObservations", []),
             rawResult=raw,
             reportFormat="junit-xml",
             counts=counts,
@@ -2000,14 +1997,6 @@ def grade(job_dir, registry=None):
     if official:
         _admit_java_job()
     profile, bundle, toolchain = preflight(config["runtime"], registry)
-    import runpy
-
-    try:
-        runpy.run_path(str(PLATFORM / "runtime/student_feedback.py"))[
-            "validate_public_cases"
-        ](config.get("publicCases", []))
-    except ValueError as error:
-        raise GraderError("Invalid public feedback policy") from error
     additional_evidence = None
     native_context = {} if config["runtime"] == NATIVE_RUNTIME else None
 

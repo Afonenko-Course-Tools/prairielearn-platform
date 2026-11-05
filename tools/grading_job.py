@@ -368,8 +368,6 @@ def prepare_job(
             "requirement": check["feedback"]["requirement"],
             "whatCheck": check["feedback"]["what-check"],
         }
-    if "public-cases" in check:
-        grading["publicCases"] = check["public-cases"]
     if api:
         grading["apiPrecheck"] = api
     if extra_policy:

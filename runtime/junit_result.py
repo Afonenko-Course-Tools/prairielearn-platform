@@ -294,7 +294,6 @@ def _read_junit_xml(directory, feedback_file):
         aborted=sum(s == 'aborted' for s in outcomes.values()),
         containerFailures=container_failures, failureKinds=failures,
         cases=cases if feedback['feedbackProtocolVersion'] == 2 else [],
-        publicCaseObservations=feedback.get('publicCaseObservations', []),
     )
     grading = feedback.get('grading', {})
     if set(grading) != set(outcomes):

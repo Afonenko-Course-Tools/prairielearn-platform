@@ -114,33 +114,6 @@
             ]
           }
         },
-        "publicCaseObservations": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "test": {
-                "type": "string"
-              },
-              "actual": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "test",
-              "actual",
-              "status"
-            ],
-            "additionalProperties": false
-          }
-        },
         "failureKinds": {
           "type": "object",
           "additionalProperties": {
@@ -507,33 +480,6 @@
       ],
       "additionalProperties": false
     },
-    "publicCaseObservations": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "test": {
-            "type": "string"
-          },
-          "actual": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "test",
-          "actual",
-          "status"
-        ],
-        "additionalProperties": false
-      }
-    },
     "buildEvidence": {
       "type": "object",
       "properties": {
@@ -722,33 +668,6 @@
                   "aborted",
                   "skipped"
                 ]
-              }
-            },
-            "publicCaseObservations": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "test": {
-                    "type": "string"
-                  },
-                  "actual": {
-                    "type": "string"
-                  },
-                  "status": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "test",
-                  "actual",
-                  "status"
-                ],
-                "additionalProperties": false
               }
             },
             "failureKinds": {
@@ -1101,33 +1020,6 @@
             "files"
           ],
           "additionalProperties": false
-        },
-        "publicCaseObservations": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "test": {
-                "type": "string"
-              },
-              "actual": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "test",
-              "actual",
-              "status"
-            ],
-            "additionalProperties": false
-          }
         },
         "buildEvidence": {
           "type": "object",

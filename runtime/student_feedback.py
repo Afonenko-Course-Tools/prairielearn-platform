@@ -69,37 +69,7 @@ _KINDS = {
 }
 
 
-def validate_public_cases(cases):
-    if not isinstance(cases, list) or len(cases) > 32:
-        raise ValueError("Invalid public cases")
-    ids = set()
-    for case in cases:
-        if (
-            not isinstance(case, dict)
-            or set(case)
-            - {"id", "name", "test", "input", "state", "action", "expected"}
-            or not {"id", "name", "test", "expected"} <= set(case)
-            or not {"input", "state", "action"} & set(case)
-        ):
-            raise ValueError("Invalid public case fields")
-        if (
-            any(not isinstance(v, str) or len(v) > 8192 for v in case.values())
-            or not case["id"]
-            or not case["test"]
-            or not case["name"].strip()
-            or len(case["name"]) > 256
-            or case["id"] in ids
-        ):
-            raise ValueError("Invalid public case value")
-        ids.add(case["id"])
-    return cases
-
-
 def student_result(result, descriptor):
-    try:
-        cases = validate_public_cases(descriptor.get("publicCases", []))
-    except (ValueError, AttributeError):
-        return student_result({"classification": "infrastructure-failure"}, {})
     kind = _KINDS.get(result.get("classification"), "infrastructure")
     if result.get("infrastructure") == "failure" or result.get("grading_error"):
         kind = "infrastructure"
@@ -118,7 +88,6 @@ def student_result(result, descriptor):
         "reason": reason,
         "observed": observed,
         "whatCheck": what_check,
-        "publicCases": [],
     }
     native = {
         "gradable": kind != "infrastructure",
@@ -170,83 +139,7 @@ def student_result(result, descriptor):
             ),
         )
     case_results = counts.get("cases") if isinstance(counts, dict) else None
-    bound_cases = (
-        [case for case in case_results if "test" in case]
-        if isinstance(case_results, list)
-        else []
-    )
-    observations = result.get("publicCaseObservations", [])
-    public_bindings = {}
-    for case in cases:
-        matches = [
-            o for o in observations
-            if isinstance(o, dict) and o.get("id") == case["id"]
-            and o.get("test") == case["test"]
-        ]
-        value = {key: case[key] for key in
-                 ("id", "name", "input", "state", "action", "expected") if key in case}
-        value.update(actual=None, status="unknown", statusReason="Нет достоверного результата выполнения.")
-        reported = (len(matches) == 1 and matches[0].get("status") in ("passed", "failed")
-                    and isinstance(matches[0].get("actual"), str))
-        execution = [leaf for leaf in bound_cases if leaf["test"] == case["test"]]
-        if kind == "infrastructure":
-            value["statusReason"] = "Проверяющая среда не получила достоверный результат."
-        elif kind in ("compile", "submission"):
-            value.update(status="not-run", statusReason="Зависимые проверки не запускались: не пройден допуск ответа.")
-        elif bound_cases and len(bound_cases) != len(case_results):
-            value["statusReason"] = "Связь части выполненных проверок с публичным сценарием не установлена."
-        elif bound_cases:
-            if len(execution) == 1:
-                outcome = counts["outcomes"][execution[0]["id"]]
-                if outcome in ("successful", "failed"):
-                    value.update(status="passed" if outcome == "successful" else "failed", statusReason="")
-                    public_bindings.setdefault(execution[0]["id"], []).append(value)
-                    if reported and matches[0]["status"] == value["status"]:
-                        value["actual"] = matches[0]["actual"][:8192]
-                else:
-                    value["statusReason"] = "Проверка началась, но её результат не установлен."
-            elif len(execution) > 1:
-                value["statusReason"] = "Публичный сценарий соответствует нескольким выполненным проверкам; однозначная связь не установлена."
-            else:
-                value.update(status="not-run", statusReason="Объявленная проверка отсутствует в завершённом наборе.")
-        elif isinstance(case_results, list) and counts.get("executed") == 0:
-            value.update(status="not-run", statusReason="Объявленная проверка не запускалась.")
-        elif reported and (
-            case_results is None or
-            counts.get("feedbackProtocolVersion", 1) == 1 and
-            ("successful" if matches[0]["status"] == "passed" else "failed") in counts["outcomes"].values()
-        ):
-            # Fish/earlier DTOs have explicit observations without MethodSource binding.
-            value.update(actual=matches[0]["actual"][:8192], status=matches[0]["status"], statusReason="")
-        feedback["publicCases"].append(value)
-
-    statuses = {"passed": "пройден", "failed": "не пройден",
-                "not-run": "не запускался", "unknown": "результат не установлен"}
-
-    def public_lines(case):
-        lines = ["Что проверяется: " + case["name"]]
-        for key, label in (("input", "Вход"), ("state", "Состояние"), ("action", "Действие"),
-                           ("expected", "Ожидается"), ("actual", "Получено")):
-            if key in case:
-                if key == "actual" and case[key] is None and case["status"] in ("passed", "failed"):
-                    continue
-                lines.append(label + ": " + ("не получено" if case[key] is None else case[key]))
-        lines.append("Статус: " + statuses[case["status"]])
-        if case["statusReason"]:
-            lines.append(_prose("Причина: " + case["statusReason"]))
-        return lines
-
     has_leaf_results = kind != "infrastructure" and isinstance(case_results, list) and counts.get("complete") is True
-    if feedback["publicCases"] and not has_leaf_results:
-        native["tests"] = []
-        for case in feedback["publicCases"]:
-            card = {"name": case["name"], "description": "Публичный сценарий: " + statuses[case["status"]],
-                    "message": "\n".join(public_lines(case))}
-            if case["status"] in ("passed", "failed"):
-                card.update(points=int(case["status"] == "passed"), max_points=1)
-                native["tests"].append(card)
-            else:
-                native["message"] += "\n\n" + card["message"]
     if has_leaf_results:
         feedback["cases"] = []
         native["tests"] = []
@@ -254,12 +147,7 @@ def student_result(result, descriptor):
         for original in case_results:
             case = {key: original[key] for key in ("name", "status", "expected", "actual") if key in original}
             feedback["cases"].append(case)
-            contexts = public_bindings.get(original["id"], [])
             lines = []
-            if contexts:
-                case["publicCases"] = contexts
-                for context in contexts:
-                    lines.extend(public_lines(context))
             if counts.get("feedbackProtocolVersion") == 2:
                 checks = [dict(check) for check in original["checks"]]
                 case["checks"] = checks
@@ -294,11 +182,6 @@ def student_result(result, descriptor):
                                     "points": int(case["status"] == "passed"), "max_points": 1})
         if counts.get("feedbackProtocolVersion") == 2:
             feedback["feedbackCompleteness"] = "complete" if complete else "incomplete"
-        # Unbound public context remains visible without inventing another scored leaf.
-        attached = {case["id"] for group in public_bindings.values() for case in group}
-        for case in feedback["publicCases"]:
-            if case["id"] not in attached:
-                native["message"] += "\n\n" + "\n".join(public_lines(case))
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
         text = (

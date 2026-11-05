@@ -63,7 +63,7 @@ def grade(job_dir):
     if reason: raise GraderError('fish syntax tool failed')
     if code:
         return {**base,'studentCompilation':'failure','trustedCompilation':'not-run','gradable':False,'classification':'student-compilation-failure','format_errors':'Ошибка синтаксиса fish','output':output}
-    observations=[];public_observations=[];output='';classification=None;started=time.monotonic()
+    observations=[];output='';classification=None;started=time.monotonic()
     # Leave time for reporting before the container's hard deadline. A student
     # exceeding the shared execution budget must remain a student timeout.
     deadline=entered+max(0,config['limits']['outer-seconds']-.5)
@@ -95,9 +95,6 @@ def grade(job_dir):
                 if not isinstance(name,str) or type(passed) is not bool or len(observation)==3 and not isinstance(observation[2],str):raise GraderError('Invalid trusted observation')
                 binding=str(index)+': '+name
                 observations.append((binding,passed))
-                if len(observation)==3:
-                    for public in config.get('publicCases',[]):
-                        if public['test']==binding:public_observations.append({'id':public['id'],'test':binding,'actual':observation[2][:8192],'status':'passed' if passed else 'failed'})
     if classification:
         return {**base,'score':0,'classification':classification,'timed_out':classification=='student-timeout','output_limited':classification=='student-output-overflow','message':'Превышен предел выполнения ответа','output':output}
     if len(observations)<config['discovery']['min-executed']: raise GraderError('No trusted checks executed')
@@ -107,7 +104,7 @@ def grade(job_dir):
     elif config['scoring']['mode']!='weighted': raise GraderError('Unsupported fish scoring')
     raw={'score':score,'points':passed,'max_points':len(tests),'gradable':True,'message':'','output':output,'tests':tests}
     counts={'discovered':len(tests),'executed':len(tests),'passed':passed,'failed':len(tests)-passed,'skipped':0,'aborted':0,'containerFailures':0,'outcomes':{name:'successful' if ok else 'failed' for name,ok in observations}}
-    return {**base,'publicCaseObservations':public_observations,'score':score,'maxPoints':len(tests),'classification':'success' if score==1 else 'behavior-failure','rawResult':raw,'counts':counts,'tests':tests,'output':output,'durations':{'execution':time.monotonic()-started}}
+    return {**base,'score':score,'maxPoints':len(tests),'classification':'success' if score==1 else 'behavior-failure','rawResult':raw,'counts':counts,'tests':tests,'output':output,'durations':{'execution':time.monotonic()-started}}
 
 def main():
     import argparse

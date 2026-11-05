@@ -29,17 +29,16 @@ class ConsoleFeedback(unittest.TestCase):
      if kind=='success':self.assertEqual(result['score'],1)
     finally:fixture.doCleanups()
 
- def test_public_case_typed_failure_before_report_is_executed_not_unrun(self):
+ def test_ordinary_junit_typed_failure_before_report_is_executed(self):
   for source,kind in [('throw new IllegalStateException("CLOSED_EARLY_RUNTIME");','runtime'),('while(true){}','timeout'),('while(true){System.out.print("CLOSED_EARLY_OUTPUT".repeat(1024));}','output-limit')]:
    with self.subTest(kind=kind):
     f,_=self.fixture();f.cfg['limits']['run-seconds']=20
-    f.cfg['publicCases']=[{'id':'normal','name':'Обычный запуск возвращает результат','test':'AnswerTest#console','input':'','expected':'PUBLIC_OK'},{'id':'unrun','name':'Другой объявленный сценарий','test':'AnswerTest#unrun','input':'x','expected':'x'}]
     (f.job/'student/Student.java').write_text('public class Student {public static void main(String[] args){'+source+'}}')
-    (f.job/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.*;import static org.junit.jupiter.api.Assertions.*;import java.util.Map;public class AnswerTest {@Test void console(TestReporter reporter)throws Exception{var r=coursesupport.JavaProcess.runCheckingUncaught(Class.forName("Student"),"");reporter.publishEntry(Map.of("public-case","normal","actual",r.stdout()));assertEquals("PUBLIC_OK",r.stdout());}}')
+    (f.job/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.*;import static org.junit.jupiter.api.Assertions.*;import java.util.Map;public class AnswerTest {@Test void console(TestReporter reporter)throws Exception{var r=coursesupport.JavaProcess.runCheckingUncaught(Class.forName("Student"),"");reporter.publishEntry(Map.of("expected","PUBLIC_OK","actual",r.stdout()));assertEquals("PUBLIC_OK",r.stdout());}}')
     result=f.run_job();native=feedback.student_result(result,f.cfg)
     self.assertEqual(native['feedback']['kind'],kind)
-    actual=native['feedback']['publicCases'][0];self.assertEqual(actual['status'],'failed');self.assertIsNotNone(actual['actual']);self.assertNotIn('CLOSED_',json.dumps(native))
-    unrun=native['feedback']['publicCases'][1];self.assertEqual(unrun['status'],'not-run');self.assertIsNone(unrun['actual'])
+    actual=native['feedback']['cases'][0];self.assertEqual(actual['status'],'failed');self.assertNotIn('actual',actual);self.assertNotIn('CLOSED_',json.dumps(native))
+    self.assertEqual(result['counts']['executed'],1);self.assertEqual(len(native['tests']),1)
 
  def fixture(self):
   f=fixtures.JUnitJob();f.setUp();self.addCleanup(f.doCleanups)
@@ -74,6 +73,6 @@ class ConsoleContainerFeedback(unittest.TestCase):
  def test_official_nested_process_runtime_and_legal_exit7(self):
   for source,kind in [('throw new IllegalStateException("CLOSED_NESTED_CONTAINER");','runtime'),('System.out.print("PUBLIC_OK");System.exit(7);','success')]:
    with self.subTest(kind=kind):
-    f,_=self.fixture();f.cfg['publicCases']=[{'id':'normal','name':'Обычный запуск возвращает результат','test':'AnswerTest#console','input':'','expected':'PUBLIC_OK'}];(f.job/'student/Student.java').write_text('public class Student {public static void main(String[] args){'+source+'}}');(f.job/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;public class AnswerTest {@Test void console(org.junit.jupiter.api.TestReporter reporter)throws Exception{var r=coursesupport.JavaProcess.runCheckingUncaught(Class.forName("Student"),"");reporter.publishEntry(java.util.Map.of("public-case","normal","actual",r.stdout()));assertEquals("PUBLIC_OK",r.stdout());}}');f.cfg['limits']['run-seconds']=15;(f.job/'tests/grading-job.json').write_text(json.dumps(f.cfg))
+    f,_=self.fixture();(f.job/'student/Student.java').write_text('public class Student {public static void main(String[] args){'+source+'}}');(f.job/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;public class AnswerTest {@Test void console(org.junit.jupiter.api.TestReporter reporter)throws Exception{var r=coursesupport.JavaProcess.runCheckingUncaught(Class.forName("Student"),"");reporter.publishEntry(java.util.Map.of("expected","PUBLIC_OK","actual",r.stdout()));assertEquals("PUBLIC_OK",r.stdout());}}');f.cfg['limits']['run-seconds']=15;(f.job/'tests/grading-job.json').write_text(json.dumps(f.cfg))
     run=subprocess.run(['docker','run','--rm','--name','codex-common-b-nested-origin-01a1585d','--network','none','--cpus','0.9','--memory','512m','--pids-limit','128','--mount','type=bind,src='+str(f.job)+',dst=/grade',os.environ['PL_TEST_IMAGE']],capture_output=True,text=True,timeout=45)
-    self.assertEqual(run.returncode,0,run.stderr);result=json.loads((f.job/'results/results.json').read_text());self.assertEqual(result['feedback']['kind'],kind);self.assertNotIn('CLOSED_',json.dumps(result)+run.stdout+run.stderr);case=result['feedback']['publicCases'][0];self.assertEqual(case['status'],'failed' if kind=='runtime' else 'passed');self.assertIsNotNone(case['actual'])
+    self.assertEqual(run.returncode,0,run.stderr);result=json.loads((f.job/'results/results.json').read_text());self.assertEqual(result['feedback']['kind'],kind);self.assertNotIn('CLOSED_',json.dumps(result)+run.stdout+run.stderr);case=result['feedback']['cases'][0];self.assertEqual(case['status'],'failed' if kind=='runtime' else 'passed');self.assertNotIn('publicCases',result['feedback'])
