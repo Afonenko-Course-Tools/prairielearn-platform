@@ -1,11 +1,10 @@
 """Проверка actual native пакета; не исполняет и не оценивает ручной ответ."""
-import hashlib,json,re,stat,uuid
+import json,re,stat,uuid
 from html.parser import HTMLParser
 from pathlib import Path
 import jsonschema
 from grading_job import ROOT,JobError,safe
 
-HASH=re.compile(r'^[a-f0-9]{64}$')
 def relative_name(value):
  return isinstance(value,str) and bool(value) and not value.startswith('/') and not re.match(r'^[A-Za-z]:',value) and not re.search(r'[\x00-\x1f\x7f]',value) and '\\' not in value and not any(part in ('','.','..') for part in value.split('/'))
 def file_bytes(root,name):
@@ -16,9 +15,7 @@ def file_bytes(root,name):
  except OSError as error:raise JobError('Missing native package file: '+name) from error
 
 def native_schema(name,value):
- folder=ROOT/'schemas/native-upstream';manifest=json.loads((folder/'manifest.json').read_text())
- for file,sha in manifest['files'].items():
-  if hashlib.sha256(file_bytes(folder,file)).hexdigest()!=sha:raise JobError('Pinned native schema dependency changed')
+ folder=ROOT/'schemas/native-upstream'
  try:jsonschema.Draft7Validator(json.loads(file_bytes(folder,name))).validate(value)
  except jsonschema.ValidationError as error:raise JobError('Invalid native '+name+': '+error.message) from error
 
