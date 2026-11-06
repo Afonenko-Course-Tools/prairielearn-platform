@@ -575,6 +575,8 @@ def _validate_build_observation(
 
 
 def run_job(job, backend="host", registry=None):
+    if getattr(job, "_containers_stopped", True) is False:
+        raise JobError("Grading retry requires stopped containers")
     validate("grading-job", job)
     if not getattr(job, "root", None):
         raise JobError("Prepared private job root required")

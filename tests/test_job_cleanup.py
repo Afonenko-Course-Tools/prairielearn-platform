@@ -89,6 +89,20 @@ class JobCleanup(unittest.TestCase):
                     remove.assert_not_called()
                     run.assert_not_called()
 
+    def test_retry_after_failed_container_removal_cannot_forget_live_container(self):
+        job = self.prepare()
+        self.execute(job, [subprocess.TimeoutExpired('docker', 1), SimpleNamespace(returncode=1, stderr='denied')])
+        original_name = job.containerName
+        with patch.object(jobs, 'validate'), patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run, patch.object(jobs.secrets, 'token_hex') as name:
+            with self.assertRaises(jobs.JobError): jobs.run_job(job, 'container', self.registry)
+            run.assert_not_called()
+            name.assert_not_called()
+        self.assertEqual(job.containerName, original_name)
+        self.assertFalse(job._containers_stopped)
+        with patch.object(jobs.shutil, 'rmtree') as remove:
+            with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
+            remove.assert_not_called()
+
     def test_safe_unlaunched_cleanup_needs_no_image_or_mount_csv(self):
         for backend in ['container', 'host']:
             with self.subTest(backend=backend):
