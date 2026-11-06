@@ -9,6 +9,20 @@ test('v3 reader requires explicit canonical grading/submission for exact questio
   const d=fixture();change(d);assert.throws(()=>bridgeDeliverySchema.parse(d));
  }
 });
+test('ручная проверка проекта принимает editor и upload с закрытым DTO',()=>{
+ for(const submission of [{mode:'editor',aceMode:'ace/mode/java'},{mode:'upload',layout:'zip'}]) {
+  const d=fixture();d.gradingPayloads[q].submission=submission;
+  assert.deepEqual(bridgeDeliverySchema.parse(d).gradingPayloads[q],d.gradingPayloads[q]);
+  for(const extra of [{runtime:'java'},{projectCheck:'check'},{sources:[{projectRelativePath:'Main.java',submissionRelativePath:'Main.java'}]},{upstreamGradingMethod:'Manual'},{trusted:true}]) {
+   const changed=structuredClone(d);Object.assign(changed.gradingPayloads[q],extra);
+   assert.throws(()=>bridgeDeliverySchema.parse(changed));
+  }
+ }
+ for(const submission of [{mode:'editor',layout:'zip'},{mode:'upload',aceMode:'ace/mode/java'},{mode:'editor',aceMode:'java'},{mode:'upload',layout:'tar'},{mode:'workspace'},{mode:'editor',trusted:true}]) {
+  const d=fixture();d.gradingPayloads[q].submission=submission;
+  assert.throws(()=>bridgeDeliverySchema.parse(d));
+ }
+});
 test('v3 choice has a required canonical pool and safe owner relative roots',()=>{
  const d=fixture(),b='demo/exr-b';d.questions.push(b);d.gradingPayloads[b]={...d.gradingPayloads[q],uuid:'8cb757ae-6f14-467a-83cf-c1cfcb65d116'};
  const w=d.works[0],s=w.slots[0];Object.assign(s,{id:'demo/lab/alt-pair',selection:'choice',candidates:[q,b]});w.completion.slotIds=[s.id];w.completion.requiredSlotIds=[s.id];
