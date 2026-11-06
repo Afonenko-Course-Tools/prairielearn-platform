@@ -1,5 +1,4 @@
 """Реальный Git seed: настройки recipe, учебный текст commit и произвольные файлы."""
-import hashlib
 import io
 import json
 import os
@@ -18,7 +17,7 @@ from grading_job import JobError
 
 
 class RecipeSeed(unittest.TestCase):
-    def fixture(self, files, *, second_commit=False):
+    def fixture(self, files, *, second_commit=False, index_version=None, packed=False, change=None):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -46,6 +45,12 @@ class RecipeSeed(unittest.TestCase):
             name = next(iter(files))
             (work / name).write_bytes(files[name] + b'next\n')
             git('commit', '-qam', 'Второе состояние')
+        if index_version is not None:
+            git('update-index', '--index-version=' + str(index_version))
+        if packed:
+            git('repack', '-ad')
+        if change is not None:
+            change(git, work)
         entries = {}
         for path in work.rglob('*'):
             if not path.is_file():
@@ -59,7 +64,7 @@ class RecipeSeed(unittest.TestCase):
             entries['work/' + name] = path.read_bytes()
         return root, entries
 
-    def proof(self, root, entries):
+    def proof(self, root, entries, *, zip_modes=None):
         native = root / 'native'
         prefix = 'questions/fixture/exr-seed/'
         question = native / prefix
@@ -67,7 +72,9 @@ class RecipeSeed(unittest.TestCase):
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as archive:
             for name, data in sorted(entries.items()):
-                archive.writestr(name, data)
+                member = zipfile.ZipInfo(name)
+                member.external_attr = ((zip_modes or {}).get(name, 0o100644)) << 16
+                archive.writestr(member, data)
                 if '/.git/' not in '/' + name:
                     path = question / 'clientFilesQuestion/starter' / name
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,8 +95,7 @@ class RecipeSeed(unittest.TestCase):
             'archive': 'workspace/.pl-seed/starter.zip',
             'manifest': 'workspace/.pl-seed/manifest.json',
         }}
-        with patch('subprocess.run', side_effect=AssertionError('Reader must not spawn Git')):
-            return seed_proof(native, prefix, payload)
+        return seed_proof(native, prefix, payload)
 
     def test_recipe_autocrlf_false_and_authored_commit_message(self):
         root, entries = self.fixture({'README.md': 'Учебный проект\n'.encode(), 'notes.txt': b'notes\n'})
@@ -98,6 +104,72 @@ class RecipeSeed(unittest.TestCase):
     def test_initial_tree_does_not_require_specific_filenames(self):
         root, entries = self.fixture({'catalog.tsv': b'name\tvalue\nA\t1\n'})
         self.proof(root, entries)
+
+    def test_git_native_packed_objects_and_index_v4(self):
+        root, entries = self.fixture({'notes.txt': b'notes\n', 'notes-other.txt': b'other\n'}, index_version=4, packed=True)
+        self.proof(root, entries)
+
+    def test_git_environment_does_not_select_another_repository(self):
+        root, entries = self.fixture({'notes.txt': b'notes\n'})
+        with patch.dict(os.environ, {'GIT_DIR': '/missing', 'GIT_WORK_TREE': '/missing',
+                                     'GIT_INDEX_FILE': '/missing', 'GIT_CONFIG_COUNT': '1',
+                                     'GIT_CONFIG_KEY_0': 'core.fsmonitor', 'GIT_CONFIG_VALUE_0': '/missing'}):
+            self.proof(root, entries)
+
+    def test_changed_and_untracked_worktree_files_are_rejected(self):
+        for tracked in (True, False):
+            with self.subTest(tracked=tracked):
+                root, entries = self.fixture({'notes.txt': b'notes\n'})
+                entries['work/' + ('notes.txt' if tracked else 'solution.txt')] = b'changed\n'
+                with self.assertRaises(JobError):
+                    self.proof(root, entries)
+
+    def test_missing_git_object_is_rejected(self):
+        root, entries = self.fixture({'notes.txt': b'notes\n'})
+        del entries[next(n for n in entries if n.startswith('work/.git/objects/'))]
+        with self.assertRaises(JobError):
+            self.proof(root, entries)
+
+    def test_corrupt_git_object_is_rejected(self):
+        root, entries = self.fixture({'notes.txt': b'notes\n'})
+        name = next(n for n in entries if n.startswith('work/.git/objects/'))
+        entries[name] = b'corrupt object'
+        with self.assertRaises(JobError):
+            self.proof(root, entries)
+
+    def test_external_git_state_is_rejected(self):
+        for name in ('commondir', 'objects/info/alternates', 'info/grafts', 'shallow'):
+            with self.subTest(name=name):
+                root, entries = self.fixture({'notes.txt': b'notes\n'})
+                entries['work/.git/' + name] = b'/missing\n'
+                with self.assertRaises(JobError):
+                    self.proof(root, entries)
+
+    def test_object_outside_initial_tree_is_rejected(self):
+        def extra_object(git, work):
+            path = work.parent / 'private-solution'
+            path.write_bytes(b'private solution\n')
+            git('hash-object', '-w', str(path))
+        root, entries = self.fixture({'notes.txt': b'notes\n'}, change=extra_object)
+        with self.assertRaises(JobError):
+            self.proof(root, entries)
+
+    def test_git_symlink_tree_is_rejected(self):
+        def symlink(git, work):
+            (work / 'link').symlink_to('notes.txt')
+            git('add', 'link')
+            git('commit', '--amend', '--no-edit', '-q')
+        root, entries = self.fixture({'notes.txt': b'notes\n'}, change=symlink)
+        with self.assertRaises(JobError):
+            self.proof(root, entries)
+
+    def test_zip_symlink_and_traversal_are_rejected(self):
+        for name, mode in [('work/link', 0o120777), ('../outside', 0o100644)]:
+            with self.subTest(name=name):
+                root, entries = self.fixture({'notes.txt': b'notes\n'})
+                entries[name] = b'notes.txt'
+                with self.assertRaises(JobError):
+                    self.proof(root, entries, zip_modes={name: mode})
 
     def test_unsafe_config_remains_rejected(self):
         for change in ('true', 'input', 'fsmonitor'):

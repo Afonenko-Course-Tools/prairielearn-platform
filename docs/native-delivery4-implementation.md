@@ -10,8 +10,12 @@
 Manual/Workspace не получают фиктивный Job или runtime.
 
 Workspace reader ограничивает размер ZIP, число/размер записей, проверяет exact
-manifest inventory, пути, типы и aliases, Git object closure A/main, index/tree/
-worktree и публичные common-file bytes. ZIP/receipt/seed reader не исполняет.
+manifest inventory, пути, типы и aliases, а также публичные common-file bytes.
+Git проверяет временную копию seed штатными командами `fsck`, `rev-list`,
+`diff-index`, `ls-tree` и `cat-file`: требуется один исходный commit на `main`,
+совпадающие index/tree/файлы и отсутствие объектов вне исходного дерева.
+Содержимое ZIP и hooks не исполняются; внешние Git environment/config отключены.
+Собственного разбора object/index и вычисления SHA у reader нет.
 Producer прежнего same-operation пути проверяет include-git/common-files и
 currentness до передачи seed. DTO или hash не создаёт права materialization.
 
@@ -30,15 +34,13 @@ whole135, OCI, installed и release остаются открыты. Publish с�
 эти gates. Standalone Figure с RawBlock/RawInline по-прежнему явно отвергается;
 произвольный HTML не разрешён и узлы не удаляются молча.
 
-## Адресная коррекция index/build reader
+## Проверка Git и выдача candidate
 
-Workspace index v2 сравнивается с initial A tree по точным path/mode/OID и stage0.
-Количество и encoded UTF-8 pathname length должны совпадать с
-читаемым bounded index. Stat cache (ctime/mtime/dev/inode/uid/gid) не является
-содержимым Git дерева и не закрепляется произвольными timestamp-проверками.
-Подтверждённые mode/type и pathname-length mutants отвергаются до proof. Reader
-не запускает Git; реальный `git diff --cached --raw HEAD` используется только на
-собственном тестовом seed для различающего контроля.
+Git сам читает поддерживаемые им object/index форматы, включая packed objects и
+index v4. Reader проверяет результат команд и фактические bytes файлов.
+Symlink/submodule в дереве, внешнее Git state, небезопасный config и лишние
+начальные файлы по-прежнему отвергаются. Stat cache не служит подтверждением
+содержимого: bytes каждого файла сравниваются с `git cat-file blob`.
 
 `build-course.py` применяет существующий `package_integrity` к закрытым3/4 после
 export и до provenance/атомарной выдачи candidate. Это проверяет реальные native
@@ -47,12 +49,3 @@ release capability проверяется отдельно; legacy receipt2(publ
 Clean-source, final/recheck и no-replacement fences сохранены. Legacy3 положительный
 fixture теперь содержит полный closed3 пакет вместо UUID-only stub. Выдача
 локального UNIT candidate не является release/assignment/image qualification.
-
-## Обязательное расширение index tail
-
-После index entries reader разбирает extension headers до SHA1 footer. Неизвестное
-mandatory расширение (первая буква signature вне ASCII A–Z) получает отказ до
-package/receipt proof. Uppercase optional пропускается по declared size, как в
-проверенном Git. Доказанное игнорирование oversized TEST без payload и короткого
-остатка сохранено; дополнительных length/order ограничений не добавлено. Это
-data-only проверка: Git запускается только над собственным UNIT seed в тесте.
