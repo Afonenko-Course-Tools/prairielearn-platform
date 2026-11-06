@@ -53,8 +53,8 @@ class Lifecycle(unittest.TestCase):
                 if p.is_file():
                     name = str(p.relative_to(self.student))
                     z.write(p, name)
-                    files.append({'name':name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
-        (seed/'manifest.json').write_text(json.dumps({'schema':'pl-git-workspace-seed-v1','sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'files':files}))
+                    files.append(name)
+        (seed/'manifest.json').write_text(json.dumps({'schema':'pl-git-workspace-seed-v1','files':files}))
 
     def boot(self):
         return subprocess.run(['bash',str(ENTRYPOINT),'true'],cwd=self.home,env=ENV,text=True,capture_output=True)
@@ -105,13 +105,13 @@ class Lifecycle(unittest.TestCase):
         self.assertNotEqual(self.boot().returncode,0)
         self.assertEqual(inventory(self.home),before)
 
-    def test_changed_seed_refuses_restart_without_changing_answer(self):
+    def test_changed_seed_does_not_fence_resume_or_change_answer(self):
         work=self.ready()
         (work/'notes.txt').write_text('не терять\n')
         (self.work/'notes.txt').write_text('другая заготовка\n')
         self.package()
         before=inventory(self.home)
-        self.assertNotEqual(self.boot().returncode,0)
+        self.assertEqual(self.boot().returncode,0)
         self.assertEqual(inventory(self.home),before)
 
     def test_identity_without_work_never_reseeds(self):
@@ -127,7 +127,6 @@ class Lifecycle(unittest.TestCase):
         with zipfile.ZipFile(archive,'a') as z:
             z.writestr('../escape','не извлекать')
         manifest=json.loads((archive.parent/'manifest.json').read_text())
-        manifest['sha256']=hashlib.sha256(archive.read_bytes()).hexdigest()
         (archive.parent/'manifest.json').write_text(json.dumps(manifest))
         self.assertNotEqual(self.boot().returncode,0)
         self.assertFalse((self.root/'escape').exists())

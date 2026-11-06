@@ -1,27 +1,22 @@
+// @ts-check
 import {readFile,lstat} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
-import {isAbsolute,resolve,basename} from 'node:path';
+import {isAbsolute,resolve} from 'node:path';
 import {bridgeDeliverySchema} from '../bridge/delivery.mjs';
-import {canonicalJSONString} from '../bridge/policy.mjs';
 
-/** Чтение immutable payload до соединения с native БД. */
+/** Чтение выбранного Native пакета до подключения к БД. @param {string} path */
 export async function readNativeCoursePayload(path) {
- if(typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path)throw new Error('Absolute immutable native path required');
+ if(typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path)throw new Error('Absolute normalized native path required');
+ /** @param {string} name */
  async function containedFile(name) {
-  if(typeof name!=='string'||name.startsWith('/')||name.includes('\\')||name.split('/').some(s=>['','.','..'].includes(s)))throw new Error('Unsafe inventory path');
+  if(typeof name!=='string'||name.startsWith('/')||/^[A-Za-z]:/.test(name)||/[\x00-\x1f\x7f]/.test(name)||name.includes('\\')||name.split('/').some(s=>['','.','..'].includes(s)))throw new Error('Unsafe native file path');
   let current='';
-  for(const part of (path+'/'+name).split('/').filter(Boolean)) {current+='/'+part;if((await lstat(current)).isSymbolicLink())throw new Error('Symlink inventory');}
-  return readFile(path+'/'+name);
+  for(const part of (path+'/'+name).split('/').filter(Boolean)) {current+='/'+part;if((await lstat(current)).isSymbolicLink())throw new Error('Symlink native path');}
+  if(!(await lstat(current)).isFile())throw new Error('Native regular file required');
+  return readFile(current);
  }
- const delivery=JSON.parse(await containedFile('delivery.json'));
- const info=JSON.parse(await containedFile('infoCourse.json'));
- if(!delivery||![3,4].includes(delivery.schemaVersion)||!delivery.files||typeof delivery.files!=='object'||Array.isArray(delivery.files)||!Object.hasOwn(delivery.files,'infoCourse.json'))throw new Error('Course metadata absent from native v3 inventory');
- bridgeDeliverySchema.parse(delivery);
- const {deliveryHash,...payload}=delivery;
- if(createHash('sha256').update(canonicalJSONString(payload)).digest('hex')!==deliveryHash||basename(path)!==deliveryHash)throw new Error('Delivery hash mismatch');
- if(delivery.candidate)throw new Error('Candidate payload requires separate diagnostic verification; production bootstrap rejected');
- for(const [name,hash] of Object.entries(delivery.files)) {
-  if(typeof hash!=='string'||!/^[a-f0-9]{64}$/.test(hash)||createHash('sha256').update(await containedFile(name)).digest('hex')!==hash)throw new Error('Native payload changed');
- }
+ const delivery=bridgeDeliverySchema.parse(JSON.parse((await containedFile('delivery.json')).toString('utf8')));
+ const info=JSON.parse((await containedFile('infoCourse.json')).toString('utf8'));
+ if(delivery.candidate)throw new Error('Candidate payload cannot be used by configured production bootstrap');
+ for(const name of delivery.files)await containedFile(name);
  return {delivery,info};
 }

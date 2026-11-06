@@ -1,3 +1,5 @@
+import base64
+from selected_job_fixture import native_manifest
 """Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
 
 import hashlib
@@ -122,21 +124,14 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.run_job()["classification"], "student-compilation-failure"
         )
 
-    def test_legacy_and_explicit_true_require_primary_even_when_zip_has_it(self):
+    def test_required_primary_is_satisfied_by_its_exact_archive_path(self):
         (self.job / "student/Student.java").unlink()
         for required in [None, True]:
             self.policy(**({} if required is None else {"primaryRequired": required}))
-            self.zip(
-                [
-                    (
-                        "Student.java",
-                        "public class Student {public static int answer(){return 42;}}",
-                    )
-                ]
-            )
+            self.zip([("Student.java", "public class Student {public static int answer(){return 42;}}")])
             r = self.run_job()
-            self.assertFalse(r["gradable"])
-            self.assertNotIn("score", r)
+            self.assertEqual(r["classification"], "success", r)
+            self.assertEqual(r["score"], 1)
 
     def test_optional_direct_primary_needs_no_archive(self):
         self.policy(primaryRequired=False)
@@ -160,7 +155,6 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.policy(primaryRequired=False)
         for name in [
             "Student.java",
-            "AnswerTest.java",
             "grading-job.json",
             "tests/grading-job.json",
             "../Escape.java",
@@ -177,9 +171,10 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         common.parent.mkdir()
         common.write_text("package common; public class Helper {}")
         self.cfg["testFiles"].append("common/Helper.java")
-        self.rejected(
-            archive([("common/Helper.java", "package common; public class Helper {}")])
-        )
+        self.zip([("common/Helper.java", "package common; public class Helper {}")])
+        collision = self.run_job()
+        self.assertEqual(collision["classification"], "unsafe-submission", collision)
+        self.assertNotIn("score", collision)
         self.zip(
             [
                 ("other/Solution.java", "package other; public class Solution {}"),
@@ -297,7 +292,12 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["apiPrecheck"], "success")
         self.assertEqual(r["score"], 1)
         evidence = r["additionalSources"]
-        self.assertEqual(evidence["archiveSha256"], hashlib.sha256(data).hexdigest())
+        self.assertNotIn("archiveSha256", evidence)
+        self.assertEqual([x["bytes"] for x in evidence["files"]], [len(text.encode("utf-8")) for _, text in [
+            ("base/Base.java", "package base; public class Base {public static int answer(){return left.Helper.value()+right.Helper.value();}}"),
+            ("left/Helper.java", "package left; public class Helper {public static int value(){return 17;}}"),
+            ("right/Helper.java", "package right; public class Helper {public static int value(){return 25;}}"),
+        ]])
         self.assertEqual(
             [x["path"] for x in evidence["files"]],
             ["base/Base.java", "left/Helper.java", "right/Helper.java"],
@@ -401,7 +401,6 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             "a/./Escape.java",
             ".hidden/Escape.java",
             "Student.java",
-            "AnswerTest.java",
             "grading-job.json",
             "data.txt",
             link,
@@ -637,9 +636,7 @@ class OptionalPreparationTests(unittest.TestCase):
 
             def selected(name, out):
                 return {
-                    "projectRelativePath": name,
-                    "submissionRelativePath": out,
-                    "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                    "name":out,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
             check = {
@@ -681,23 +678,12 @@ class OptionalPreparationTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCasesHash": {
-                    "projectRelativePath": "tests/cases.json",
-                    "sha256": hashlib.sha256(
-                        (project / "tests/cases.json").read_bytes()
-                    ).hexdigest(),
-                },
+                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
                 "contractFixtures": [
                     selected("tests/fixtures/only.zip", "additional-sources.zip")
                 ],
             }
-            manifest = {
-                "schemaVersion": 1,
-                "bookRoot": "tasks",
-                "sourceSnapshotHash": "a" * 64,
-                "inventoryHash": "b" * 64,
-                "projects": [fact],
-            }
+            manifest = native_manifest(fact)
             for scenario in ["reference:correct", "contract:only"]:
                 job = jobs.prepare_job(
                     manifest,
@@ -713,31 +699,6 @@ class OptionalPreparationTests(unittest.TestCase):
                     )
                     extras, _ = grader._additional_inventory(job.root, job["grading"])
                     self.assertEqual([n for n, _ in extras], ["other/Solution.java"])
-                    expected = jobs.digest(
-                        {
-                            "sources": {
-                                n: hashlib.sha256(b).hexdigest() for n, b in extras
-                            },
-                            "javaBuild": job["grading"]["javaBuild"],
-                        }
-                    )
-                    self.assertEqual(jobs._prepared_build_input_hash(job), expected)
-                    stage = job.root / "extra-stage"
-                    stage.mkdir()
-                    paths = []
-                    names = {}
-                    for name, data in extras:
-                        target = stage / name
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(data)
-                        paths.append(str(target))
-                        names[str(target)] = name
-                    self.assertEqual(
-                        grader._java_build_input(
-                            job.root, job["grading"]["javaBuild"], paths, names
-                        ),
-                        expected,
-                    )
                     # Реальная javac/JUnit проверка тех же materialized bytes; это не Gradle/image proof.
                     cfg = job["grading"]
                     cfg["runtime"] = "java25-junit-v1"

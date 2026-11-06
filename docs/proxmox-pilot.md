@@ -95,9 +95,10 @@ Docker socket предоставлен только PL для запуска gra
 учреждения в записи курса. Перед переносом snapshot выполните `check_registry.py`
 и `stage_courses.py`; публикуемый payload должен иметь полный release receipt.
 
-Для новой изолированной поставки подготовьте readonly `/course/KEY/DELIVERY_HASH`
-и разрешённый bridge binding. Используйте уже существующего native administrator,
-его private allowlist и **те же** токены, ключи и сертификаты. Каталог учреждений
+Для новой изолированной поставки подготовьте readonly `/course/KEY/DELIVERY_HASH`.
+Передайте через `--actor-uid` точный UID уже существующего native administrator.
+Локальный CLI проверяет пользователя и его членство в native `administrators`;
+конфигурация Gateway и список разрешённых Gateway UID для операции не нужны. Каталог учреждений
 не содержит SSO registration и не изменяет issuer/client/deployment/subjects.
 Registry смонтируйте отдельным readonly файлом в контейнер; путь ниже — пример,
 его отсутствие является ошибкой, скрипт не генерирует конфигурацию.
@@ -106,12 +107,12 @@ Registry смонтируйте отдельным readonly файлом в ко
 sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
   /PrairieLearn/apps/prairielearn/tools/bootstrap-native-course.mjs \
   --registry /run/deployment/courses.json --course-key COURSE_KEY \
-  --path /course/COURSE_KEY/DELIVERY_HASH
+  --path /course/COURSE_KEY/DELIVERY_HASH --actor-uid NATIVE_ADMIN_UID
 ```
 
 CLI проверяет v2 registry и institution catalog до native dependencies, затем
-inventory/hash/symlinks и bridge path, production config и фактическую administrator
-роль. Он вызывает native `models/institution.selectAllInstitutions` и
+production payload, отсутствие symlinks, точные source course ID/UUID,
+production config и фактическую administrator роль. Candidate payload запрещён. Он вызывает native `models/institution.selectAllInstitutions` и
 `insertInstitution({shortName,longName,displayTimezone,uidRegexp})`, далее native
 `models/course.insertCourse` с разрешённым `institution_id` и actor/audit. Это те
 же модели, которые используют административные tRPC `institutions.addInstitution`
@@ -133,10 +134,18 @@ descriptor поля — shortName/longName/displayTimezone/uidRegexp; timezone �
 sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
   /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs \
   --course-id ACTUAL_COURSE_ID --path /course/COURSE_KEY/DELIVERY_HASH \
+  --actor-uid NATIVE_ADMIN_UID \
   --registry /run/deployment/courses.json --course-key COURSE_KEY
 ```
 
 Sync дополнительно сравнивает фактический institution ID до изменения native path.
+До записи проверяются существующие native course instances: родительский course ID,
+UUID и `short_name`, который PrairieLearn берёт из имени каталога instance.
+Чужой родитель, неоднозначность, удалённый instance или подмена UUID завершают
+команду ошибкой. После sync команда перечитывает instances только выбранного
+course ID и сверяет каждый объявленный instance по имени и UUID; возвращает
+фактические native IDs. Bootstrap возвращает `syncRequired: true`, без выдуманного
+course instance ID.
 Прежняя форма с actual ID без registry остаётся локальной операцией существующего
 курса, она не создаёт institution и не выбирает Default. Наличие неизвестного key
 в явно переданной registry всегда ошибка. Сам bootstrap не подтверждает native
@@ -171,12 +180,14 @@ course, access и question namespaces не менять. Legacy Default/pilot д
 ```sh
 sudo docker exec -w /PrairieLearn prairielearn-pl-1 node \
   /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs \
-  --course-id ACTUAL_COURSE_ID --path /course/COURSE_ID/NEW_DELIVERY_HASH
+  --course-id ACTUAL_COURSE_ID --path /course/COURSE_ID/NEW_DELIVERY_HASH \
+  --actor-uid NATIVE_ADMIN_UID
 ```
 
-Команда проверяет deliveryHash, все inventory hashes, отсутствие symlinks,
-binding, source course ID и прежний UUID. Выполнить её может локальный оператор
-через доверенную конфигурацию с уже созданным native administrator. Actual native
+Команда читает production payload, проверяет отсутствие symlinks, канонический
+путь, source course ID и прежний UUID, затем native course instances. Выполнить
+её может локальный оператор с явным `--actor-uid` уже созданного native
+administrator; `PL_GATEWAY_CONFIG` не требуется. Actual native
 models, audit и named locks используются без прямого SQL изменения оценок.
 Ошибки/warnings native sync завершают команду с ошибкой; после сбоя следует
 проверить фактический native path и повторить операцию либо выбрать прежнюю версию.

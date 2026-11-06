@@ -81,6 +81,19 @@ class ConsumerGuards(unittest.TestCase):
         self.assertEqual(native["feedback"]["feedbackCompleteness"], "incomplete")
         self.assertEqual((native["score"], native["tests"][0]["points"]), (1, 1))
 
+    def test_success_without_optional_checks_has_complete_feedback(self):
+        result = self.result()
+        result["counts"]["cases"][0]["checks"] = []
+        native = af.feedback(result, {})
+        self.assertEqual(native["feedback"]["feedbackCompleteness"], "complete")
+        self.assertEqual((native["score"], native["tests"][0]["points"]), (1, 1))
+
+    def test_existing_tolerance_is_rendered_without_private_data(self):
+        result = self.result()
+        result["counts"]["cases"][0]["checks"][0]["delta"] = "0.25"
+        native = af.feedback(result, {})
+        self.assertIn("Допуск: 0.25", native["tests"][0]["message"])
+
 
 class SignedUnknownGuard(af.ProductionCase):
     def test_broken_signed_unknown_complete_is_infrastructure(self):
@@ -90,27 +103,28 @@ class SignedUnknownGuard(af.ProductionCase):
         def invoke(command, *args, **kwargs):
             params = (
                 json.loads(Path(command[-1]).read_text())
-                if "PlatformJUnitAdapter" in command
+                if any(arg.endswith("PlatformJUnitAdapter") for arg in command)
                 else None
             )
             outcome = original(command, *args, **kwargs)
             if params:
-                path = Path(params["counts_file"])
+                path = Path(params["feedback_file"])
                 counts = json.loads(path.read_text())
                 check = counts["cases"][0]["checks"][0]
                 self.assertEqual(check["availability"], "complete")
                 self.assertEqual(check["delegated"], "returned")
-                self.assertEqual(counts["signature"], params["signature"])
                 before = self.preserve(path)
                 check["delegated"] = "unknown"
                 path.write_text(json.dumps(counts))
+                import hmac
+                Path(str(path)+'.signature').write_text(hmac.digest(bytes.fromhex(params['report_key']),path.read_bytes(),'sha256').hex())
                 after = self.preserve(path)
                 corrupted.append(after)
                 self.calls[-1]["brokenProducer"] = {
                     "beforeSha256": before,
                     "afterSha256": after,
                     "mutation": "cases[0].checks[0].delegated returned→unknown",
-                    "signaturePreserved": True,
+                    "operatorAuthenticatedBrokenProducer": True,
                 }
             return outcome
 

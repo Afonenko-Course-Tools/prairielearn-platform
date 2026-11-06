@@ -9,3 +9,5 @@ jobs
 .env
 .native-toolchain-cache
 .native-toolchain-preparing-*
+
+.native-toolchain

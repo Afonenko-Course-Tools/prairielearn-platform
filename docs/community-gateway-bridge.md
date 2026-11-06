@@ -1,135 +1,68 @@
-# Community bridge
+# Приватный Bridge входа и зачисления
 
-The Platform bridge runs inside the pinned Community image on a separate private
-listener. Its source is based on Community commit
-`92584fe426ececb84bc2d09de9975c7056c0c5f6`, image digest
-`60c675a42055a430f9ad7298c7dfd2f37119aa471f806e21e2c929de28435f63`.
-It imports native compiled enrollment/student-label models. Gateway has no database
-credentials and never supplies SQL, native label IDs, or PrairieLearn staff roles.
-The service uses native system authorization for its narrowly scoped mutations;
-it does not assign any privileges to the Moodle teacher or Student.
+Platform Bridge работает внутри закреплённого Community на отдельном приватном listener и использует native enrollment, permissions и authz модели. Native user/session остаются собственностью PrairieLearn. Gateway не получает DB credentials и не передаёт SQL, native IDs или произвольные staff роли.
 
-Run the image with private config/token and read-only validated deliveries.
-`compose/compose.gateway.yml` has no bridge host port. The public proxy must include
-`proxy/nginx.gateway.conf`; the existing verified handoff callback remains a separate
-identity path. Keep PL's HTTP and bridge listeners inaccessible from public clients.
-The bearer token is a server credential of at least 32 characters, mounted as a secret.
-Browser cookies and trusted identity headers do not authenticate bridge calls.
-The bridge rehashes each configured delivery and every inventoried file at startup.
-Private settings contain bindings from a delivery directory to a native instance ID;
-the UUID in exported instance metadata must match that native instance.
+Единственный маршрут — `PUT /internal/gateway/enrollment` без query. Нужен service bearer длиной не менее 32 символов из `tokenFile`; browser cookies и identity headers не аутентифицируют вызов. Остальные маршруты и методы получают 404 после bearer проверки, до чтения тела и native операций. Публичный proxy закрывает `/internal/`; Bridge не должен иметь публичного порта.
 
-`PUT /internal/gateway/assignments/{id}` accepts the closed request schema in
-`schemas/gateway-assignment.schema.json`. Gateway sends only approved/assigned access,
-or an explicit revocation (`newWork: null`). It must never call this for pending
-requests. A first assignment has version 1 and null oldWork. Every replacement uses
-version N+1 with oldWork equal to the previous newWork; identical retries reconcile
-native ACL again. Stale/conflicting versions and identity changes fail. An assignment
-journal row, enrollment, audit events and native label removal/addition commit in one
-Postgres transaction. A per-user/instance advisory lock serializes changes; a unique
-constraint prevents a second assignment ID from silently taking the same slot.
-All other labels managed by the configured instance are revoked. Unrelated labels
-remain. Native blocked enrollments cannot be bypassed.
+## Конфигурация
 
-`GET /internal/gateway/results?assignmentId=ID&version=N` requires the current active
-assignment and native joined enrollment with its manifest label. It returns the
-closed schema in `schemas/gateway-results.schema.json`; only manifest question IDs
-are returned, with the latest attempt by number/ID (not the gradebook best score).
-The SQL adapter lives in `bridge/native.sql`; dynamic client SQL is impossible.
-Team assessments are excluded. Attempts created before the current assignment grant are excluded, including when a work is assigned again; idempotent retries preserve the activation time. A prior Homework attempt cannot be silently reused for a new grant. Such a workflow needs an explicit reviewed native reset/new-attempt policy before it can produce a new grade. Missing/ungraded questions have no completed credit.
-Native question score_percent is normalized to 0..1; points/maxPoints remain visible.
-Only exact score 1 on a completed required question contributes to completion.
-Optional questions and two partial answers cannot satisfy pass-two-of-three.
+Private settings содержат только `listenHost`, `listenPort`, `tokenFile`, `administratorEmail` и `bindings`. `administratorEmail` — canonical email либо `null`, по умолчанию `null`. Каждый binding содержит ровно `courseKey`, `instance`, `courseId`, `courseInstanceId`, `courseInstanceUuid`. IDs — положительные десятичные строки; UUID и значения берутся из фактической native регистрации курса и экземпляра. Пара `courseKey`/`instance` однозначна.
 
-The Platform journal persists in the PL database. It is not Gateway's workflow/outbox
-store. Cross-delivery reassignment currently fails explicitly: deployment must reconcile
-old managed ACL with a reviewed delivery-migration procedure before changing the binding.
-Automatic privilege promotion, public write APIs and arbitrary assessment reads are absent.
+`mode`, `administratorUid` и `deliveryPath` запрещены. Альтернативного grading или login-only режима нет. Delivery manifest, работы и assignment labels не участвуют в запуске или зачислении Bridge. Перед подключением DB сервер требует `NODE_ENV=production`, `devMode=false`, `hasShib=true`. Deploy config должен соответствовать этому единственному формату.
 
-Verification:
+Единственный [пример private settings](../config/pl.gateway.example.json) содержит вымышленные native IDs и UUID. Оператор заменяет их данными фактической регистрации, задаёт `tokenFile` и при необходимости доверенный `administratorEmail`; `null` оставляет Administrator grant выключенным.
 
-```
-node tests/bridge/policy.test.mjs
-PL_GATEWAY_BRIDGE_URL=http://private-pl:3001 \
-PL_GATEWAY_TOKEN_FILE=/private/token \
-PL_GATEWAY_DELIVERY=/private/native/delivery.json \
-python3 -m unittest discover -s tests -p test_gateway_acl.py -v
+В `compose/compose.gateway.yml` Bridge получает только private config и token. В `compose/compose.prod.yml` native каталог курса монтируется в `/course` только у PL. Gateway получает private config и своё постоянное хранилище; файлы курса и delivery ему не нужны.
+
+## Запрос и native доступ
+
+Запрос соответствует [закрытой схеме](../schemas/gateway-enrollment.schema.json) и содержит ровно пять обязательных полей:
+
+```json
+{
+  "userUid": "student@fixture.invalid",
+  "instance": "fall",
+  "courseKey": "demo",
+  "role": "student",
+  "email": null
+}
 ```
 
-The localhost-only patch permits a null cookieDomain in production solely when hostname equals localhost. This emits host-only cookies. Other production host/domain checks and encryption-key validation remain in force; devMode stays false. The patch script refuses a changed upstream guard rather than guessing.
+`userUid` содержит от 1 до 512 символов, `instance` непустой, `courseKey` соответствует `^[a-z][a-z0-9-]*$`, `role` — только `student` или `teacher`. Email — canonical lowercase ASCII mailbox без пробелов и управляющих символов: до 254 символов, local part до 64 без начальной, конечной или двойной точки, домен минимум из двух DNS labels до 63 символов. Bridge не нормализует адрес; `+alias` остаётся отдельным email. Поле `email` обязательно, даже при `null`.
 
-Приёмка выпуска на изолированном стенде проверяет native Student список, прямые URL и повторное назначение, реальные оценки встроенного grader и интеграцию Gateway/AGS. Следуйте [порядку выпуска](releasing.md). Работающий listener и синтетическая строка оценки не подтверждают прохождение этих проверок.
+Gateway передаёт доверенные роль и email из проверенного подписанного LTI контекста своей регистрации и исходной сессии. Если доверенный email недоступен, передаётся `null`. Этот контекст принимается только за private service bearer.
 
-## Ordinary work reads and bootstrap
+На каждом входе Bridge сверяет native CI по ID, course ID, UUID и short name и отклоняет удалённый экземпляр. Пользователь выбирается только по существующему `userUid`; неизвестный UID получает 404. Email не вычисляет identity, не объединяет пользователей и не меняет native IDs.
 
-`PUT /internal/gateway/enrollment` accepts only userUid, instance and deliveryHash.
-It requires an existing Community user from the verified callback, ensures joined
-native enrollment, rejects blocked membership and verifies native published Student
-instance access. It grants no label or defense slot. Identical calls are idempotent.
-Gateway must perform the initial verified Community handoff before this bootstrap;
-unknown native identities return 404. Roles and labels cannot be supplied.
+В native транзакции advisory lock по экземпляру и UID сериализует зачисление и grant. Blocked enrollment отклоняется до ensure для всех ролей; затем требуется joined enrollment. После доверенных grants Bridge вызывает native `constructCourseOrInstanceContext` для того же user/course/instance. Как штатный `authzHasCourseInstanceAccess`, проверка допускает фактический course preview или instance view, либо Student access с enrollment. Для пользователя без native staff прав дополнительно сохраняется требование modern publishing; неопубликованный или закрытый для Student экземпляр отклоняется. Отказ не возвращает путь и откатывает транзакцию.
 
-`GET /internal/gateway/work-results` accepts exactly userUid, instance, deliveryHash
-and workId query parameters. This reads an ordinary, unlabelled manifest work without
-a defense assignment slot. Joined enrollment and native Student publishing/assessment
-access resolver authorize the read. The resolver always uses ordinary Student roles;
-there is no staff override. Modern individual assessments are supported; other access
-models fail closed. `schemas/gateway-work-results.schema.json` has the same scoped
-per-slot result core v2, without assignmentId/version, plus native current attempt
-`scoreGiven` (points) and `scoreMaximum` (max_points). These preserve declared weighted
-grades; Gateway must not infer aggregate weights from question counts. An unattempted
-work has state:not-started, null attempt/aggregate values and empty slots; completion
-requiredCount/atLeast remains bound to delivery. Started results contain exactly one
-selected instance_question per slot from the captured native assessment instance. Reads perform no enrollment/label writes.
+Проверка использует `is_administrator: false`: global Administrator без активного native admin mode cookie не считается автоматически staff этого курса. Teacher и владелец получают scoped staff-права до проверки публикации, поэтому первый доверенный вход в закрытый для Student курс возможен. Прежние native staff-права также учитываются при входящем `role: student`, без новых grants. Реальные browser mode, cookie и дальнейший доступ по URL по-прежнему проверяет PL.
 
-`GET /internal/gateway/work-launch` uses the same scoped query. It returns only
-workId, userUid, instance, deliveryHash and a native server-derived assessment path.
-Ordinary work uses the Student resolver above. A label-managed defense additionally
-requires its current journal work/delivery and actual native label. Numeric native IDs,
-paths and privileges are never accepted from the caller.
+Для внутреннего course/enrollment ACL вызова передаётся native `overrides.mode: 'Public'`: у Bridge нет browser IP, а native `ipToMode` требует его для поиска exam reservation. Этот mode не выдаёт course/instance права и не заменяет проверки публикации. Он не включается в wire-ответ, cookies или native assessment context. После handoff PL самостоятельно вычисляет browser mode по реальному IP и сохраняет exam/assessment guards.
 
-The gateway Compose overlay requires explicit PL_GATEWAY_IMAGE and overrides the base
-command with the bridge wrapper. Use a reviewed versioned local tag for builds, or a
-published pinned digest with `--no-build` for deployment. It sets production mode and
-adds no public listener ports. Config and consumed delivery structures are closed;
-ambiguous delivery/instance bindings are rejected at startup. Canonical JSON emits
-Unicode-scalar sorted key/value text directly, including numeric-looking keys.
+## Доверенные права
 
-New assignment versions, including same-work regrants, record activation with
-PostgreSQL clock_timestamp() after the native ACL reconciliation and lock wait.
-Earlier attempts are excluded even if a transaction began before the prior grant.
-Duplicate retries retain the committed activation time and reconcile label drift.
-The process rejects NODE_ENV other than production, devMode true, or hasShib false
-before database initialization or listener startup.
+Точное совпадение `email` с private `administratorEmail` выдаёт native global Administrator и scoped `Editor` курса + `Student Data Editor` экземпляра при обеих ролях, включая `role: student` для Moodle Learner. Для владельца оператор задаёт доверенный canonical адрес в конфигурации. Адрес не встроен в handler и не определяет UID.
 
-## Явный bootstrap единственного администратора
+Остальные Teacher получают native `Editor` курса и `Student Data Editor` экземпляра через штатные permission API. После API проверяются прежние native user ID/UID и фактические права. Student с другим email новых staff/admin прав не получает. Права additive: повторный вход и смена входящей роли на Student не отзывают ранее выданные Owner, Editor или Administrator.
 
-`PUT /internal/gateway/administrator` принимает только `{userUid}` и сервисный
-bearer. `administratorUid` в private bridge config по умолчанию null.
-Разрешён только exact Gateway UID владельца; пользователя сначала создаёт
-проверенный handoff в native PL. Сервер ищет actual user ID и создаёт
-`administrators` запись с native audit, используя тот же pinned table contract,
-что native administrator UI. Повторный вызов не создаёт дубликат и не добавляет
-новую audit запись. Ответ содержит schemaVersion1, тот же userUid,
-administrator=true и единственный путь `/pl/administrator/courses`.
+Administrator SQL связывает UID и native user ID как при вставке, так и при повторной проверке. `ON CONFLICT DO NOTHING` сохраняет идемпотентность; native audit создаётся только из новой administrator записи, с тем же native user ID в качестве actor. Grant и enrollment проходят в одной транзакции после identity/blocked/joined guards; итоговый native staff-or-student access проверяется до commit.
 
-Публичный proxy не публикует этот endpoint. Права полные, на всю платформу,
-по явному решению пользователя; Moodle Instructor сам по себе их не даёт.
-Это исключение из прежнего ограничения teacher-only Gateway; обычные teachers
-по-прежнему не получают native staff/admin автоматически.
+Native semantics сверены с закреплённым Community `92584fe426ececb84bc2d09de9975c7056c0c5f6`: [построение course/instance authz](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/lib/authz-data.ts), [допуск staff или enrolled Student](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/middlewares/authzHasCourseInstanceAccess.ts) и [native admin mode](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/lib/authn.ts). Gateway передаёт доверенный контекст и открывает возвращённый native путь; собственную role/email policy он не добавляет.
 
-## Позиции и native выбор: версия2
+## Ответ и ограничения
 
-Platform2.0.0 принимает только native delivery2: work.slots с полным набором
-candidates, completion required-slot-completion/per-slot-results-v2. Bridge
-сверяет каждую native alternative group по точному набору кандидатов. Random
-требует number_choose1; singleton fixed допускает штатный NULL либо1. Выбор
-подмножества зоны не поддерживается. Проверяются также лишние/неполные группы.
+Успешный [закрытый ответ](../schemas/gateway-enrollment-response.schema.json) содержит ровно `schemaVersion: 1`, `userUid`, `instance`, `courseKey`, `enrolled: true`, `path: /pl/course_instance/<positive native integer>/assessments`. Путь строится из проверенного native экземпляра, без origin, query или suffix. Роль и email в ответ не включаются. Все ответы используют `Cache-Control: no-store`; размер тела ограничен 8192 байтами, внутренние ошибки скрыты.
 
-Результаты читаются из instance_questions захваченного assessment_instance_id,
-включая обычные singleton позиции. `started` содержит ровно один выбранный
-вопрос каждой позиции и currentAttempt.id/number. Пропавший, чужой, множественный
-или принадлежащий другой попытке выбор отклоняется. `not-started` возвращает
-null attempt и пустые slots: completedRequired0, requiredCount/atLeast из delivery.
-Совершенный результат требует complete, score1, points=maxPoints>0. Не выбранные
-альтернативы не выдаются как пропущенные и не увеличивают знаменатель.
+Assignment, grades, results, work-launch и отдельный admin-bootstrap HTTP handlers удалены. В `bridge/native.sql` остались advisory lock и administrator grant/audit. SQL миграций таблицы заданий больше нет; исторические данные не удаляются и запросы к реальной DB при этой переработке не выполняются. Отдельное [native административное признание результата](recognized-credit.md) и его guards сохраняются.
+
+Локальная проверка без DB, HTTP listener или контейнеров:
+
+```bash
+node tests/bridge/enrollment.test.mjs
+node tests/bridge/administrator.test.mjs
+python3 tests/bridge/enrollment-schema.test.py
+node tests/recognized-sql.test.mjs
+```
+
+Harness исполняет настоящий settings/context/enrollment/router, заменяя native DB/models и listener. Проверка PostgreSQL parser и native binder не исполняет SQL. Эти проверки не заменяют отдельный native DB/Moodle/UI smoke и подтверждение настоящих audit records.

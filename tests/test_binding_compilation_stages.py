@@ -29,7 +29,7 @@ class BindingStages(unittest.TestCase):
    p=self.job/f'tests/variants/{name}/Student.java';p.parent.mkdir(parents=True);p.write_text('not java')
   with self.assertRaises(fixtures.grader.GraderError):self.run_job()
 
- def test_actual_cli_infrastructure_exit_two_for_native_and_operator(self):
+ def test_actual_cli_delivers_native_error_and_retains_operator_failure_exit(self):
   import os,subprocess,sys
   (self.job/'tests/AnswerTest.java').write_text('class AnswerTest { CLOSED_CLI_BINDING_CANARY value; }')
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
@@ -40,7 +40,7 @@ class BindingStages(unittest.TestCase):
    for operator in [False,True]:
     with self.subTest(backend=backend,operator=operator):
      result=subprocess.run(command+(['--verification'] if operator else []),capture_output=True,text=True,timeout=60)
-     self.assertEqual(result.returncode,2,result.stderr);raw=json.loads((self.job/'results/results.json').read_text());self.assertFalse(raw['gradable']);self.assertNotIn('score',raw);self.assertEqual(raw['classification'],'infrastructure-failure')
+     self.assertEqual(result.returncode,2 if operator else 0,result.stderr);raw=json.loads((self.job/'results/results.json').read_text());self.assertFalse(raw['gradable']);self.assertNotIn('score',raw);self.assertEqual(raw['classification'],'infrastructure-failure')
      if operator:
       self.assertEqual((raw['studentCompilation'],raw['trustedCompilation'],raw['dependentExecution']),('success','failure','not-run'));self.assertIn('CLOSED_CLI_BINDING_CANARY',json.dumps(raw))
      else:

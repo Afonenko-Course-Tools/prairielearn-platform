@@ -1,6 +1,5 @@
 """Student boundary rejects private canaries, including failed runner reports."""
 
-from gradle_unit_fixtures import image_evidence
 from gradle_unit_fixtures import unit_platform
 import importlib.util, json, unittest
 from pathlib import Path
@@ -47,129 +46,6 @@ class StudentFeedback(unittest.TestCase):
                     value["feedback"]["reason"], value["feedback"]["observed"]
                 )
 
-    def test_only_explicit_bound_public_cases_have_values(self):
-        config = {
-            "publicCases": [
-                {
-                    "id": "normal",
-                    "name": "Обычный результат операции",
-                    "test": "Demo#normal",
-                    "action": "Вызвать sum(2, 3)",
-                    "expected": "5",
-                },
-                {
-                    "id": "boundary",
-                    "name": "Граничный случай операции",
-                    "test": "Demo#boundary",
-                    "input": "0",
-                    "expected": "0",
-                },
-            ]
-        }
-        result = {
-            "classification": "behavior-failure",
-            "score": 0,
-            "publicCaseObservations": [
-                {
-                    "id": "normal",
-                    "name": "Обычный результат операции",
-                    "test": "Demo#normal",
-                    "actual": "4",
-                    "status": "failed",
-                },
-                {
-                    "id": "boundary",
-                    "name": "Граничный случай операции",
-                    "test": "Demo#boundary",
-                    "actual": "0",
-                    "status": "passed",
-                },
-                {
-                    "id": "normal",
-                    "name": "Обычный результат операции",
-                    "test": "Closed#private",
-                    "actual": "CLOSED_CANARY",
-                    "status": "failed",
-                },
-                {
-                    "id": "closed",
-                    "test": "Closed#private",
-                    "actual": "CLOSED_CANARY",
-                    "status": "failed",
-                },
-            ],
-        }
-        value = feedback.student_result(result, config)
-        cases = value["feedback"]["publicCases"]
-        self.assertEqual(len(cases), 2)
-        self.assertEqual(cases[0]["actual"], "4")
-        self.assertEqual(cases[0]["expected"], "5")
-        self.assertEqual(cases[1]["status"], "passed")
-        self.assertNotIn("CLOSED_", json.dumps(value))
-        self.assertIn("Ожидается: 5", value["tests"][0]["description"])
-        self.assertIn("Получено: 4", value["tests"][0]["description"])
-
-    def test_input_only_success_explains_each_public_requirement_without_private_canary(
-        self,
-    ):
-        descriptor = {
-            "publicCases": [
-                {
-                    "id": "boundary",
-                    "name": "Пустой ввод даёт пустой результат",
-                    "test": "Demo#boundary",
-                    "input": "",
-                    "expected": "",
-                }
-            ]
-        }
-        value = feedback.student_result(
-            {
-                "classification": "success",
-                "score": 1,
-                "output": "CLOSED_CANARY",
-                "publicCaseObservations": [
-                    {
-                        "id": "boundary",
-                        "name": "Граничный случай операции",
-                        "test": "Demo#boundary",
-                        "actual": "",
-                        "status": "passed",
-                    }
-                ],
-            },
-            descriptor,
-        )
-        self.assertEqual(value["tests"][0]["name"], "Пустой ввод даёт пустой результат")
-        self.assertIn(
-            "Что проверяется: Пустой ввод даёт пустой результат",
-            value["tests"][0]["description"],
-        )
-        self.assertEqual(
-            value["feedback"]["publicCases"][0]["name"],
-            descriptor["publicCases"][0]["name"],
-        )
-        self.assertNotIn("CLOSED_", json.dumps(value))
-
-    def test_unobserved_public_case_does_not_invent_actual(self):
-        value = feedback.student_result(
-            {"classification": "student-compilation-failure"},
-            {
-                "publicCases": [
-                    {
-                        "id": "normal",
-                        "name": "Обычный результат операции",
-                        "test": "Demo#normal",
-                        "input": "2",
-                        "expected": "5",
-                    }
-                ]
-            },
-        )
-        case = value["feedback"]["publicCases"][0]
-        self.assertEqual(case["status"], "not-run")
-        self.assertIsNone(case["actual"])
-
     def test_infrastructure_is_not_wrong_answer(self):
         value = feedback.student_result(
             {
@@ -185,61 +61,79 @@ class StudentFeedback(unittest.TestCase):
         self.assertNotIn("score", value)
 
 
-class ActualNativeFeedback(unittest.TestCase):
-    def test_public_reporting_entries_and_private_canary(self):
-        import test_grading_job as fixtures, subprocess, os
+class JUnitExecution(unittest.TestCase):
+    def fixture(self):
+        import test_assertion_feedback as af
+        counts = af.CheckShape().counts()
+        counts["cases"][0].update(test="T#t", checks=[])
+        return {"classification": "success", "score": 1, "counts": counts}, {}
 
-        fixture = fixtures.JUnitJob()
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        fixture.cfg["publicCases"] = [
-            {
-                "id": "normal",
-                "name": "Обычный результат операции",
-                "test": "AnswerTest#normal",
-                "input": "2, 3",
-                "expected": "5",
-            },
-            {
-                "id": "boundary",
-                "name": "Граничный случай операции",
-                "test": "AnswerTest#boundary",
-                "input": "0, 0",
-                "expected": "0",
-            },
-        ]
-        (fixture.job / "student/Student.java").write_text(
-            "public class Student {public static int sum(int a,int b){return a+b;}}"
-        )
-        (fixture.job / "tests/AnswerTest.java").write_text(
-            """import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*; import java.util.Map;
+    def test_incomplete_counts_and_invalid_selector_are_rejected(self):
+        import runpy, jsonschema
+
+        decoder = runpy.run_path(str(ROOT / "runtime/junit_result.py"))["validate_counts"]
+        schema = json.loads((ROOT / "schemas/check-result.schema.json").read_text())
+        validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/caseResult", "$defs": schema["$defs"]})
+        result, descriptor = self.fixture()
+        decoder(result["counts"])
+        validator.validate(result["counts"]["cases"][0])
+        result["counts"]["complete"] = False
+        with self.assertRaises(ValueError):
+            feedback.student_result(result, descriptor)
+        for selector in ("", 42, "x" * 8193):
+            result, _ = self.fixture()
+            case = result["counts"]["cases"][0]; case["test"] = selector
+            with self.subTest(selector_type=type(selector).__name__):
+                with self.assertRaises(ValueError):decoder(result["counts"])
+                self.assertTrue(list(validator.iter_errors(case)))
+
+
+class ActualNativeFeedback(unittest.TestCase):
+    def test_ordinary_junit_names_status_and_score_need_no_description_metadata(self):
+        import test_grading_job as fixtures
+        fixture = fixtures.JUnitJob(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
+        (fixture.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*;
 public class AnswerTest {
- @Test void normal(TestReporter reporter){int actual=Student.sum(2,3);reporter.publishEntry(Map.of("public-case","normal","actual",String.valueOf(actual)));assertEquals(5,actual);}
- @Test void boundary(TestReporter reporter){int actual=Student.sum(0,0);reporter.publishEntry(Map.of("public-case","boundary","actual",String.valueOf(actual)));assertEquals(0,actual);}
+ @Test @DisplayName("Обычный результат") void normal(){assertEquals(42,Student.answer());}
+ @Test @DisplayName("Граничный результат") void wrong(){assertEquals(41,Student.answer(),"CLOSED_THROWABLE");}
+ @Test void observed(TestReporter r){r.publishEntry(java.util.Map.of("expected","42","actual","42"));assertEquals(42,Student.answer());}
+}
+""")
+        result = fixture.run_job()
+        native = feedback.student_result(result, fixture.cfg)
+        self.assertEqual((result["counts"]["executed"], result["counts"]["passed"]), (3, 2))
+        self.assertEqual(native["score"], 2 / 3)
+        self.assertEqual({c["name"] for c in native["feedback"]["cases"]},
+                         {"Обычный результат", "Граничный результат", "observed(TestReporter)"})
+        self.assertEqual(sorted(c["status"] for c in native["feedback"]["cases"]), ["failed", "passed", "passed"])
+        self.assertNotIn("publicCases", native["feedback"])
+        self.assertNotIn("publicCaseObservations", result)
+        self.assertNotIn("CLOSED_", json.dumps(native))
+        self.assertTrue(all("test" not in c for c in native["feedback"]["cases"]))
+
+    def test_ordinary_reporter_values_and_assertions_hide_private_canaries(self):
+        import test_grading_job as fixtures, subprocess, os
+        fixture = fixtures.JUnitJob(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
+        (fixture.job / "student/Student.java").write_text("public class Student {public static int sum(int a,int b){return a+b;}}")
+        (fixture.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*; import java.util.Map;
+public class AnswerTest {
+ @Test void normal(TestReporter reporter){int actual=Student.sum(2,3);reporter.publishEntry(Map.of("expected","5","actual",String.valueOf(actual)));assertEquals(5,actual);}
+ @Test void boundary(TestReporter reporter){int actual=Student.sum(0,0);reporter.publishEntry(Map.of("expected","0","actual",String.valueOf(actual)));assertEquals(0,actual);}
  @Test void closed(){System.out.print("CLOSED_INPUT_CANARY");assertEquals(41,42,"CLOSED_TRACE_CANARY");}
-}"""
-        )
+}
+""")
         (fixture.job / "tests/grading-job.json").write_text(json.dumps(fixture.cfg))
-        run = subprocess.run(
-            [
-                "python3",
-                str(unit_platform(self) / "images/java25-grader/grade.py"),
-                "--job-dir",
-                str(fixture.job),
-            ],
-            text=True,
-            capture_output=True,
-            env=os.environ,
-        )
+        run = subprocess.run(["python3", str(unit_platform(self) / "images/java25-grader/grade.py"), "--job-dir", str(fixture.job)], text=True, capture_output=True, env=os.environ)
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads((fixture.job / "results/results.json").read_text())
         self.assertNotIn("CLOSED_", json.dumps(result) + run.stdout + run.stderr)
         self.assertEqual(result["classification"], "behavior-failure")
         self.assertEqual(result["score"], 2 / 3)
-        self.assertEqual(
-            [(c["actual"], c["status"]) for c in result["feedback"]["publicCases"]],
-            [("5", "passed"), ("0", "passed")],
-        )
+        reported = [c['reporter'] for c in result['feedback']['cases'] if 'reporter' in c]
+        self.assertEqual({(c['expected'],c['actual']) for c in reported}, {('5','5'),('0','0')})
+        self.assertNotIn('publicCases', result['feedback'])
 
     def test_student_exception_remains_runtime_without_message_leak(self):
         import test_grading_job as fixtures, subprocess, os
@@ -265,6 +159,9 @@ public class AnswerTest {
         self.assertEqual(run.returncode, 0, run.stderr)
         result = json.loads((fixture.job / "results/results.json").read_text())
         self.assertEqual(result["feedback"]["kind"], "runtime")
+        self.assertEqual(result['feedback']['cases'][0]['status'], 'failed')
+        self.assertNotIn('actual', result['feedback']['cases'][0])
+        self.assertTrue(all(len(line) <= 50 for line in result['tests'][0]['message'].splitlines()))
         self.assertNotIn("CLOSED_", json.dumps(result) + run.stdout + run.stderr)
 
 
@@ -283,19 +180,19 @@ class ActualFailureBoundary(unittest.TestCase):
                 "infrastructure",
                 'public class Student {public static int answer(){System.out.print("CLOSED_TIMEOUT_CANARY");while(true){}}}',
                 fixtures.TEST,
-                2,
+                0,
             ),
             (
                 "infrastructure",
                 "public class Student {public static int answer(){return 42;}}",
                 "CLOSED_INFRASTRUCTURE_CANARY",
-                2,
+                0,
             ),
             (
                 "infrastructure",
                 "public class Student {public static int answer(){return 42;}}",
                 'import org.junit.jupiter.api.Test; public class AnswerTest { @Test void broken(){throw new NullPointerException("CLOSED_TRUSTED_SETUP_CANARY");}}',
-                2,
+                0,
             ),
         ]:
             with self.subTest(kind=kind):
@@ -323,6 +220,9 @@ class ActualFailureBoundary(unittest.TestCase):
                         (fixture.job / "results/results.json").read_text()
                     )
                     self.assertEqual(result["feedback"]["kind"], kind)
+                    if kind == 'infrastructure':
+                        self.assertFalse(result['gradable'])
+                        self.assertNotIn('score', result)
                     self.assertNotIn(
                         "CLOSED_", json.dumps(result) + run.stdout + run.stderr
                     )
@@ -362,10 +262,12 @@ class ActualFailureBoundary(unittest.TestCase):
             run, private = execute(["--verification"])
             self.assertEqual(run.returncode, 0)
             self.assertIn("CLOSED_OPERATOR_CANARY", json.dumps(private))
-            self.assertIn("executionEvidence", private)
+            self.assertNotIn("executionEvidence", private)
             config.write_text(json.dumps(dict(fixture.cfg, verification=True)))
             run, native = execute()
-            self.assertEqual(run.returncode, 2)
+            self.assertEqual(run.returncode, 0)
+            self.assertFalse(native['gradable'])
+            self.assertNotIn('score', native)
             self.assertNotIn("rawResult", native)
             self.assertNotIn("CLOSED_", json.dumps(native) + run.stderr)
             (fixture.job / "student/Student.java").rename(
@@ -398,7 +300,7 @@ class ActualFailureBoundary(unittest.TestCase):
 
 
 class ActualFishFeedback(unittest.TestCase):
-    def test_public_observation_and_runtime_class(self):
+    def test_fish_score_and_runtime_class_without_description_metadata(self):
         import tempfile
 
         spec = importlib.util.spec_from_file_location(
@@ -425,22 +327,6 @@ class ActualFishFeedback(unittest.TestCase):
                 },
                 "scoring": {"mode": "weighted"},
                 "discovery": {"min-executed": 1, "allow-skipped": False},
-                "publicCases": [
-                    {
-                        "id": "normal",
-                        "name": "Обычный результат операции",
-                        "test": "0: copy",
-                        "input": "A",
-                        "expected": "A",
-                    },
-                    {
-                        "id": "boundary",
-                        "name": "Граничный случай операции",
-                        "test": "1: copy",
-                        "input": "",
-                        "expected": "",
-                    },
-                ],
             }
             (job / "tests/grading-job.json").write_text(json.dumps(cfg))
             (job / "tests/checks.py").write_text(
@@ -450,9 +336,8 @@ class ActualFishFeedback(unittest.TestCase):
             source.write_text("cat input.txt > out.txt\n")
             value = feedback.student_result(grader.grade(job), cfg)
             self.assertNotIn("CLOSED_", json.dumps(value))
-            self.assertEqual(
-                [c["actual"] for c in value["feedback"]["publicCases"]], ["A", ""]
-            )
+            self.assertEqual(value['score'], 1)
+            self.assertNotIn('publicCases', value['feedback'])
             source.write_text("echo CLOSED_FISH_RUNTIME >&2\nexit 3\n")
             value = feedback.student_result(grader.grade(job), cfg)
             self.assertEqual(value["feedback"]["kind"], "runtime")
@@ -501,12 +386,9 @@ class NativeContainerFeedback(unittest.TestCase):
                 if private:
                     import test_review_receipts as receipts
 
-                    self.assertEqual(
-                        result["executionEvidence"],
-                        image_evidence("java25-junit-v1", os.environ["PL_TEST_IMAGE"]),
-                    )
+                    self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_CONTAINER_CANARY", json.dumps(result))
-                    self.assertIn("executionEvidence", result)
+                    self.assertNotIn("executionEvidence", result)
                     self.assertEqual(result["containment"], "official-landlock-sbuser")
                 else:
                     self.assertNotIn("CLOSED_", json.dumps(result) + run.stderr)
@@ -543,22 +425,6 @@ class NativeFishContainerFeedback(unittest.TestCase):
                 },
                 "scoring": {"mode": "weighted"},
                 "discovery": {"min-executed": 1, "allow-skipped": False},
-                "publicCases": [
-                    {
-                        "id": "normal",
-                        "name": "Обычный результат операции",
-                        "test": "0: copy",
-                        "input": "A",
-                        "expected": "A",
-                    },
-                    {
-                        "id": "boundary",
-                        "name": "Граничный случай операции",
-                        "test": "1: copy",
-                        "input": "",
-                        "expected": "",
-                    },
-                ],
             }
             (job / "tests/grading-job.json").write_text(json.dumps(cfg))
             (job / "tests/checks.py").write_text(
@@ -594,19 +460,14 @@ class NativeFishContainerFeedback(unittest.TestCase):
                 if private:
                     import test_review_receipts as receipts
 
-                    self.assertEqual(
-                        result["executionEvidence"],
-                        image_evidence("fish-git-v1", os.environ["PL_FISH_TEST_IMAGE"]),
-                    )
+                    self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_FISH_CONTAINER", json.dumps(result))
-                    self.assertIn("executionEvidence", result)
+                    self.assertNotIn("executionEvidence", result)
                     self.assertEqual(result["containment"], "official-landlock-sbuser")
                 else:
                     self.assertNotIn("CLOSED_", json.dumps(result) + run.stderr)
-                    self.assertEqual(
-                        [c["actual"] for c in result["feedback"]["publicCases"]],
-                        ["A", ""],
-                    )
+                    self.assertEqual(result['score'], 1)
+                    self.assertNotIn('publicCases', result['feedback'])
 
 
 class DirectStudentAssertion(unittest.TestCase):

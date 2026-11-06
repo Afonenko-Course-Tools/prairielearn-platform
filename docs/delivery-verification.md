@@ -18,11 +18,28 @@ Upload control проверяется по фактическим атрибут
 Пустые, повторные, посторонние и выходящие из проекта имена запрещены. Manual
 принимает штатные именованные файлы и pattern upload без создания auto proof.
 
-При `additionalJavaSources.primaryRequired: false` допускается только upload:
-`file-names` пуст, `optional-file-names` в точности содержит bound primary names и
-объявленный ZIP archive. Отсутствие поля/`true` сохраняет прежние проверки.
+`additionalJavaSources.primaryRequired: false` не запрещает редактор.
+При `submission.mode: editor` присутствуют только редакторы точных bound sources;
+любой `pl-file-upload`, включая необязательный архив, запрещён. Grader сохраняет
+прежнюю семантику фактически отправленных исходников; изменения ZIP assembly
+ради формы ввода не требуются.
 
-В opt-in upload отдельно перечисляются только primary без каталогов и архив.
+Для ручных Java-вопросов закрытый binding остаётся без новых полей `sources`
+или runtime. Producer помещает выбранные настоящие application Java starters
+в `serverFilesQuestion/starter/<исходный относительный путь>`. При одном или двух
+файлах verifier требует ровно соответствующие редакторы, сохранение Unicode
+через `normalize-to-ascii="false"` и точное совпадение HTML-decoded UTF-8 bytes
+с этой копией. NUL, не-UTF-8 и файл больше 1 MiB отвергаются. Отсутствующее
+зеркало или подставленный текст не заменяют настоящий starter.
+
+При трёх и более выбранных ручных Java-исходниках плоский состав проверяется
+как `layout: files` с точными обязательными именами; дерево — как `layout: zip`
+с единственным обязательным `solution.zip`. Смешивания форм нет. Manual grading
+и запрет приватного автоматического grader сохраняются. Другие ручные ответы
+и принятый SP Workspace договор не переопределяются Java-правилом.
+
+В прежнем opt-in upload без явного layout отдельно перечисляются только
+необязательные primary без каталогов и архив при `primaryRequired: false`.
 Nested primary передаются внутри ZIP с исходными относительными путями; полный
 `sourceFiles` и canonical binding сохраняются. Flattening, кодирование имён и
 wildcard загрузка не применяются.

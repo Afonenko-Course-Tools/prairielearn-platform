@@ -1,41 +1,21 @@
-# Необязательные дополнительные исходники Java
+# Java-файлы ответа
 
-Статус: локальный unreleased candidate поверх Platform2.1.0; published image digest и version не изменены.
+Объект `additionalJavaSources` относится к runtime `java25-junit-v1` и `java25-gradle-junit-v1` в режиме implementation. Он содержит обязательные `archive`, `maxFiles`, `maxFileBytes`, `maxTotalBytes`, `maxArchiveBytes`. Имя архива — безопасное basename с расширением `.zip`. Максимальные положительные пределы: 128 дополнительных файлов, 1048576 байт на дополнительный файл, 4194304 байт суммарно для дополнительных файлов и 2097152 байт для ZIP целиком.
 
-Implementation descriptor runtime `java25-junit-v1` может содержать закрытый объект `additionalJavaSources` с обязательными полями `archive`, `maxFiles`, `maxFileBytes`, `maxTotalBytes`, `maxArchiveBytes`. Имя — безопасное basename `.zip`; положительные целые не превышают соответственно128/1048576/4194304/2097152. Основные `sourceFiles` обязательны, ZIP необязателен. Прежний лимит64 относится к основным/test lists; до128 extras имеют отдельный bounded inventory и не теряются на этом лимите. Это транспортные пределы с ручным fallback без score, не ограничения классов или алгоритма.
+`sourceFiles` сохраняет объявленные пути и обязательный API. `primaryRequired` по умолчанию равен `true`: каждый объявленный файл должен присутствовать отдельно либо внутри ZIP с тем же относительным путём. При `false` отсутствующий стартер не подставляется; компилируется непустое объединение фактически присланных объявленных и дополнительных исходников. Переименования в `Main.java` и выравнивания вложенных путей нет.
 
-Архив — обычный файл без symlink, STORED/DEFLATED, до256 записей. Внутри только относительные POSIX `.java` и безопасные directory entries, до32 сегментов/512UTF-8 bytes пути. Абсолютные/drive/backslash/пустые/`.`/`..`/скрытые сегменты, control/NUL, повторные пути, symlink/специальные типы, encryption и file/directory collisions отвергаются. Основные/trusted/private пути нельзя перезаписывать. `a/Helper.java` и `b/Helper.java` сохраняются раздельно. Безопасный каталог может быть общим родителем основных/trusted путей.
+`allowAdditional` по умолчанию равен `true`. Разрешены отдельные дополнительные `.java` в корне ответа и ZIP с относительными путями. При `false` принимаются только пути из `sourceFiles`; это транспорт для фиксированного вложенного состава, а не разрешение дополнительных исходников. Редактор, отдельные файлы и ZIP выбирает поставщик по допустимому составу задания.
 
-Preflight проверяет declared и фактические размеры, CRC, сжатие, UTF-8. BOM передаётся как bytes; языковую допустимость решает javac. Все bounded bytes проверяются до записи извлечённых sources. `extractall`, student commands и обход submission не используются. Проверенные bytes записываются в свежий приватный временный каталог; submission/tests/runtime не перезаписываются. Compiler получает прежний explicit list плюс отсортированный inventory extras при `-sourcepath ''` и `-proc:none`.
+`maxFiles`, `maxFileBytes` и `maxTotalBytes` применяются только к файлам вне `sourceFiles`, совместно для отдельных файлов и ZIP. Объявленный файл в обоих транспортах сохраняет прежний предел 1 MiB; список объявленных файлов ограничен 64. ZIP целиком ограничен `maxArchiveBytes` и 256 записями, включая каталоги. Поэтому объявленные файлы внутри ZIP не расходуют лимит дополнительных файлов.
 
-Порядок прежний: student compile → независимая API precheck → dependent compile → behavior. Небезопасная/повреждённая/слишком большая доставка: `unsafe-submission`, gradable false, без score, trusted/dependent not-run и сообщение о ручной сдаче. Неверная trusted policy — infrastructure failure; malformed Java — student compilation failure; missing API после successful compile — student-api-mismatch. Без policy старые descriptors не расширяются; fish/mutation policy не принимают.
+Архив принимает STORED/DEFLATED, относительные POSIX-пути `.java` и безопасные записи каталогов: до 32 сегментов и 512 байт UTF-8 на путь. Абсолютные пути, drive/backslash, пустые, `.`/`..`, скрытые сегменты, управляющие символы, NUL, повторные пути, symlink и специальные файлы, encryption, конфликт файла с каталогом отвергаются. Один путь нельзя прислать одновременно отдельным файлом и внутри ZIP.
 
-Результат может содержать `additionalSources`: имя/hash архива и принятый отсортированный inventory `{path,sha256,bytes}`. При unsafe ZIP непроверенный inventory не выдаётся как принятый. ZIP fixtures остаются под `tests/fixtures` и входят в snapshot hashes. Reference extras разрешены только с policy: обязательные filenames сохраняются, дополнительные `.java` доверенный код пакует детерминированно. Generated archive hash имеет ключ `$generated/<archive>` в sourceHashes. Descriptor equality и native delivery hashes остаются обязательными.
+Студенческие и доверенные исходники находятся в разных корнях. Совпадение basename с именем доверенного теста допустимо, если реальные классы различаются. Подмена доверенного FQCN и зарезервированных пространств имён по-прежнему запрещена. Например, студенческий `p.AnswerTest` не подменяет доверенный `AnswerTest` без пакета.
 
-PrairieLearn exporter показывает штатный optional upload рядом с редакторами либо в существующей upload-форме. Общий штатный предел PL5MB относится ко всему ответу с редакторными bytes; nominal maxArchiveBytes не обещает этот объём при больших основных файлах. Live PL, Windows и публикация этим локальным контрактом не подтверждены.
+Размеры, CRC, сжатие и UTF-8 проверяются до извлечения. Файлы записываются в свежий приватный каталог, без перезаписи submission, tests или runtime. Компилятор получает явный список выбранных исходников с `-sourcepath ''` и `-proc:none`. JDK 25, API precheck, независимые JUnit-случаи и правила оценки сохраняются.
 
-## Opt-in необязательных основных файлов
+Небезопасная доставка даёт `unsafe-submission` без score. Неверная доверенная policy — сбой инструмента; неверный Java-код — ошибка компиляции студента; отсутствие обязательного API после успешной компиляции — `student-api-mismatch`. Сбой инструмента не превращается в студенческий ноль.
 
-Необязательный boolean `additionalJavaSources.primaryRequired` имеет default `true`.
-При `false` `sourceFiles` остаётся непустым starter inventory, а runtime компилирует
-только непустую union фактически представленных primary и проверенных ZIP `.java`.
-Отсутствующий primary не подставляется. ZIP может содержать его имя; дубликат
-присланного primary, trusted/common/generated collision и все прежние unsafe/cap
-нарушения отвергаются. Непустой direct ответ допустим без архива. API/tests/scoring
-и JDK25 с `--release 25` сохраняются; сбой инструмента не становится оценкой 0.
+Приватное поле `additionalSources` содержит имя настроенного архива и отсортированные `{path, bytes}` только дополнительных файлов. Объявленные `sourceFiles` повторно туда не включаются, в том числе при доставке через ZIP. Собственных SHA, snapshot или freshness-проверок в этом списке нет. Непроверенные записи небезопасного архива не выдаются как принятый состав.
 
-Авторский ключ `additional-java-sources.primary-required: false` требует полной
-bounded policy и штатного upload. Delivery verification проверяет точный набор
-optional primary+archive names и отвергает editor. Reference использует реальные
-выбранные Java sources, contract — только явно объявленные fixtures. Gradle input
-hash связывает фактические primary и ZIP members, без отсутствующего placeholder.
-
-Изменение runner требует нового честного runtime image и обновления registry/lock
-по штатному release pipeline. Локальные source tests не подтверждают новый OCI
-image; прежний digest не поддерживает новое поле. Версии и pins обновляются только
-на отдельном этапе после независимой приёмки.
-
-В opt-in upload отдельно перечисляются только primary без каталогов и архив.
-Nested primary передаются внутри ZIP с исходными относительными путями; полный
-`sourceFiles` и canonical binding сохраняются. Flattening, кодирование имён и
-wildcard загрузка не применяются.
+Изменённый runner требует отдельной квалификации фактического образа. Проверки исходников не подтверждают UI, опубликованный старый образ или production.

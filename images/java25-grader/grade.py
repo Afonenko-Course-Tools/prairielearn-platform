@@ -4,7 +4,6 @@
 import argparse
 import functools
 import errno
-import hashlib
 import stat
 import zipfile
 import zlib
@@ -170,42 +169,6 @@ def _validate_build_root_record(record, gid):
         raise GraderError("Complete build JDK root is not private to nativebuild")
 
 
-def _build_tree_state(roles):
-    root = BUILD_JDK.lstat()
-    _validate_build_root_record(
-        dict(
-            uid=root.st_uid,
-            gid=root.st_gid,
-            mode=stat.S_IMODE(root.st_mode),
-            directory=stat.S_ISDIR(root.st_mode),
-        ),
-        roles["nativebuild"]["gid"],
-    )
-    state = {}
-    for path in [BUILD_JDK, *BUILD_JDK.rglob("*")]:
-        info = path.lstat()
-        if (
-            info.st_uid != 0
-            or info.st_gid != roles["nativebuild"]["gid"]
-            or info.st_mode & 0o7022
-            or stat.S_ISLNK(info.st_mode)
-        ):
-            raise GraderError("Complete JDK role/group/mode drift")
-        if stat.S_ISDIR(info.st_mode):
-            state[str(path)] = (
-                info.st_dev,
-                info.st_ino,
-                info.st_uid,
-                info.st_gid,
-                info.st_mode,
-                info.st_mtime_ns,
-                info.st_ctime_ns,
-            )
-    for path in BUILD_JDK.parents:
-        info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o7022:
-            raise GraderError("Unsafe complete JDK parent")
-    return state
 
 
 def _build_process_records(proc, uid):
@@ -284,9 +247,6 @@ def _finish_build_role(uid):
 
 
 def _hardened_tool_state():
-    lock = json.loads(_files_any(PLATFORM, NATIVE_RECIPE[2]).read_text())
-    files = lock["jdk"]["files"]
-    state = {}
     for parent in [HARDENED_JDK, *HARDENED_JDK.parents]:
         info = parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o7022:
@@ -294,69 +254,23 @@ def _hardened_tool_state():
     for name in MANAGEMENT_MEMBERS:
         if os.path.lexists(HARDENED_JDK / name):
             raise GraderError("Management restored to private grading JDK")
-    for name in (
-        "release",
-        "bin/java",
-        "bin/javac",
-        "lib/modules",
-        "lib/server/libjvm.so",
-    ):
-        path = HARDENED_JDK / name
-        info = path.lstat()
-        expected = files[name]
-        for parent in path.parents:
-            if parent == HARDENED_JDK:
-                break
-            p = parent.lstat()
-            if not stat.S_ISDIR(p.st_mode) or p.st_uid != 0 or p.st_mode & 0o7022:
-                raise GraderError("Unsafe hardened tool parent")
-        if (
-            not stat.S_ISREG(info.st_mode)
-            or info.st_uid != 0
-            or info.st_nlink != 1
-            or info.st_mode & 0o7022
-        ):
-            raise GraderError("Unsafe hardened tool")
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        try:
-            identity = lambda s: (
-                s.st_dev,
-                s.st_ino,
-                s.st_uid,
-                s.st_gid,
-                s.st_mode,
-                s.st_nlink,
-                s.st_size,
-                s.st_mtime_ns,
-                s.st_ctime_ns,
-            )
-            if identity(os.fstat(fd)) != identity(info):
-                raise GraderError("Hardened path/FD drift")
-            h = hashlib.sha256()
-            while data := os.read(fd, 1048576):
-                h.update(data)
-            if identity(os.fstat(fd)) != identity(info) or identity(
-                path.lstat()
-            ) != identity(info):
-                raise GraderError("Hardened live drift")
-            if {
-                "sha256": h.hexdigest(),
-                "bytes": info.st_size,
-                "mode": oct(stat.S_IMODE(info.st_mode)),
-            } != expected:
-                raise GraderError("Hardened core differs from admitted original")
-            state[name] = identity(info)
-        finally:
-            os.close(fd)
-    return state
+
 
 
 def _grading_boundary_unchecked():
     if not Path("/.dockerenv").is_file() or os.geteuid() != 0:
         raise GraderError("Java role boundary requires container namespace supervisor")
     roles = _role_records()
-    tree = _build_tree_state(roles)
-    hardened = _hardened_tool_state()
+    root = BUILD_JDK.lstat()
+    _validate_build_root_record(
+        dict(
+            uid=root.st_uid,
+            gid=root.st_gid,
+            mode=stat.S_IMODE(root.st_mode),
+            directory=stat.S_ISDIR(root.st_mode),
+        ),
+        roles["nativebuild"]["gid"],
+    )
     if _build_process_records(Path("/proc"), roles["nativebuild"]["uid"]):
         raise GraderError("Live build role at private grading boundary")
     prefix = [
@@ -381,7 +295,7 @@ def _grading_boundary_unchecked():
         )
         if code != 1 or reason:
             raise GraderError("Grading role can access complete build JDK")
-    return {"roles": roles, "buildDirectories": tree, "hardened": hardened}
+    return {"roles": roles}
 
 
 def _grading_boundary():
@@ -462,21 +376,13 @@ def _run_unchecked(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None
 
 def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT, *, env=None):
     official = os.environ.get("PL_CONTAINMENT") == "official"
-    grading = official and str(HARDENED_JDK / "bin/java") in command
-    before = _grading_boundary() if grading else None
-    try:
-        return _run_unchecked(
-            command,
-            cwd,
-            timeout,
-            output_limit,
-            env=(_grading_environment() if official and env is None else env),
-        )
-    finally:
-        if grading and _grading_boundary() != before:
-            raise GraderError(
-                "Java role/toolchain boundary changed during private phase"
-            )
+    return _run_unchecked(
+        command,
+        cwd,
+        timeout,
+        output_limit,
+        env=(_grading_environment() if official and env is None else env),
+    )
 
 
 def _names(config, key):
@@ -521,7 +427,7 @@ def _primary_files(job, config):
     """Необязательность допускает отсутствие, но не unsafe/oversized primary."""
     root = job / "student"
     names = _names(config, "sourceFiles")
-    if config.get("additionalJavaSources", {}).get("primaryRequired", True):
+    if "additionalJavaSources" not in config:
         return _files(root, names)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("Unsafe student directory")
@@ -540,71 +446,26 @@ def _primary_files(job, config):
 
 
 PLATFORM = Path(__file__).resolve().parents[2]
-LANDLOCK_HELPER_SHA256 = (
-    "81cd81b6483feabf539ee28bd4697ddc51db228e63122cbc0408f588a94c6aef"
-)
 
 
 def preflight(runtime, registry=None):
+    return _preflight(runtime, registry)
+
+
+def _preflight(runtime, registry):
     try:
-        registry = (
-            registry
-            if registry is not None
-            else json.loads((PLATFORM / "runtime-profiles.json").read_text())
-        )
+        registry = registry if registry is not None else json.loads((PLATFORM / "runtime-profiles.json").read_text())
         profile = registry["profiles"][runtime]
-        if (
-            hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-            != profile["runnerSha256"]
-        ):
-            raise GraderError("Runtime runner checksum mismatch")
+        bundle = PLATFORM / profile["bundle"]
         if profile.get("assertionFeedbackProtocol") != 2:
             raise GraderError("Assertion feedback protocol mismatch")
-        bundle = PLATFORM / profile["bundle"]
-        actual = {
-            p.relative_to(bundle).as_posix() for p in bundle.rglob("*") if p.is_file()
-        }
-        if actual != set(profile["files"]):
-            raise GraderError("Runtime bundle contains unregistered or missing files")
-        for name, digest in profile["files"].items():
-            files = _files_any(bundle, name)
-            if hashlib.sha256(files.read_bytes()).hexdigest() != digest:
-                raise GraderError("Runtime bundle checksum mismatch: " + name)
-        if runtime == NATIVE_RUNTIME and (
-            not isinstance(profile.get("sharedFiles"), dict)
-            or not set(NATIVE_RECIPE) <= set(profile["sharedFiles"])
-        ):
-            raise GraderError("Native recipe dependency pins are missing")
-        for name, sha in profile["sharedFiles"].items():
-            if (
-                hashlib.sha256(_files_any(PLATFORM, name).read_bytes()).hexdigest()
-                != sha
-            ):
-                raise GraderError("Shared runtime checksum mismatch")
-        if os.environ.get("PL_CONTAINMENT") == "official":
-            _verify_landlock_helper()
         code, output, reason = _run([_grading_java(), "-version"], PLATFORM, 5)
         if code or reason or not re.search(r'version "25(?:[.\"+\-])', output):
             raise GraderError("The grader requires an actual JDK 25 runtime")
-        compiler_code, compiler_output, compiler_reason = _run(
-            [
-                _grading_java(),
-                "-XX:TieredStopAtLevel=1",
-                "com.sun.tools.javac.Main",
-                "-version",
-            ],
-            PLATFORM,
-            5,
-        )
-        if (
-            compiler_code
-            or compiler_reason
-            or not re.search(r"javac 25(?:[.\s+\-]|$)", compiler_output)
-        ):
-            raise GraderError("The grader requires the actual JDK25 compiler")
         return profile, bundle, output.strip()
     except (KeyError, OSError, ValueError) as error:
-        raise GraderError("Missing or invalid versioned runtime bundle") from error
+        raise GraderError("Missing or invalid runtime configuration") from error
+
 
 
 def _files_any(root, name):
@@ -725,8 +586,6 @@ def validate_config(config):
         "variants",
         "apiPrecheck",
         "additionalJavaSources",
-        "publicCases",
-        "feedback",
         "javaBuild",
     }
     if (
@@ -794,12 +653,13 @@ def validate_config(config):
             config.get("runtime") not in ("java25-junit-v1", "java25-gradle-junit-v1")
             or config["mode"] != "implementation"
             or not isinstance(policy, dict)
-            or set(policy) - {"archive", "primaryRequired", *caps}
+            or set(policy) - {"archive", "primaryRequired", "allowAdditional", *caps}
             or not {"archive", *caps} <= set(policy)
             or (
                 "primaryRequired" in policy
                 and type(policy["primaryRequired"]) is not bool
             )
+            or ("allowAdditional" in policy and type(policy["allowAdditional"]) is not bool)
             or not isinstance(policy["archive"], str)
             or not re.fullmatch(
                 r"[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip", policy["archive"]
@@ -965,9 +825,11 @@ class _JobRuntime:
     def module_flags(self, module=None):
         return [
             "--module-path",
-            os.pathsep.join(map(str, (module or self.observer, self.junit))),
+            os.pathsep.join(map(str, (module or self.observer, self.junit, self.library_dir / "json-simple-1.1.1.jar"))),
             "--add-modules",
             "org.prairielearn.feedback",
+            "--add-reads",
+            "org.prairielearn.feedback=ALL-UNNAMED",
         ]
 
     def runtime_libs(self):
@@ -989,7 +851,7 @@ class _JobRuntime:
                 self.observer,
                 [
                     "--module-path",
-                    str(self.junit),
+                    self.libs,
                     "-sourcepath",
                     str(feedback / "module"),
                 ],
@@ -1018,7 +880,6 @@ class _JobRuntime:
                     "Trusted assertion runtime compilation failed: " + diagnostics[name]
                 )
         files = [
-            str(self.bundle / "PlatformJUnitAdapter.java"),
             str(self.bundle / "PlatformApiPrecheck.java"),
             *map(str, (self.bundle / "upstream").rglob("*.java")),
         ]
@@ -1071,7 +932,6 @@ class _JobRuntime:
         limits,
         durations,
         diagnostics,
-        source_hashes,
     ):
         """Sealed policy from fresh trusted compiler output; no student-written result."""
         module = stage / "observer"
@@ -1117,45 +977,13 @@ class _JobRuntime:
                     + text.replace(str(stage), "/scratch")
                 )
 
-        admissions = json.loads(
-            (self.bundle / "feedback/projection-admissions.json").read_text()
-        )
-        if (
-            set(admissions) != {"schemaVersion", "types"}
-            or admissions["schemaVersion"] != 1
-        ):
-            raise GraderError("Invalid projection inventory")
-        qualified = []
-        for entry in admissions["types"]:
-            if set(entry) != {"binaryName", "sourceSha256"}:
-                raise GraderError("Invalid projection inventory entry")
-            matched = [
-                source
-                for source in tests
-                if source_hashes.get(str(source)) == entry["sourceSha256"]
-            ]
-            if any(
-                hashlib.sha256(Path(source).read_bytes()).hexdigest()
-                != source_hashes.get(str(source))
-                for source in tests
-            ):
-                raise GraderError("Trusted source changed after compilation")
-            if not matched:
-                continue
-            # Both matching input bytes and the actual fresh compiled binary are required.
-            binary = entry["binaryName"]
-            compiled = trusted / (binary.replace(".", "/") + ".class")
-            if len(matched) != 1 or not compiled.is_file():
-                raise GraderError("Qualified projection differs from compiler output")
-            qualified.append(binary)
         facade = module / "org/prairielearn/feedback/Assertions.class"
         transform(
             trusted,
             facade,
             stage / "assertion-sites.properties",
-            *([",".join(qualified)] if qualified else []),
         )
-        transform(self.adapter, facade, stage / "adapter-sites.properties", "adapter")
+        transform(module, facade, stage / "adapter-sites.properties", "adapter")
         transform(
             "reader",
             module / "org/prairielearn/feedback/internal/State.class",
@@ -1178,29 +1006,17 @@ class _JobRuntime:
 
         policy += (
             "\nadapterRoot="
-            + value(self.adapter.resolve())
+            + value(module.resolve())
             + "\ntrustedRoot="
             + value(trusted.resolve())
         )
-        for entry in admissions["types"]:
-            if entry["binaryName"] in qualified:
-                policy += (
-                    "\nprojectionSource."
-                    + entry["binaryName"]
-                    + "="
-                    + entry["sourceSha256"]
-                )
-        policy += (
-            "\njunitHash="
-            + hashlib.sha256(self.junit.read_bytes()).hexdigest()
-            + "\nsnapshotBytes=32768\n"
-        )
+        policy += "\nsnapshotBytes=32768\n"
         (module / "org/prairielearn/feedback/internal/policy.properties").write_text(
             policy
         )
         durations["trustedTransformation"] = time.monotonic() - start
         diagnostics["trustedTransformation"] = (
-            "Trusted compiled assertion inventory sealed"
+            "Trusted assertion feedback prepared"
         )
         return module
 
@@ -1308,6 +1124,7 @@ def _api_precheck(
             "-XX:-UsePerfData",
             "-XX:+DisableAttachMechanism",
             "--illegal-native-access=deny",
+            "--sun-misc-unsafe-memory-access=deny",
             "-cp",
             classpath,
             "org.prairielearn.api.PlatformApiPrecheck",
@@ -1356,6 +1173,8 @@ def _execute(
     limits = config["limits"]
     durations = {}
     diagnostics = {}
+    if native_context is not None:
+        native_context.update(durations=durations, diagnostics=diagnostics)
     with tempfile.TemporaryDirectory(prefix="java25-junit-") as tmp:
         stage = Path(tmp)
         student = stage / "student"
@@ -1366,17 +1185,8 @@ def _execute(
         library_dir = runtime.library_dir
         libs = runtime.libs
 
-        trusted_input_hashes = {}
 
         def compile_phase(name, files, output, classpath):
-            before = (
-                {
-                    str(file): hashlib.sha256(Path(file).read_bytes()).hexdigest()
-                    for file in files
-                }
-                if name == "trustedCompilation"
-                else {}
-            )
             start = time.monotonic()
             code, text, reason = _run(
                 [*runtime.compiler(), "-cp", classpath, "-d", str(output), *files],
@@ -1384,14 +1194,6 @@ def _execute(
                 limits.get("compile-seconds", 15),
                 int(limits["max-output-bytes"]),
             )
-            if before:
-                after = {
-                    str(file): hashlib.sha256(Path(file).read_bytes()).hexdigest()
-                    for file in files
-                }
-                if before != after:
-                    raise GraderError("Trusted source changed across compilation")
-                trusted_input_hashes.update(before)
             runtime.protect_archive()
             durations[name] = time.monotonic() - start
             diagnostics[name] = text.replace(str(job), "/grade").replace(
@@ -1442,7 +1244,16 @@ def _execute(
                 os.pathsep.join([libs, str(trusted)]),
             )
         else:
-            code, reason = compile_phase("studentCompilation", sources, student, libs)
+            # Native production has no external dependencies in the fixed recipe.
+            # An empty directory also prevents javac's empty -cp from using cwd.
+            production_classpath = (
+                str(student) if config["runtime"] == NATIVE_RUNTIME else libs
+            )
+            if native_context is not None:
+                proof, code, reason = native_context["build"](stage, durations, diagnostics)
+                native_context.update(proof=proof)
+            else:
+                code, reason = compile_phase("studentCompilation", sources, student, production_classpath)
         if reason:
             raise GraderError("Student compilation infrastructure limit: " + reason)
         if code:
@@ -1509,10 +1320,6 @@ def _execute(
                     "apiContainment": api_containment,
                 }
             tests = [f for f in tests if f not in api_files]
-        if native_context is not None:
-            proof, verify = native_context["build"](stage, durations, diagnostics)
-            native_context.update(proof=proof, verify=verify)
-            verify()
         if not student_tests:
             code, reason = compile_phase(
                 "trustedCompilation",
@@ -1568,7 +1375,6 @@ def _execute(
                 limits,
                 durations,
                 diagnostics,
-                trusted_input_hashes,
             )
             if not student_tests
             else runtime.observer
@@ -1577,23 +1383,21 @@ def _execute(
         reports.mkdir()
         params = stage / "params"
         params.mkdir()
-        rawfile = reports / (secrets.token_hex(32) + ".json")
-        countfile = reports / (secrets.token_hex(32) + ".json")
-        signature = secrets.token_hex(32)
+        feedbackfile = reports / "feedback.json"
+        report_key = secrets.token_hex(32)
         parameter_file = params / "params.json"
         parameter_file.write_text(
             json.dumps(
                 {
-                    "results_file": str(rawfile),
-                    "counts_file": str(countfile),
-                    "signature": signature,
+                    "feedback_file": str(feedbackfile),
+                    "report_key": report_key,
+                    "reports_dir": str(reports),
                     "test_classes": _source_classes(
                         sources if student_tests else tests
                     ),
                     "student_classes": sorted(_compiled_class_names(student)),
                     "student_classes_root": str(student.resolve()),
                     "submission_mode": config["mode"],
-                    "public_cases": config.get("publicCases", []),
                     "observe_assertions": not student_tests,
                     **(
                         {"trusted_console_support_root": str(trusted.resolve())}
@@ -1656,23 +1460,20 @@ def _execute(
             "-XX:-UsePerfData",
             "-XX:+DisableAttachMechanism",
             "--illegal-native-access=deny",
+            "--sun-misc-unsafe-memory-access=deny",
             *runtime.module_flags(observer),
             "-Djunit.jupiter.extensions.autodetection.enabled="
             + str(not student_tests).lower(),
             "-cp",
             classpath,
-            "PlatformJUnitAdapter",
+            "org.prairielearn.feedback.PlatformJUnitAdapter",
             str(parameter_file),
         ]
-        if native_context is not None:
-            native_context["verify"]()
         start = time.monotonic()
         code, text, reason = _run(
             command, job, limits.get("run-seconds", 10), int(limits["max-output-bytes"])
         )
         durations["execution"] = time.monotonic() - start
-        if native_context is not None:
-            native_context["verify"]()
         base = {
             "gradable": True,
             "studentCompilation": "success",
@@ -1695,26 +1496,12 @@ def _execute(
             raise GraderError(
                 "Полный отчёт JUnit не получен: исполнитель остановлен (" + reason + ")"
             )
-        if code != 0 or not rawfile.is_file() or not countfile.is_file():
+        if code != 0 or not feedbackfile.is_file():
             raise GraderError("JUnit execution did not produce complete reports")
         try:
-            raw = json.loads(rawfile.read_text(), object_pairs_hook=_unique_json_object)
-            counts = json.loads(
-                countfile.read_text(), object_pairs_hook=_unique_json_object
-            )
-            if (
-                raw.pop("signature") != signature
-                or counts.pop("signature") != signature
-            ):
-                raise ValueError("signature")
-        except (KeyError, ValueError, TypeError, OSError) as error:
-            raise GraderError("Invalid JUnit report") from error
-        if (
-            not isinstance(raw, dict)
-            or type(raw.get("gradable")) is not bool
-            or not isinstance(raw.get("tests"), list)
-        ):
-            raise GraderError("Invalid official JUnit report")
+            raw, counts = _junit_result_helpers()["read_junit_xml"](reports, feedbackfile, report_key=report_key)
+        except (ValueError, OSError) as error:
+            raise GraderError("Invalid JUnit XML report: " + str(error)) from error
         _validate_junit_counts(counts, require_cases=not student_tests)
         if counts.get("feedbackProtocolVersion") != (1 if student_tests else 2):
             raise GraderError(
@@ -1727,8 +1514,8 @@ def _execute(
                 "Trusted check raised an unexpected exception outside student code"
             )
         base.update(
-            publicCaseObservations=counts.get("publicCaseObservations", []),
             rawResult=raw,
+            reportFormat="junit-xml",
             counts=counts,
             maxPoints=counts["executed"],
             tests=(
@@ -1791,234 +1578,50 @@ NATIVE_RUNTIME = "java25-gradle-junit-v1"
 NATIVE_RECIPE = (
     "runtime/gradle-jar-v1/build.gradle",
     "runtime/gradle-jar-v1/settings.gradle",
-    "runtime/gradle-jar-v1/toolchain-lock.json",
 )
 
 
-def _hash_value(value):
-    return hashlib.sha256(
-        json.dumps(
-            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode()
-    ).hexdigest()
 
 
-def _source_inventory(job, sources, extra_names):
-    inventory = {}
-    for source in sources:
-        path = Path(source)
-        name = extra_names.get(str(path))
-        if name is None:
-            try:
-                name = path.relative_to(job / "student").as_posix()
-            except ValueError as error:
-                raise GraderError("Unbound native production source") from error
-        _names({"files": [name]}, "files")
-        if name in inventory:
-            raise GraderError("Duplicate native production source")
-        if path.resolve() != path.absolute():
-            raise GraderError("Symlink native production source")
-        info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            raise GraderError("Unsafe native production source")
-        inventory[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return dict(sorted(inventory.items()))
 
 
-def _java_build_input(job, build, sources, extra_names):
-    return _hash_value(
-        {"sources": _source_inventory(job, sources, extra_names), "javaBuild": build}
-    )
 
 
-def _artifact_state(root, name, guarded=False):
-    if (
-        not isinstance(name, str)
-        or PurePosixPath(name).is_absolute()
-        or any(part in ("", ".", "..") for part in name.split("/"))
-        or "\\" in name
-    ):
-        raise GraderError("Unsafe artifact path")
-    path = root
-    if root.is_symlink() or not root.is_dir():
-        raise GraderError("Unsafe artifact root")
-    root_info = root.stat()
-    if guarded and root_info.st_mode & 0o022:
-        raise GraderError("Writable artifact root")
-    parents = [
-        (
-            root_info.st_dev,
-            root_info.st_ino,
-            root_info.st_uid,
-            stat.S_IMODE(root_info.st_mode),
-        )
-    ]
-    for part in PurePosixPath(name).parts[:-1]:
-        path = path / part
-        info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode):
-            raise GraderError("Unsafe artifact parent")
-        if guarded and (info.st_uid != os.geteuid() or info.st_mode & 0o022):
-            raise GraderError("Writable artifact parent")
-        parents.append(
-            (info.st_dev, info.st_ino, info.st_uid, stat.S_IMODE(info.st_mode))
-        )
-    path = path / PurePosixPath(name).name
-    info = path.lstat()
-    if (
-        not stat.S_ISREG(info.st_mode)
-        or info.st_nlink != 1
-        or not 0 < info.st_size <= 64 * 1024 * 1024
-    ):
-        raise GraderError("Unsafe native artifact")
-    if guarded and (info.st_uid != os.geteuid() or info.st_mode & 0o222):
-        raise GraderError("Writable native artifact")
-    # O_NOFOLLOW and descriptor stat bind the bytes to the admitted inode.
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
-        actual = os.fstat(fd)
-        if (actual.st_dev, actual.st_ino, actual.st_size, actual.st_nlink) != (
-            info.st_dev,
-            info.st_ino,
-            info.st_size,
-            1,
-        ):
-            raise GraderError("Artifact changed during read")
-        with os.fdopen(os.dup(fd), "rb") as stream:
-            data = stream.read(64 * 1024 * 1024 + 1)
-        after = os.fstat(fd)
-        if (after.st_size, after.st_mtime_ns, after.st_ctime_ns) != (
-            info.st_size,
-            info.st_mtime_ns,
-            info.st_ctime_ns,
-        ):
-            raise GraderError("Artifact changed during read")
-    finally:
-        os.close(fd)
-    return {
-        "parents": parents,
-        "identity": (
-            info.st_dev,
-            info.st_ino,
-            info.st_uid,
-            stat.S_IMODE(info.st_mode),
-            info.st_nlink,
-            info.st_mtime_ns,
-            info.st_ctime_ns,
-        ),
-        "sha256": hashlib.sha256(data).hexdigest(),
-        "bytes": len(data),
-    }
 
 
-def _installation_inventory(home):
-    if home.is_symlink() or not home.is_dir() or home.resolve() != home.absolute():
-        raise GraderError("Native toolchain installation is unavailable")
-    if home.stat().st_uid != 0 or home.stat().st_mode & 0o022:
-        raise GraderError("Native toolchain root is writable")
-    files = {}
-    for path in home.rglob("*"):
-        info = path.lstat()
-        if info.st_uid != 0 or info.st_mode & 0o022:
-            raise GraderError("Native toolchain is writable")
-        if stat.S_ISDIR(info.st_mode):
-            continue
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-            raise GraderError("Unsafe native toolchain file")
-        files[path.relative_to(home).as_posix()] = {
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "bytes": info.st_size,
-            "mode": oct(stat.S_IMODE(info.st_mode)),
-        }
-    return files
 
 
-def _verify_native_toolchain():
-    lock = json.loads(_files_any(PLATFORM, NATIVE_RECIPE[2]).read_text())
-    if (
-        set(lock)
-        != {
-            "schemaVersion",
-            "kind",
-            "status",
-            "gradle",
-            "productionDependencies",
-            "jdk",
-            "baseImage",
-        }
-        or lock["schemaVersion"] != 1
-        or lock["kind"] != "gradle-jar-v1"
-        or lock["status"] != "image-admitted"
-        or lock["productionDependencies"] != []
-        or not isinstance(lock["jdk"], dict)
-        or not isinstance(lock["baseImage"], str)
-        or not re.fullmatch(r"[^\s]+@sha256:[a-f0-9]{64}", lock["baseImage"])
-    ):
-        raise GraderError("Gradle toolchain image admission is incomplete")
-    gradle = lock["gradle"]
-    jdk = lock["jdk"]
-    if (
-        gradle["version"] != "9.8.0"
-        or gradle["home"] != "/opt/gradle/gradle-9.8.0"
-        or not re.fullmatch(r"[a-f0-9]{64}", gradle["archiveSha256"])
-    ):
-        raise GraderError("Invalid admitted Gradle distribution")
-    if (
-        set(jdk) != {"home", "release", "files"}
-        or jdk["home"] != "/opt/native-jdk"
-        or not isinstance(jdk["release"], str)
-    ):
-        raise GraderError("Invalid admitted JDK25 installation")
-    roles = _role_records()
-    _build_tree_state(roles)
-    if len(jdk["files"]) != 319 or not set(MANAGEMENT_MEMBERS) <= set(jdk["files"]):
-        raise GraderError("Complete319 build JDK required")
-    for tool in (gradle, jdk):
-        if _installation_inventory(Path(tool["home"])) != tool["files"]:
-            raise GraderError("Native toolchain installation drift")
-    if (Path(jdk["home"]) / "release").read_text() != jdk["release"] or not re.search(
-        r'JAVA_VERSION="25(?:[.\"+\-])', jdk["release"]
-    ):
-        raise GraderError("Native build requires pinned JDK25")
-    return lock
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _admit_java_job():
+    _hardened_tool_state()
+    _grading_boundary()
+
 
 
 def _verify_landlock_helper():
     path = Path("/usr/local/bin/landlock_sandbox")
-
-    def identity(s):
-        return (
-            s.st_dev,
-            s.st_ino,
-            s.st_uid,
-            s.st_gid,
-            s.st_mode,
-            s.st_nlink,
-            s.st_size,
-            s.st_mtime_ns,
-            s.st_ctime_ns,
-        )
-
     try:
         if path.resolve(strict=True) != path:
             raise GraderError("Unsafe installed Landlock helper path")
         for parent in path.parents:
-            s = parent.lstat()
-            if (
-                not stat.S_ISDIR(s.st_mode)
-                or s.st_uid != 0
-                or s.st_gid != 0
-                or s.st_mode & 0o7022
-            ):
+            info = parent.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o7022:
                 raise GraderError("Unsafe installed Landlock helper parent")
-        before = path.lstat()
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_uid != 0
-            or before.st_gid != 0
-            or before.st_nlink != 1
-            or stat.S_IMODE(before.st_mode) != 0o755
-        ):
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 0 or info.st_mode & 0o7022:
             raise GraderError("Unsafe installed Landlock helper identity")
         try:
             os.getxattr(path, "security.capability", follow_symlinks=False)
@@ -2027,23 +1630,9 @@ def _verify_landlock_helper():
                 raise
         else:
             raise GraderError("File capabilities on installed Landlock helper")
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        try:
-            if identity(os.fstat(fd)) != identity(before):
-                raise GraderError("Installed Landlock helper changed")
-            digest = hashlib.sha256()
-            while data := os.read(fd, 65536):
-                digest.update(data)
-            if identity(os.fstat(fd)) != identity(before) or identity(
-                path.lstat()
-            ) != identity(before):
-                raise GraderError("Installed Landlock helper changed")
-        finally:
-            os.close(fd)
-        if digest.hexdigest() != LANDLOCK_HELPER_SHA256:
-            raise GraderError("Installed Landlock helper checksum mismatch")
     except OSError as error:
         raise GraderError("Installed Landlock helper is unavailable") from error
+
 
 
 def _native_containment(job, private_paths):
@@ -2100,112 +1689,22 @@ def _native_containment(job, private_paths):
     return uid, prefix
 
 
-def _native_build(
-    job,
-    config,
-    sources,
-    extra_names,
-    stage,
-    runtime,
-    dependency_hash,
-    durations,
-    diagnostics,
-):
-    build = config["javaBuild"]
-    limits = config["limits"]
-    start = time.monotonic()
+def _native_build(job, config, sources, extra_names, stage, runtime, durations, diagnostics):
+    build, limits = config["javaBuild"], config["limits"]
     if (job / "build").exists() or (job / "build").is_symlink():
         raise GraderError("Native artifact parent must be fresh")
     stage.chmod(0o700)
     runtime.root.chmod(0o700)
     canary = stage / "private-build-canary"
     canary.write_bytes(secrets.token_bytes(32))
-    canary.chmod(0o600)
-    uid, prefix = _native_containment(
-        job,
-        [
-            canary,
-            job / "tests/grading-job.json",
-            *map(Path, _files(job / "tests", config["testFiles"])),
-        ],
-    )
-    lock = _verify_native_toolchain()
-    boundary = _grading_boundary()
+    uid, prefix = _native_containment(job, [canary, job / "tests/grading-job.json", *map(Path, _files(job / "tests", config["testFiles"]))])
     _enable_build_reaper()
     if _build_process_records(Path("/proc"), uid):
         raise GraderError("Native build role is not fresh")
-    inputs = _source_inventory(job, sources, extra_names)
-    primary_files = _primary_files(job, config)
-    original_names = [
-        "tests/grading-job.json",
-        *["tests/" + name for name in config["testFiles"]],
-        *[Path(p).relative_to(job).as_posix() for p in primary_files],
-    ]
-    if (
-        "additionalJavaSources" in config
-        and (job / "student" / config["additionalJavaSources"]["archive"]).exists()
-    ):
-        original_names.append("student/" + config["additionalJavaSources"]["archive"])
-    original = {
-        name: hashlib.sha256(_files_any(job, name).read_bytes()).hexdigest()
-        for name in original_names
-    }
-    recipe = {
-        name: hashlib.sha256(_files_any(PLATFORM, name).read_bytes()).hexdigest()
-        for name in NATIVE_RECIPE
-    }
-    input_hash = _hash_value({"sources": inputs, "javaBuild": build})
-
-    def intact():
-        if (
-            _primary_files(job, config) != primary_files
-            or _source_inventory(job, sources, extra_names) != inputs
-            or any(
-                hashlib.sha256(_files_any(job, p).read_bytes()).hexdigest() != h
-                for p, h in original.items()
-            )
-            or any(
-                hashlib.sha256(_files_any(PLATFORM, p).read_bytes()).hexdigest() != h
-                for p, h in recipe.items()
-            )
-        ):
-            raise GraderError("Native source/configuration integrity drift")
-        if _verify_native_toolchain() != lock or _grading_boundary() != boundary:
-            raise GraderError("Native toolchain/role identity drift")
-
     private = job / ".native-build-private"
     private.mkdir(mode=0o700)
     os.chown(private, job.stat().st_uid, -1)
-    private_manifest = {
-        "buildEvidence": {
-            "schemaVersion": 1,
-            "kind": "gradle-jar-v1",
-            "status": "failure",
-            "reason": "build",
-            "inputHash": input_hash,
-            "dependencyHash": dependency_hash,
-        },
-        "sourceInventory": inputs,
-        "recipeHashes": recipe,
-        "gradleUid": uid,
-        "accessRoles": boundary["roles"],
-        "buildRoleTransitions": [],
-        "supervisorUid": os.geteuid(),
-        "canaryDenied": True,
-    }
-    (private / "manifest.json").write_text(json.dumps(private_manifest, sort_keys=True))
-    (private / "manifest.json").chmod(0o600)
-    os.chown(private / "manifest.json", job.stat().st_uid, -1)
-
-    def finish_role(phase):
-        private_manifest["buildRoleTransitions"].append(
-            {"phase": phase, **_finish_build_role(uid)}
-        )
-        file = private / "manifest.json"
-        file.write_text(json.dumps(private_manifest, sort_keys=True))
-        file.chmod(0o600)
-        os.chown(file, job.stat().st_uid, -1)
-
+    start = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="native-gradle-build-") as temporary:
         work = Path(temporary)
         work.chmod(0o1777)
@@ -2213,172 +1712,72 @@ def _native_build(
             folder = work / name
             folder.mkdir(mode=0o700)
             os.chown(folder, uid, -1)
-        src = work / "src"
-        src.mkdir(mode=0o755)
         for source in sources:
             path = Path(source)
-            name = extra_names.get(str(path), None)
-            if name is None:
-                name = path.relative_to(job / "student").as_posix()
-            target = src / name
+            name = extra_names.get(str(path)) or path.relative_to(job / "student").as_posix()
+            target = work / "src" / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            with target.open("xb") as output:
-                output.write(path.read_bytes())
+            target.write_bytes(path.read_bytes())
             target.chmod(0o444)
-        for path in sorted(src.rglob("*"), reverse=True):
-            if path.is_dir():
-                path.chmod(0o555)
-        src.chmod(0o555)
-        for name in NATIVE_RECIPE[:2]:
+        for name in NATIVE_RECIPE:
             target = work / Path(name).name
             target.write_bytes(_files_any(PLATFORM, name).read_bytes())
             target.chmod(0o444)
-        (work / "native-config.json").write_text(json.dumps(build, sort_keys=True))
+        (work / "native-config.json").write_text(json.dumps(build))
         (work / "native-config.json").chmod(0o444)
-        # No JVM/toolchain/Gradle options are inherited from the supervisor.
-        environment = {
-            "PATH": lock["jdk"]["home"] + "/bin:/usr/bin:/bin",
-            "JAVA_HOME": lock["jdk"]["home"],
-            "HOME": str(work / "home"),
-            "GRADLE_USER_HOME": str(work / "user-cache"),
-            "TMPDIR": str(work / "tmp"),
-            "LANG": "C.UTF-8",
-            "LC_ALL": "C.UTF-8",
-        }
-        properties = (
-            "org.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths="
-            + lock["jdk"]["home"]
-            + "\norg.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData\n"
-        )
-        (work / "gradle.properties").write_text(properties)
-        (work / "gradle.properties").chmod(0o444)
-        if any(p.is_symlink() for p in work.rglob("*")):
-            raise GraderError("Symlink copied native input")
-        copied = {
-            p.relative_to(work)
-            .as_posix(): hashlib.sha256(
-                _files_any(work, p.relative_to(work).as_posix()).read_bytes()
-            )
-            .hexdigest()
-            for p in work.rglob("*")
-            if p.is_file()
-        }
-        admitted_copies = {
-            **{"src/" + name: sha for name, sha in inputs.items()},
-            **{Path(name).name: recipe[name] for name in NATIVE_RECIPE[:2]},
-            "native-config.json": hashlib.sha256(
-                json.dumps(build, sort_keys=True).encode()
-            ).hexdigest(),
-            "gradle.properties": hashlib.sha256(properties.encode()).hexdigest(),
-        }
-        if copied != admitted_copies:
-            raise GraderError(
-                "Copied native inputs differ from admitted source/recipe bytes"
-            )
-        intact()
-        # Verify executable identities with the same UID/env/isolation as build.
+        # Landlock excludes /dev/random. Give each trusted build JVM its own
+        # fresh OS entropy instead of the JDK's costly threaded fallback.
+        entropy = {}
+        for role in ("client", "daemon"):
+            path = work / (role + ".seed")
+            with path.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(secrets.token_bytes(65536))
+                os.fchown(stream.fileno(), uid, -1)
+                os.fchmod(stream.fileno(), 0o400)
+            entropy[role] = "-Djava.security.egd=" + path.as_uri()
+        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData\n")
+        # Gradle removes mutable -D properties from daemon startup arguments.
+        # The launcher reads JDK_JAVA_OPTIONS before explicit JAVA_OPTS, so the
+        # client overrides this inherited daemon seed with its own fresh seed.
+        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "JAVA_OPTS": entropy["client"], "JDK_JAVA_OPTIONS": entropy["daemon"], "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
         try:
-            code, text, reason = _run(
-                [*prefix, lock["gradle"]["home"] + "/bin/gradle", "--version"],
-                work,
-                limits.get("compile-seconds", 15),
-                int(limits["max-output-bytes"]),
-                env=environment,
-            )
+            code, text, reason = _run([*prefix, "/opt/gradle/bin/gradle", "--offline", "--no-daemon", "--console=plain", "--project-cache-dir", str(work / "project-cache"), "jar"], work, limits.get("compile-seconds", 15), int(limits["max-output-bytes"]), env=environment)
         finally:
-            finish_role("gradle-version")
-        (private / "gradle-version.log").write_text(text)
-        (private / "gradle-version.log").chmod(0o600)
-        os.chown(private / "gradle-version.log", job.stat().st_uid, -1)
-        if code or reason or not re.search(r"^Gradle 9\.8(?:\.0)?$", text, re.M):
-            raise GraderError("Admitted Gradle executable version check failed")
-        command = [
-            *prefix,
-            lock["gradle"]["home"] + "/bin/gradle",
-            "--offline",
-            "--no-daemon",
-            "--no-build-cache",
-            "--console=plain",
-            "--project-cache-dir",
-            str(work / "project-cache"),
-            "clean",
-            "jar",
-        ]
-        try:
-            code, text, reason = _run(
-                command,
-                work,
-                limits.get("compile-seconds", 15),
-                int(limits["max-output-bytes"]),
-                env=environment,
-            )
-        finally:
-            finish_role("gradle-build")
-        durations["gradleBuild"] = time.monotonic() - start
-        diagnostics["gradleBuild"] = text.replace(str(work), "/build")
-        # Private raw log remains private after temporary workspace cleanup.
+            _finish_build_role(uid)
+            _grading_boundary()
+        durations["gradleBuild"] = durations["studentCompilation"] = time.monotonic() - start
+        diagnostics["gradleBuild"] = diagnostics["studentCompilation"] = text.replace(str(work), "/build")
         (private / "gradle.log").write_text(text)
         (private / "gradle.log").chmod(0o600)
         os.chown(private / "gradle.log", job.stat().st_uid, -1)
-        intact()
-        if any(
-            hashlib.sha256(_files_any(work, p).read_bytes()).hexdigest() != h
-            for p, h in copied.items()
-        ):
-            raise GraderError("Native copied source/recipe integrity drift")
-        if code or reason:
-            raise GraderError("Trusted Gradle build failed: " + (reason or str(code)))
+        if reason:
+            raise GraderError("Gradle compilation infrastructure limit: " + reason)
+        if code:
+            if ":compileJava FAILED" not in text:
+                raise GraderError("Gradle build failed outside student compilation")
+            return {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"}, code, None
+        compiled = work / "build/classes/java/main"
+        if not compiled.is_dir():
+            raise GraderError("Gradle production output missing")
+        for path in compiled.rglob("*"):
+            if path.is_symlink():
+                raise GraderError("Unsafe compiled production output")
+            if path.is_file():
+                target = stage / "student" / path.relative_to(compiled)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
         relative = "build/libs/" + build["artifact"]
-        state = _artifact_state(work, relative)
-        libs = _files_any(work, relative).parent
-        if {p.name for p in libs.iterdir()} != {build["artifact"]}:
-            raise GraderError("Unexpected native build artifacts")
-        # Bind the actual result to the ordinary existing cwd-relative JAR path.
-        parent = job / "build"
-        parent.mkdir(mode=0o755)
-        (parent / "libs").mkdir(mode=0o755)
+        artifact = _files_any(work, relative)
+        size = artifact.stat().st_size
+        if not 0 < size <= 64 * 1024 * 1024:
+            raise GraderError("Invalid native artifact size")
         target = job / relative
-        with target.open("xb") as output:
-            output.write(_files_any(work, relative).read_bytes())
+        target.parent.mkdir(parents=True)
+        target.write_bytes(artifact.read_bytes())
         target.chmod(0o444)
-        if _artifact_state(work, relative) != state:
-            raise GraderError("Native artifact drift during transfer")
-        guarded = _artifact_state(job, relative, guarded=True)
-        if (guarded["sha256"], guarded["bytes"]) != (state["sha256"], state["bytes"]):
-            raise GraderError("Native artifact transfer mismatch")
-        proof = {
-            "schemaVersion": 1,
-            "kind": "gradle-jar-v1",
-            "status": "success",
-            "inputHash": input_hash,
-            "dependencyHash": dependency_hash,
-            "artifact": {
-                "path": relative,
-                "sha256": guarded["sha256"],
-                "bytes": guarded["bytes"],
-            },
-            "durationSeconds": durations["gradleBuild"],
-        }
-        (private / "manifest.json").write_text(
-            json.dumps(
-                {
-                    **private_manifest,
-                    "buildEvidence": proof,
-                    "artifactIdentity": guarded,
-                    "logSha256": hashlib.sha256(text.encode()).hexdigest(),
-                },
-                sort_keys=True,
-            )
-        )
-        (private / "manifest.json").chmod(0o600)
-        os.chown(private / "manifest.json", job.stat().st_uid, -1)
+    return {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "success", "artifact": {"path": relative, "bytes": size}, "durationSeconds": durations["gradleBuild"]}, 0, None
 
-    def verify():
-        intact()
-        if _artifact_state(job, relative, guarded=True) != guarded:
-            raise GraderError("Guarded native artifact integrity drift")
-
-    return proof, verify
 
 
 def _path_collision(left, right):
@@ -2389,10 +1788,53 @@ class _AdditionalSubmissionError(Exception):
     def __init__(self, message, classification="unsafe-submission"):
         self.classification = classification
         super().__init__(
-            "ZIP дополнительных Java sources: "
+            "Java-файлы и ZIP ответа: "
             + message
             + ". Исправьте доставку или используйте ручную сдачу."
         )
+
+
+def _flat_additional_inventory(root, config):
+    policy = config["additionalJavaSources"]
+    members = []
+    total = 0
+    reserved = ["grading-job.json", "tests/grading-job.json"]
+    for path in sorted(root.iterdir()):
+        name = path.name
+        if not name.endswith(".java") or name in config["sourceFiles"]:
+            continue
+        if not policy.get("allowAdditional", True):
+            raise _AdditionalSubmissionError("не объявлен исходник " + repr(name))
+        try:
+            _names({"files": [name]}, "files")
+        except GraderError as error:
+            raise _AdditionalSubmissionError("недопустимое имя исходника") from error
+        if any(_path_collision(name, trusted) for trusted in reserved):
+            raise _AdditionalSubmissionError("конфликт с доверенным путём " + repr(name))
+        if path.is_symlink() or not path.is_file():
+            raise _AdditionalSubmissionError("исходник должен быть обычным файлом без symlink")
+        size = path.stat().st_size
+        if (len(members) >= policy["maxFiles"] or size > policy["maxFileBytes"]
+                or total + size > policy["maxTotalBytes"]):
+            raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
+        with path.open("rb") as source:
+            data = source.read(policy["maxFileBytes"] + 1)
+        if len(data) != size or total + len(data) > policy["maxTotalBytes"]:
+            raise _AdditionalSubmissionError("превышен фактический лимит bytes")
+        try:
+            data.decode("utf-8")
+        except UnicodeError as error:
+            raise _AdditionalSubmissionError("исходник не UTF-8: " + repr(name), "student-compilation-failure") from error
+        total += len(data)
+        members.append((name, data))
+    return members
+
+
+def _additional_evidence(policy, members, source_names):
+    if not members:
+        return None
+    return {"archive": policy["archive"],
+            "files": [{"path": name, "bytes": len(data)} for name, data in members if name not in source_names]}
 
 
 def _additional_inventory(job, config):
@@ -2404,29 +1846,23 @@ def _additional_inventory(job, config):
     file = root / policy["archive"]
     if root.is_symlink() or not root.is_dir():
         raise _AdditionalSubmissionError("небезопасный каталог student")
+    members = _flat_additional_inventory(root, config)
     if not file.exists() and not file.is_symlink():
-        return [], None
+        return members, _additional_evidence(policy, members, config["sourceFiles"])
     if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
         raise _AdditionalSubmissionError("архив должен быть обычным файлом без symlink")
     if file.stat().st_size > policy["maxArchiveBytes"]:
         raise _AdditionalSubmissionError("превышен maxArchiveBytes")
     reserved = [
-        *(
-            config["sourceFiles"]
-            if policy.get("primaryRequired", True)
-            else [
-                Path(p).relative_to(root).as_posix()
-                for p in _primary_files(job, config)
-            ]
-        ),
-        *config["testFiles"],
+        *[Path(p).relative_to(root).as_posix() for p in _primary_files(job, config)],
+        *[name for name, _ in members],
         "grading-job.json",
         "tests/grading-job.json",
         policy["archive"],
     ]
-    members = []
     names = {}
-    total = 0
+    total = sum(len(data) for _, data in members)
+    extra_count = len(members)
     try:
         with file.open("rb") as raw:
             archive_bytes = raw.read(policy["maxArchiveBytes"] + 1)
@@ -2498,31 +1934,23 @@ def _additional_inventory(job, config):
                             "каталог с содержимым " + repr(name)
                         )
                     continue
+                if not policy.get("allowAdditional", True) and name not in config["sourceFiles"]:
+                    raise _AdditionalSubmissionError("не объявлен исходник " + repr(name))
                 if not name.endswith(".java"):
                     raise _AdditionalSubmissionError(
                         "разрешены только .java: " + repr(name)
                     )
-                if (
-                    len(members) >= policy["maxFiles"]
-                    or info.file_size > policy["maxFileBytes"]
-                    or total + info.file_size > policy["maxTotalBytes"]
-                ):
-                    raise _AdditionalSubmissionError(
-                        "превышен лимит количества/размера исходников"
-                    )
+                primary = name in config["sourceFiles"]
+                file_limit = 1024 * 1024 if primary else policy["maxFileBytes"]
+                if (info.file_size > file_limit or not primary and (
+                        extra_count >= policy["maxFiles"] or total + info.file_size > policy["maxTotalBytes"])):
+                    raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
                 data = bytearray()
                 with archive.open(info) as member:
-                    while chunk := member.read(
-                        min(65536, policy["maxFileBytes"] - len(data) + 1)
-                    ):
+                    while chunk := member.read(min(65536, file_limit - len(data) + 1)):
                         data.extend(chunk)
-                        if (
-                            len(data) > policy["maxFileBytes"]
-                            or total + len(data) > policy["maxTotalBytes"]
-                        ):
-                            raise _AdditionalSubmissionError(
-                                "превышен фактический лимит bytes"
-                            )
+                        if len(data) > file_limit or (not primary and total + len(data) > policy["maxTotalBytes"]):
+                            raise _AdditionalSubmissionError("превышен фактический лимит bytes")
                 if len(data) != info.file_size:
                     raise _AdditionalSubmissionError(
                         "размер записи не совпадает " + repr(name)
@@ -2534,7 +1962,9 @@ def _additional_inventory(job, config):
                         "исходник не UTF-8: " + repr(name),
                         "student-compilation-failure",
                     ) from error
-                total += len(data)
+                if not primary:
+                    total += len(data)
+                    extra_count += 1
                 members.append((name, bytes(data)))
     except (
         zipfile.BadZipFile,
@@ -2550,18 +1980,7 @@ def _additional_inventory(job, config):
             "повреждённый или неподдерживаемый архив (" + type(error).__name__ + ")"
         ) from error
     members.sort()
-    return members, {
-        "archive": policy["archive"],
-        "archiveSha256": hashlib.sha256(archive_bytes).hexdigest(),
-        "files": [
-            {
-                "path": name,
-                "sha256": hashlib.sha256(data).hexdigest(),
-                "bytes": len(data),
-            }
-            for name, data in members
-        ],
-    }
+    return members, _additional_evidence(policy, members, config["sourceFiles"])
 
 
 def grade(job_dir, registry=None):
@@ -2571,28 +1990,12 @@ def grade(job_dir, registry=None):
     except (OSError, ValueError) as error:
         raise GraderError("Missing or invalid grading configuration") from error
     validate_config(config)
+    official = os.environ.get("PL_CONTAINMENT") == "official"
+    if official:
+        _protect_input_identity(job)
+    if official:
+        _admit_java_job()
     profile, bundle, toolchain = preflight(config["runtime"], registry)
-    import runpy
-
-    try:
-        runpy.run_path(str(PLATFORM / "runtime/student_feedback.py"))[
-            "validate_public_cases"
-        ](config.get("publicCases", []))
-    except ValueError as error:
-        raise GraderError("Invalid public feedback policy") from error
-    closure = {
-        **profile["files"],
-        **profile["sharedFiles"],
-        "runner/grade.py": profile["runnerSha256"],
-    }
-    evidence = {
-        "dependencyHashes": closure,
-        "dependencyHash": hashlib.sha256(
-            json.dumps(
-                closure, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-            ).encode()
-        ).hexdigest(),
-    }
     additional_evidence = None
     native_context = {} if config["runtime"] == NATIVE_RUNTIME else None
 
@@ -2600,14 +2003,10 @@ def grade(job_dir, registry=None):
         if additional_evidence is not None:
             value["additionalSources"] = additional_evidence
         if native_context is not None:
-            if "verify" in native_context:
-                native_context["verify"]()
-            preflight(config["runtime"], registry)
             value["buildEvidence"] = native_context.get(
                 "proof",
                 {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"},
             )
-        value["executionEvidence"] = evidence
         return value
 
     if profile["mode"] != config["mode"]:
@@ -2634,6 +2033,11 @@ def grade(job_dir, registry=None):
         if "apiPrecheck" in config:
             result.update(apiPrecheck="not-run", dependentExecution="not-run")
         return finish(result)
+    if config.get("additionalJavaSources", {}).get("primaryRequired", True):
+        present = {Path(path).relative_to(job / "student").as_posix() for path in sources}
+        present.update(name for name, _ in additional)
+        if not set(source_names) <= present:
+            return finish(_invalid("Представьте все объявленные Java-файлы отдельно или в ZIP.", classification="unsafe-submission"))
     if not sources and not additional:
         return finish(
             _invalid(
@@ -2660,10 +2064,6 @@ def grade(job_dir, registry=None):
                 "schemaVersion": 1,
                 "kind": "gradle-jar-v1",
                 "status": "not-run",
-                "inputHash": _java_build_input(
-                    job, config["javaBuild"], sources, extra_names
-                ),
-                "dependencyHash": evidence["dependencyHash"],
             }
         if config["mode"] == "implementation":
             if native_context is not None:
@@ -2675,7 +2075,6 @@ def grade(job_dir, registry=None):
                         extra_names,
                         stage,
                         runtime,
-                        evidence["dependencyHash"],
                         durations,
                         diagnostics,
                     )
@@ -2696,18 +2095,9 @@ def grade(job_dir, registry=None):
             except (OSError, ValueError, KeyError, GraderError) as error:
                 if native_context is None:
                     raise
-                native_context.pop("verify", None)
-                native_context["proof"] = {
-                    "schemaVersion": 1,
-                    "kind": "gradle-jar-v1",
-                    "status": "failure",
-                    "reason": "build",
-                    **{
-                        key: native_context["proof"][key]
-                        for key in ("inputHash", "dependencyHash")
-                        if key in native_context.get("proof", {})
-                    },
-                }
+                if native_context.get("proof", {}).get("status") != "success":
+                    native_context["proof"] = {"schemaVersion": 1, "kind": "gradle-jar-v1",
+                                               "status": "failure", "reason": "build"}
                 stages = (
                     {
                         "studentCompilation": "success",
@@ -2848,7 +2238,10 @@ def main():
     tmp = path / "results.json.tmp"
     tmp.write_text(json.dumps(result))
     tmp.replace(path / "results.json")
-    return status
+    # Native workers discard results.json on nonzero process exit. A safely
+    # delivered ungradable result is still a successful protocol response;
+    # operator verification retains the infrastructure failure exit status.
+    return status if args.verification else 0
 
 
 if __name__ == "__main__":

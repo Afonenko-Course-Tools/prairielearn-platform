@@ -1,5 +1,4 @@
 """Проверки generated src/dist и strict decoder; loadUser здесь mock, не DB proof."""
-import hashlib
 import importlib.util
 import pathlib
 import subprocess
@@ -16,16 +15,24 @@ class NativeNamePatch(unittest.TestCase):
     def original(self, kind):
         return (ROOT / 'tests/fixtures' / ('gateway-name-base.' + ('ts' if kind == 'src' else 'js'))).read_text()
 
-    def test_pinned_hashes_generated_body_and_no_uid_sql_change(self):
+    def test_generated_body_and_no_uid_sql_change(self):
         for kind in ['src', 'dist']:
             source = self.original(kind)
-            self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), PATCH.BASE_HASHES[kind])
             result = PATCH.patch(source, kind)
             decoder = PATCH.DECODER if kind == 'dist' else PATCH.DECODER.replace('function decodeGatewayVerifiedName(value)', 'function decodeGatewayVerifiedName(value: unknown): string', 1)
             self.assertIn(decoder, result)
             self.assertEqual(result.replace(decoder + '\n', '', 1).replace(PATCH.NEW_NAME_READ, PATCH.NAME_READ, 1), source)
             with self.assertRaises(ValueError): PATCH.patch(result, kind)
-            with self.assertRaises(ValueError): PATCH.patch(source + '\n# drift', kind)
+            self.assertIn('// harmless upstream comment', PATCH.patch(source + '\n// harmless upstream comment', kind))
+
+    def test_missing_or_duplicate_boundaries_refuse(self):
+        for kind in ['src', 'dist']:
+            source = self.original(kind)
+            for anchor in [PATCH.NAME_READ, 'const router = Router();', 'await authnLib.loadUser(']:
+                for changed in [source.replace(anchor, '', 1), source + '\n' + anchor]:
+                    with self.subTest(kind=kind, anchor=anchor), self.assertRaises(ValueError):
+                        PATCH.patch(changed, kind)
+        with self.assertRaises(ValueError): PATCH.patch(self.original('src'), 'unknown')
 
     def test_both_pinned_inputs_validated_before_any_write(self):
         with tempfile.TemporaryDirectory() as directory:

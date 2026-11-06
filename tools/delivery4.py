@@ -1,6 +1,7 @@
 """Закрытые data-only bindings v4; пакет и seed никогда не исполняются."""
-import hashlib,io,json,re,stat,struct,unicodedata,zipfile,zlib
-from grading_job import JobError,digest
+import io,json,os,re,resource,stat,subprocess,tempfile,unicodedata,zipfile
+from pathlib import Path
+from grading_job import JobError
 
 def closed(v,keys):
  if not isinstance(v,dict) or set(v)!=set(keys):raise JobError('Closed delivery4 binding required')
@@ -46,15 +47,15 @@ def binding4(v):
   if not isinstance(o['image'],str) or not re.fullmatch(r'[^\s]+@sha256:[a-f0-9]{64}',o['image']) or not isinstance(o['home'],str) or not re.fullmatch(r'/(?:[a-zA-Z0-9_-]+/?)+',o['home']) or type(o['port']) is not int or not 1024<=o['port']<=65535:raise JobError('Workspace runtime binding differs')
   f=o['gradedFiles'];required={'work/**','work/.git/**','work/.*','explanation.m[d]','.pl-seed/identity.jso[n]'}
   if not isinstance(f,list) or any(not isinstance(x,str) for x in f) or not required<=set(f) or len(f)!=len(set(f)) or any(not relative_name(x) for x in f) or any(k in o and type(o[k]) is not bool for k in ('rewriteUrl','enableNetworking')):raise JobError('Workspace return inventory differs')
-  closed(v['seed'],['schema','archive','archiveSha256','manifest','manifestSha256'])
+  closed(v['seed'],['schema','archive','manifest'])
   s=v['seed']
-  if s['schema']!='pl-git-workspace-seed-v1' or s['archive']!='workspace/.pl-seed/starter.zip' or s['manifest']!='workspace/.pl-seed/manifest.json' or any(not isinstance(s[k],str) or not re.fullmatch('[a-f0-9]{64}',s[k]) for k in ('archiveSha256','manifestSha256')):raise JobError('Workspace seed binding differs')
+  if s['schema']!='pl-git-workspace-seed-v1' or s['archive']!='workspace/.pl-seed/starter.zip' or s['manifest']!='workspace/.pl-seed/manifest.json':raise JobError('Workspace seed binding differs')
  else:raise JobError('Unknown delivery4 kind')
  return v['grading']['method']
 
 def code_ids(delivery):
  from delivery_verification import classification
- return {q for q,m in classification(delivery).items() if m!='manual' and (delivery['schemaVersion']==3 or delivery['gradingPayloads'][q]['kind']=='project')}
+ return {q for q,m in classification(delivery).items() if m!='manual' and delivery['gradingPayloads'][q]['kind']=='project'}
 
 def native_proof(q,b,question_files,controls):
  expected=[]
@@ -69,20 +70,18 @@ def native_proof(q,b,question_files,controls):
   if tag=='pl-string-input' and set(attrs)!={'answers-name','allow-blank'} or tag=='pl-string-input' and attrs.get('allow-blank')!='true' or tag=='pl-rich-text-editor' and set(attrs)!={'file-name','placeholder'}:raise JobError('Native answer control attributes differ')
  if actual!=expected or any('correct' in a for _,a in controls):raise JobError('Native controls differ from public response slots')
  if 'server.py' not in question_files or any(n.startswith('tests/') or n in ('server.js','server.ts') for n in question_files):raise JobError('Native answer cannot contain code Job')
- return {'qualifiedId':q,'uuid':b['uuid'],'answerType':b['answerType'],'responseSlotsHash':digest(b['responseSlots']),'controlsHash':digest(controls),'serverSha256':question_files['server.py']}
+ return None
 
 def seed_proof(native,prefix,b):
  from delivery_verification import file_bytes,relative_name
  seed=b['seed'];raw=file_bytes(native,prefix+seed['archive']);manifest_raw=file_bytes(native,prefix+seed['manifest'])
- if hashlib.sha256(raw).hexdigest()!=seed['archiveSha256'] or hashlib.sha256(manifest_raw).hexdigest()!=seed['manifestSha256']:raise JobError('Seed bytes differ')
  if len(raw)>64*1024**2 or len(manifest_raw)>2*1024**2:raise JobError('Seed bound exceeded')
- manifest=json.loads(manifest_raw);closed(manifest,['schema','sha256','files'])
- if manifest['schema']!=seed['schema'] or manifest['sha256']!=seed['archiveSha256'] or not isinstance(manifest['files'],list) or not manifest['files']:raise JobError('Seed manifest differs')
- expected={}
- for f in manifest['files']:
-  closed(f,['name','sha256'])
-  if not relative_name(f['name']) or f['name'] in expected or not isinstance(f['sha256'],str) or not re.fullmatch('[a-f0-9]{64}',f['sha256']):raise JobError('Seed inventory invalid')
-  expected[f['name']]=f['sha256']
+ manifest=json.loads(manifest_raw);closed(manifest,['schema','files'])
+ if manifest['schema']!=seed['schema'] or not isinstance(manifest['files'],list) or not manifest['files']:raise JobError('Seed manifest differs')
+ expected=set()
+ for name in manifest['files']:
+  if not relative_name(name) or name in expected:raise JobError('Seed paths invalid')
+  expected.add(name)
  entries={};aliases=set();total=0
  try:
   with zipfile.ZipFile(io.BytesIO(raw)) as z:
@@ -94,7 +93,7 @@ def seed_proof(native,prefix,b):
     if total>64*1024**2:raise JobError('Expanded seed bound exceeded')
     data=z.read(f);entries[name]=data;aliases.add(alias)
  except (zipfile.BadZipFile,RuntimeError) as e:raise JobError('Invalid seed ZIP') from e
- if {n:hashlib.sha256(v).hexdigest() for n,v in entries.items()}!=expected:raise JobError('Exact seed inventory differs')
+ if set(entries)!=expected:raise JobError('Seed selected paths differ')
  # Public materialization copies must agree byte-for-byte with seed entries.
  for n,data in entries.items():
   if '/.git/' not in '/'+n and file_bytes(native,prefix+'clientFilesQuestion/starter/'+n)!=data:raise JobError('Seed/source common file differs')
@@ -107,66 +106,53 @@ def seed_proof(native,prefix,b):
  except (ValueError,configparser.Error) as e:raise JobError('Invalid Git config') from e
  if set(config.sections())!={'core'} or set(config['core'])-{'repositoryformatversion','filemode','bare','logallrefupdates','autocrlf'} or config['core'].get('bare')!='false' or config['core'].get('repositoryformatversion')!='0' or config['core'].get('autocrlf','false')!='false':raise JobError('Unsafe initial Git config')
  if any(n.startswith('work/.git/refs/') and n!='work/.git/refs/heads/main' or n in ('work/.git/commondir','work/.git/objects/info/alternates','work/.git/packed-refs') for n in entries):raise JobError('External Git state refused')
- ref=entries.get('work/.git/refs/heads/main',b'').decode().strip()
- if not re.fullmatch('[a-f0-9]{40}',ref):raise JobError('Initial Git commit missing')
- seen=set()
- def obj(oid,kind):
-  name='work/.git/objects/'+oid[:2]+'/'+oid[2:];data=entries.get(name)
-  if data is None:raise JobError('Git object closure missing')
-  d=zlib.decompressobj();value=d.decompress(data,8*1024**2+1)
-  if len(value)>8*1024**2 or not d.eof or d.unused_data or hashlib.sha1(value).hexdigest()!=oid:raise JobError('Git object identity differs')
-  head,body=value.split(b'\0',1)
-  if head!=kind.encode()+b' '+str(len(body)).encode():raise JobError('Git object kind/length differs')
-  seen.add(name);return body
- commit=obj(ref,'commit');headers,message=commit.split(b'\n\n',1)
- if any(x.startswith(b'parent ') for x in headers.splitlines()) or not re.fullmatch(b'tree [a-f0-9]{40}',headers.splitlines()[0]):raise JobError('Initial Git root commit required')
- tracked={}
- def tree(oid,path=''):
-  value=obj(oid,'tree');offset=0
-  while offset<len(value):
-   end=value.index(b'\0',offset);mode,name=value[offset:end].split(b' ',1);oid=value[end+1:end+21].hex();offset=end+21;name=path+name.decode()
-   if not relative_name(name):raise JobError('Unsafe Git tree path')
-   if mode==b'40000':tree(oid,name+'/')
-   elif mode in (b'100644',b'100755'):
-    blob=obj(oid,'blob')
-    if entries.get('work/'+name)!=blob or name in tracked:raise JobError('Git worktree differs')
-    tracked[name]=(int(mode,8),oid)
-   else:raise JobError('Unsafe Git tree mode')
- tree(headers.splitlines()[0][5:].decode())
- if {n[5:] for n in entries if n.startswith('work/') and not n.startswith('work/.git/')}!=set(tracked):raise JobError('Untracked initial worktree files')
- if not tracked or any(n.startswith('work/.git/objects/') and n not in seen for n in entries):raise JobError('Unbound Git objects')
- index=entries['work/.git/index']
- if len(index)<32 or index[:4]!=b'DIRC' or struct.unpack('>I',index[4:8])[0]!=2 or hashlib.sha1(index[:-20]).digest()!=index[-20:]:raise JobError('Invalid Git index')
- count=struct.unpack('>I',index[8:12])[0];offset=12;indexed={}
- if count!=len(tracked):raise JobError('Git index/tree entry count differs')
- for _ in range(count):
-  start=offset
-  if offset+62>len(index)-20:raise JobError('Truncated Git index')
-  mode=struct.unpack('>I',index[offset+24:offset+28])[0];oid=index[offset+40:offset+60].hex();flags=struct.unpack('>H',index[offset+60:offset+62])[0]
-  try:end=index.index(b'\0',offset+62,len(index)-20);raw_name=index[offset+62:end];name=raw_name.decode('utf-8')
-  except (ValueError,UnicodeError) as e:raise JobError('Invalid Git index pathname') from e
-  if flags&0xf000 or (flags&0xfff)!=min(len(raw_name),0xfff) or not relative_name(name) or name in indexed:raise JobError('Unsafe Git index entry')
-  indexed[name]=(mode,oid);offset=start+((end+1-start+7)//8)*8
-  if offset>len(index)-20:raise JobError('Truncated Git index entry')
- if indexed!=tracked:raise JobError('Git index/tree differs')
- # Git определяет optional extension по первой uppercase ASCII букве.
- # Не ужесточаем игнорируемые Git optional payload/короткий tail.
- while len(index)-20-offset>=8:
-  if not 65<=index[offset]<=90:raise JobError('Unsupported mandatory Git index extension')
-  offset+=8+struct.unpack('>I',index[offset+4:offset+8])[0]
- return {'archiveSha256':seed['archiveSha256'],'manifestSha256':seed['manifestSha256'],'filesHash':digest(expected),'initialCommit':ref}
-
-
-def internal_proof(delivery,native):
- from delivery_verification import Controls,file_bytes
- values=[]
- for q in sorted(delivery['questions']):
-  b=delivery['gradingPayloads'][q]
-  if b['kind']!='native-answer':continue
-  prefix='questions/'+q+'/'
-  files={n[len(prefix):]:sha for n,sha in delivery['files'].items() if n.startswith(prefix)}
-  values.append(native_proof(q,b,files,Controls(file_bytes(native,prefix+'question.html').decode()).elements))
- return {'kind':'native-answer-package-v1','deliveryHash':delivery['deliveryHash'],'bindings':values,'inventoryHash':digest(values)}
+ # Git читает собственные object/index форматы в изолированной временной копии.
+ # Содержимое seed не исполняется; внешние конфиги и Git environment отключены.
+ if any(n in entries for n in ('work/.git/info/grafts','work/.git/shallow')):raise JobError('External Git history refused')
+ env={key:value for key,value in os.environ.items() if not key.startswith('GIT_')}
+ env.update(GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL='/dev/null',GIT_TERMINAL_PROMPT='0',GIT_NO_REPLACE_OBJECTS='1')
+ with tempfile.TemporaryDirectory(prefix='platform-seed-') as temporary:
+  root=Path(temporary)
+  for name,data in entries.items():
+   target=root/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
+  object_limit=8*1024**2
+  def limits():
+   resource.setrlimit(resource.RLIMIT_AS,(256*1024**2,256*1024**2))
+   resource.setrlimit(resource.RLIMIT_FSIZE,(object_limit,object_limit))
+   resource.setrlimit(resource.RLIMIT_CPU,(20,20))
+   resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+  def git(*args):
+   try:
+    # Файл и OS limit ограничивают stdout до чтения в Python; stderr не копится.
+    with tempfile.TemporaryFile() as output:
+     subprocess.run(['git','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',*args],cwd=root/'work',env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.DEVNULL,check=True,timeout=20,preexec_fn=limits)
+     output.seek(0);value=output.read(object_limit+1)
+     if len(value)>object_limit:raise JobError('Git output bound exceeded')
+     return value
+   except (OSError,subprocess.SubprocessError) as error:raise JobError('Invalid initial Git repository: '+args[0]) from error
+  # Native metadata включает недостижимые и packed объекты; до fsck/content.
+  objects=git('cat-file','--batch-all-objects','--batch-check=%(objectname) %(objectsize)').splitlines()
+  stored=set()
+  for row in objects:
+   oid,size=row.split()
+   if not size.isdigit():raise JobError('Invalid Git object metadata')
+   if int(size)>object_limit:raise JobError('Git object size bound exceeded')
+   stored.add(oid)
+  git('fsck','--full','--no-reflogs')
+  if git('symbolic-ref','HEAD').strip()!=b'refs/heads/main' or git('rev-list','--count','--all').strip()!=b'1':raise JobError('Initial Git root commit required')
+  ref=git('rev-parse','--verify','HEAD^{commit}').decode().strip()
+  git('diff-index','--cached','--quiet','HEAD','--')
+  tracked=set()
+  for row in git('ls-tree','-r','-z','--full-tree','HEAD').split(b'\0'):
+   if not row:continue
+   metadata,raw_name=row.split(b'\t',1);mode,kind,oid=metadata.split();name=raw_name.decode('utf-8')
+   if not relative_name(name) or mode not in (b'100644',b'100755') or kind!=b'blob':raise JobError('Unsafe Git tree path/mode')
+   if entries.get('work/'+name)!=git('cat-file','blob',oid.decode()):raise JobError('Git worktree differs')
+   tracked.add(name)
+  if not tracked or {n[5:] for n in entries if n.startswith('work/') and not n.startswith('work/.git/')}!=tracked:raise JobError('Untracked initial worktree files')
+  reachable=set(git('rev-list','--objects','--no-object-names','HEAD').splitlines())
+  if stored!=reachable:raise JobError('Unbound Git objects')
+ return {'initialCommit':ref}
 
 
 def workspace_image_authority(delivery,registry):

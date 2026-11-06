@@ -94,11 +94,6 @@ services:
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: ${COURSE_DIR}
-        target: /native
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
         source: ${GATEWAY_DATA:?Нужен постоянный каталог Gateway SQLite}
         target: /var/lib/gateway
         bind: {create_host_path: false}

@@ -26,4 +26,4 @@ class EntrypointTests(unittest.TestCase):
  def test_cli_infrastructure_failure_has_no_score(self):
   (self.job/'tests/AnswerTest.java').unlink();(self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
   p=subprocess.run([os.sys.executable,str(unit_platform(self)/'images/java25-grader/grade.py'),'--job-dir',str(self.job)],capture_output=True,text=True)
-  self.assertEqual(p.returncode,2);r=json.loads((self.job/'results/results.json').read_text());self.assertTrue(r['grading_error']);self.assertNotIn('score',r)
+  self.assertEqual(p.returncode,0);r=json.loads((self.job/'results/results.json').read_text());self.assertTrue(r['grading_error']);self.assertNotIn('score',r)

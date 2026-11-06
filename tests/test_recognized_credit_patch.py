@@ -1,5 +1,5 @@
-"""Точные src/dist bytes и атомарный отказ patcher; без Native/DB/Docker."""
-import hashlib,json,pathlib,shutil,subprocess,sys,tempfile,unittest
+"""Применимость src/dist hooks и атомарный отказ patcher; без Native/DB/Docker."""
+import json,pathlib,shutil,subprocess,sys,tempfile,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 FIX=ROOT/'tests/fixtures/native-credit-upstream'
 class PatchControls(unittest.TestCase):
@@ -11,11 +11,22 @@ class PatchControls(unittest.TestCase):
  def tearDown(self):self.tmp.cleanup()
  def paths(self):return[self.root/(r if r.startswith('dist/')else 'src/'+r)for r in self.records]
  def run_patch(self):return subprocess.run([sys.executable,'-B',str(ROOT/'images/prairielearn/patch-recognized-credit.py'),str(self.root)],capture_output=True,timeout=10)
- def test_exact_ten_native_src_dist_files(self):
+ def test_ten_native_src_dist_hooks_accept_unrelated_comments(self):
+  for p in self.paths():p.write_text(p.read_text()+'\n// harmless upstream comment\n')
   result=self.run_patch();self.assertEqual(result.returncode,0,result.stderr)
-  for rel,row in self.records.items():self.assertEqual(hashlib.sha256((self.root/(rel if rel.startswith('dist/')else 'src/'+rel)).read_bytes()).hexdigest(),row['patched_sha256'])
- def test_unrelated_native_drift_refuses_before_any_file_write(self):
-  p=self.paths()[-1];p.write_bytes(p.read_bytes()+b'\n// unreviewed drift\n');before={p:p.read_bytes()for p in self.paths()}
+  for p in self.paths():
+   text=p.read_text();self.assertIn('// harmless upstream comment',text)
+   if p.stem=='manualGrading':self.assertEqual(text.count('export { recognizeCredit as recognizePreviousCredit }'),1)
+   else:self.assertEqual(text.count("import { applyRecognizedCredit }"),1);self.assertIn('await applyRecognizedCredit({ assessment_instance_id',text)
+ def test_patched_native_aggregate_preserves_scoring_behavior(self):
+  self.assertEqual(self.run_patch().returncode,0)
+  result=subprocess.run(['node',str(ROOT/'tests/recognized-aggregate.test.mjs'),'--aggregate='+str(self.root/'dist/lib/assessment-grading.js')],capture_output=True,timeout=20)
+  self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+ def test_missing_native_boundary_refuses_before_any_file_write(self):
+  p=self.paths()[-1];p.write_text(p.read_text().replace('export async function updateInstanceQuestionScore(', 'export async function renamedScore(',1));before={p:p.read_bytes()for p in self.paths()}
+  self.assertNotEqual(self.run_patch().returncode,0);self.assertEqual(before,{p:p.read_bytes()for p in self.paths()})
+ def test_duplicate_native_boundary_refuses_before_any_file_write(self):
+  p=self.root/'src/lib/assessment.ts';p.write_text(p.read_text()+'\nconst pointsByZone = await computeAssessmentInstanceScoreByZone({ assessment_instance_id });\n');before={p:p.read_bytes()for p in self.paths()}
   self.assertNotEqual(self.run_patch().returncode,0);self.assertEqual(before,{p:p.read_bytes()for p in self.paths()})
  def test_duplicate_patch_refuses_without_duplicate_hooks(self):
   self.assertEqual(self.run_patch().returncode,0);before={p:p.read_bytes()for p in self.paths()}

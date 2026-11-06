@@ -1,3 +1,5 @@
+import base64
+from selected_job_fixture import native_manifest
 """Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -305,9 +307,7 @@ class ApiDeliveryTests(unittest.TestCase):
 
             def s(name, target):
                 return {
-                    "projectRelativePath": name,
-                    "submissionRelativePath": target,
-                    "sha256": hashlib.sha256((p / name).read_bytes()).hexdigest(),
+                    "name":target,"target":name,"data":base64.b64encode((p/name).read_bytes()).decode(),
                 }
 
             fact = {
@@ -339,13 +339,7 @@ class ApiDeliveryTests(unittest.TestCase):
                     "entry": "PublicApi",
                 },
             }
-            manifest = {
-                "schemaVersion": 1,
-                "bookRoot": "tasks",
-                "sourceSnapshotHash": "a" * 64,
-                "inventoryHash": "b" * 64,
-                "projects": [fact],
-            }
+            manifest = native_manifest(fact)
             job = m.prepare_job(
                 manifest, snapshot, "demo/exr-api", "starter", registry=unit_registry()
             )
@@ -399,39 +393,27 @@ class ApiDeliveryTests(unittest.TestCase):
                 shutil.copytree(
                     job.root / "student", question / "serverFilesQuestion/starter"
                 )
-                native_files = {
-                    f.relative_to(native)
-                    .as_posix(): hashlib.sha256(f.read_bytes())
-                    .hexdigest()
-                    for f in native.rglob("*")
-                    if f.is_file()
-                }
+                native_files = sorted(f.relative_to(native).as_posix() for f in native.rglob("*") if f.is_file())
                 delivery = {
-                    "schemaVersion": 3,
+                    "schemaVersion": 5,
                     "courseId": "demo",
                     "bookRoot": "tasks",
                     "works": [{"id": "sec-api"}],
                     "instances": {"unit": {"works": ["sec-api"]}},
                     "gradingPayloads": {
                         "demo/exr-api": {
-                            "uuid": "00000000-0000-4000-8000-000000000001",
+                            "kind":"project","uuid": "00000000-0000-4000-8000-000000000001",
                             "grading": {"method": "external"},
                             "submission": {"mode": "upload"},
                             "sourceRoot": fact["projectRoot"],
                             "projectCheck": "unit-api",
                             "runtime": fact["check"]["runtime"],
-                            "sources": fact["sources"],
+                            "sources": [{"projectRelativePath":r["target"],"submissionRelativePath":r["name"]} for r in fact["sources"]],
                         }
                     },
-                    "sourceSnapshotHash": "a" * 64,
-                    "inventoryHash": "b" * 64,
                     "questions": ["demo/exr-api"],
-                    "verificationInventoryHash": m.digest(
-                        m.scenario_inventory(manifest, snapshot)
-                    ),
                     "files": native_files,
                 }
-                delivery["deliveryHash"] = m.digest(delivery)
                 delivery["_root"] = str(native)
                 delivered = m.prepare_job(
                     manifest,
@@ -476,11 +458,6 @@ class ApiDeliveryTests(unittest.TestCase):
                 )
             fact["apiPrecheck"]["files"] = ["ApiContract.java"]
             (p / "tests/ApiContract.java").write_text("tampered")
-            with self.assertRaises(m.JobError):
-                m.prepare_job(
-                    manifest,
-                    snapshot,
-                    "demo/exr-api",
-                    "starter",
-                    registry=unit_registry(),
-                )
+            retained=m.prepare_job(manifest,snapshot,"demo/exr-api","starter",registry=unit_registry())
+            try:self.assertNotEqual((retained.root/"tests/ApiContract.java").read_text(),"tampered")
+            finally:shutil.rmtree(retained.root)

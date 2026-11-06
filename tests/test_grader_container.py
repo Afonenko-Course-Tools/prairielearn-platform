@@ -1,4 +1,5 @@
 """Actual offline container execution at the declared PL CPU/memory limits."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -43,7 +44,7 @@ class ContainerParity(unittest.TestCase):
  def test_outer_docker_failure_is_infrastructure(self):
   import sys
   sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'));from grading_job import GradingJob,run_job
-  job=GradingJob(schemaVersion=1,scope='declared',qualifiedId='synthetic/exr-test',scenario='starter',sourceSnapshotHash='a'*64,inventoryHash='b'*64,runtime='java25-junit-v1',imageDigest='sha256:'+'0'*64,sources=[{'projectRelativePath':'Student.java','submissionRelativePath':'Student.java','sha256':'a'*64}],trustedTests=[{'projectRelativePath':'AnswerTest.java','submissionRelativePath':'AnswerTest.java','sha256':'b'*64}],grading=self.cfg,sourceHashes={},testsHashes={});job.root=self.job
+  job=GradingJob(schemaVersion=3,scope='declared',qualifiedId='synthetic/exr-test',scenario='starter',runtime='java25-junit-v1',imageDigest='sha256:'+'0'*64,sources=[{'name':'Student.java','target':'student/Student.java','data':base64.b64encode((self.job/'student/Student.java').read_bytes()).decode()}],trustedTests=[{'name':'AnswerTest.java','target':'tests/AnswerTest.java','data':base64.b64encode((self.job/'tests/AnswerTest.java').read_bytes()).decode()}],grading=self.cfg);job.root=self.job
   r=run_job(job,'container',registry=self.runtime_registry);self.assertEqual(r['classification'],'infrastructure-failure');self.assertNotIn('score',r)
  def test_official_sandbox_denies_proc_trusted_write_and_root_exec(self):
   self._assert_official_sandbox()
@@ -83,7 +84,7 @@ class ContainerParity(unittest.TestCase):
   sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'));from grading_job import GradingJob,run_job
   cfg=json.loads(json.dumps(self.cfg));cfg['limits']['outer-seconds']=1.0
   (self.job/'tests/grading-job.json').write_text(json.dumps(self.cfg))
-  job=GradingJob(schemaVersion=1,scope='declared',qualifiedId='synthetic/exr-timeout',scenario='starter',sourceSnapshotHash='a'*64,inventoryHash='b'*64,runtime='java25-junit-v1',imageDigest=os.environ['PL_TEST_IMAGE'],sources=[{'projectRelativePath':'Student.java','submissionRelativePath':'Student.java','sha256':'a'*64}],trustedTests=[{'projectRelativePath':'AnswerTest.java','submissionRelativePath':'AnswerTest.java','sha256':'b'*64}],grading=cfg,sourceHashes={},testsHashes={});job.root=self.job
+  job=GradingJob(schemaVersion=3,scope='declared',qualifiedId='synthetic/exr-timeout',scenario='starter',runtime='java25-junit-v1',imageDigest=os.environ['PL_TEST_IMAGE'],sources=[{'name':'Student.java','target':'student/Student.java','data':base64.b64encode((self.job/'student/Student.java').read_bytes()).decode()}],trustedTests=[{'name':'AnswerTest.java','target':'tests/AnswerTest.java','data':base64.b64encode((self.job/'tests/AnswerTest.java').read_bytes()).decode()}],grading=cfg);job.root=self.job
   result=run_job(job,'container',registry=self.runtime_registry);self.assertEqual(result['classification'],'infrastructure-failure');self.assertNotIn('score',result)
   inspection=subprocess.run(['docker','inspect',job.containerName],capture_output=True)
   subprocess.run(['docker','rm','--force',job.containerName],capture_output=True)

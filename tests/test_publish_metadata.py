@@ -1,11 +1,8 @@
-"""Producer checks; image digests below are explicitly fictional unit inputs."""
-import hashlib
-import importlib.util
+"""Публичная CLI публикации; OCI digests здесь вымышленные."""
 import json
 import os
 from pathlib import Path
 import subprocess
-import shutil
 import sys
 import tempfile
 import unittest
@@ -17,209 +14,57 @@ IMAGES = {
     'community': 'ghcr.io/example/prairielearn-community-gateway@sha256:' + '3' * 64,
 }
 
-
 class PublishedMetadata(unittest.TestCase):
-    def run_producer(self, changes=None):
+    def produce(self, changes=None):
         env = dict(os.environ, GITHUB_SHA=subprocess.check_output(
             ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
-            VERSION=(ROOT / 'VERSION').read_text().strip(), **{k.upper() + '_DIGEST': v for k, v in IMAGES.items()})
+            VERSION=(ROOT/'VERSION').read_text().strip(),
+            **{key.upper()+'_DIGEST': value for key,value in IMAGES.items()})
         env.update(changes or {})
-        with tempfile.TemporaryDirectory(prefix='publisher-unit-') as output:
-            # The historical CLI reads this from cwd. Retain that real input
-            # when demonstrating its lost native profile; the new CLI binds ROOT.
-            (Path(output) / 'runtime-profiles.json').write_bytes((ROOT / 'runtime-profiles.json').read_bytes())
-            process = subprocess.run([sys.executable, str(ROOT / 'tools/publish-receipt.py')],
-                                     cwd=output, env=env, capture_output=True, timeout=30)
-            files = {p.name: p.read_bytes() for p in Path(output).iterdir() if p.name != 'runtime-profiles.json'}
-        return process, files
+        with tempfile.TemporaryDirectory(prefix='publisher-public-') as output:
+            result = subprocess.run([sys.executable, '-B', str(ROOT/'tools/publish-receipt.py')],
+                cwd=output, env=env, capture_output=True, timeout=10)
+            files = {p.name: json.loads(p.read_bytes()) for p in Path(output).iterdir()}
+        return result, files
 
-    def require_context(self):
-        if not (ROOT / '.native-toolchain').is_dir():
-            self.skipTest('Requires explicit authenticated host preparation; no implicit downloads')
-
-    def assert_refused(self, changes=None):
-        process, files = self.run_producer(changes)
-        self.assertNotEqual(process.returncode, 0)
-        self.assertEqual(files, {}, 'Rejected input must not emit release metadata')
-
-    def test_real_producer_emits_four_current_profiles_and_bound_lock(self):
-        self.require_context()
-        process, files = self.run_producer()
-        self.assertEqual(process.returncode, 0, process.stderr.decode())
-        registry = json.loads(files['published-runtime-profiles.json'])
-        self.assertEqual(set(registry['profiles']), {
-            'java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1', 'fish-git-v1'})
-        for name in ('java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1'):
-            profile = registry['profiles'][name]
-            self.assertEqual(profile['image'], IMAGES['java'])
-            self.assertEqual(profile['runnerSha256'],
-                             hashlib.sha256((ROOT / 'images/java25-grader/grade.py').read_bytes()).hexdigest())
-            self.assertEqual(profile['sharedFiles']['runtime/gradle-jar-v1/toolchain-lock.json'],
-                             'c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca')
-        native = registry['profiles']['java25-gradle-junit-v1']
-        for name in ('build.gradle', 'settings.gradle'):
-            path = 'runtime/gradle-jar-v1/' + name
-            self.assertEqual(native['sharedFiles'][path], hashlib.sha256((ROOT / path).read_bytes()).hexdigest())
-        fish = registry['profiles']['fish-git-v1']
-        self.assertEqual(fish['image'], IMAGES['fish'])
-        self.assertEqual(fish['sharedFiles']['schemas/grading-descriptor.schema.json'],
-                         hashlib.sha256((ROOT / 'schemas/grading-descriptor.schema.json').read_bytes()).hexdigest())
-        self.assertEqual(hashlib.sha256(files['published-toolchain-lock.json']).hexdigest(),
-                         'c44c6f648e0bafbd2f87871813a8c5b2095315c465ddbf14e1b6282acae574ca')
-        receipt = json.loads(files['runtime-image.json'])
-        self.assertEqual(receipt['runtimeProfilesSha256'], hashlib.sha256(files['published-runtime-profiles.json']).hexdigest())
-        self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion'],
-                          receipt['resultsSchemaVersion']), (3, 4, 2))
-        # Bind the emitted protocol to the actual current delivery consumer,
-        # rather than deriving the expected version from the publisher itself.
-        sys.path.insert(0, str(ROOT / 'tools'))
-        import delivery_verification
-        delivery = {
-            'schemaVersion': receipt['deliverySchemaVersion'], 'courseId': 'synthetic',
-            'bookRoot': 'tasks', 'sourceSnapshotHash': 'a' * 64, 'inventoryHash': 'b' * 64,
-            'verificationInventoryHash': 'c' * 64, 'deliveryHash': 'd' * 64,
-            'questions': ['synthetic/exr-manual'],
-            'gradingPayloads': {'synthetic/exr-manual': {
-                'kind': 'project', 'uuid': '37d79ee7-fd7d-44db-bd45-6587711862a5',
-                'grading': {'method': 'manual'}, 'submission': {'mode': 'upload'},
-                'sourceRoot': 'projects/manual'}},
-            'works': [{'id': 'unit'}],
-            'instances': {'fixture': {'works': ['unit'], 'selfEnrollment': False}}, 'files': {}}
-        self.assertEqual(delivery_verification.classification(delivery), {'synthetic/exr-manual': 'manual'})
-        delivery['schemaVersion'] = 2
-        with self.assertRaises(delivery_verification.JobError):
-            delivery_verification.classification(delivery)
+    def test_publishes_runtime_profiles_without_preparation_or_file_inventories(self):
+        result, files = self.produce()
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(set(files), {'runtime-image.json', 'published-runtime-profiles.json'})
+        profiles = files['published-runtime-profiles.json']['profiles']
+        self.assertEqual(set(profiles), {'java25-junit-v1','java25-mutation-v1','java25-gradle-junit-v1','fish-git-v1'})
+        for name, profile in profiles.items():
+            self.assertEqual(profile['image'], IMAGES['fish' if name=='fish-git-v1' else 'java'])
+            self.assertTrue({'runnerSha256','files','sharedFiles','dependencies'}.isdisjoint(profile))
+        receipt=files['runtime-image.json']
         self.assertEqual(receipt['images'], IMAGES)
-        self.assertEqual(receipt['sourceCommit'], subprocess.check_output(
-            ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip())
-        # Exercise the existing closed consumer against a separate release
-        # assembly, with the declared generated lock at its existing path.
-        spec = importlib.util.spec_from_file_location('publish_grading_job', ROOT / 'tools/grading_job.py')
-        job = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(job)
-        with tempfile.TemporaryDirectory(prefix='release-assembly-unit-') as name:
-            assembly = Path(name)
-            for path in ('runtime', 'schemas'):
-                shutil.copytree(ROOT / path, assembly / path)
-            for path in ('images/java25-grader/grade.py', 'images/fish-git-grader/grade.py'):
-                target = assembly / path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes((ROOT / path).read_bytes())
-            lock = assembly / 'runtime/gradle-jar-v1/toolchain-lock.json'
-            lock.write_bytes(files['published-toolchain-lock.json'])
-            job.ROOT = assembly
-            for name in registry['profiles']:
-                self.assertTrue(job.runtime_evidence(name, registry)['dependencyHashes'])
-            lock.unlink()
-            with self.assertRaises((OSError, job.JobError)):
-                job.runtime_evidence('java25-gradle-junit-v1', registry)
-            lock.write_bytes((ROOT / 'runtime/gradle-jar-v1/toolchain-lock.json').read_bytes())
-            with self.assertRaises(job.JobError):
-                job.runtime_evidence('java25-gradle-junit-v1', registry)
+        self.assertNotIn('runtimeProfilesSha256', receipt)
+        self.assertEqual(receipt['deliverySchemaVersion'], 5)
 
-    def test_pure_derivation_matches_preparer_and_publisher_keeps_context_guards(self):
-        from unittest.mock import patch
-        spec=importlib.util.spec_from_file_location('unit_pure_publisher',ROOT/'tools/publish-receipt.py')
-        publication=importlib.util.module_from_spec(spec);spec.loader.exec_module(publication)
-        prep=publication.preparation
-        lock,_=prep.generated_locks(json.loads((ROOT/'runtime/gradle-jar-v1/toolchain-lock.json').read_bytes()))
-        expected=prep.baked_view(ROOT,lock)
-        expected['profiles']['fish-git-v1']=prep._fish_view(ROOT)['profiles']['fish-git-v1']
-        registry,actual_lock=publication.derive_release_registry(ROOT,IMAGES)
-        self.assertEqual(registry,publication.assign_images(expected,IMAGES));self.assertEqual(actual_lock,lock)
-        manifest={'source':{'commit':'a'*40},'version':'2.3.0'}
-        with patch.object(prep,'verify_context',return_value=manifest) as verify:
-            self.assertEqual(publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0'),publication.derive_release_registry(ROOT,IMAGES,delivery_version=4));self.assertEqual(verify.call_count,2)
-        with patch.object(prep,'verify_context',side_effect=[manifest,{'changed':True}]),self.assertRaisesRegex(ValueError,'Prepared inputs changed'):
-            publication.release_registry(ROOT,IMAGES,'a'*40,'2.3.0')
-        def extra_profile(path):
-            data=path.read_bytes()
-            if path==ROOT/'runtime-profiles.json':
-                value=json.loads(data);value['profiles']['extra']={};data=json.dumps(value).encode()
-            return data
-        with self.assertRaisesRegex(ValueError,'Unexpected historical profile set'):
-            publication.derive_release_registry(ROOT,IMAGES,extra_profile)
+    def test_workspace_uses_its_own_image_role(self):
+        workspace='ghcr.io/example/sp-git-workspace@sha256:'+'4'*64
+        result, files = self.produce({'WORKSPACE_DIGEST':workspace})
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertEqual(files['published-runtime-profiles.json']['workspaceImages'], {'sp-git-workspace-v1':{'image':workspace}})
+        self.assertEqual(files['runtime-image.json']['images']['workspace'], workspace)
 
-    def test_wrong_repository_digest_is_refused(self):
-        self.assert_refused({'JAVA_DIGEST': IMAGES['fish']})
+    def test_rejects_image_from_other_role_before_writing(self):
+        for changes in ({'JAVA_DIGEST':IMAGES['fish']},{'JAVA_DIGEST':'sha256:'+'1'*64},{'WORKSPACE_DIGEST':IMAGES['java']}):
+            with self.subTest(changes=changes):
+                result, files=self.produce(changes)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(files,{})
 
-    def test_workspace_digest_is_published_as_separate_authority(self):
-        self.require_context()
-        workspace = 'ghcr.io/example/sp-git-workspace@sha256:' + '4' * 64
-        process, files = self.run_producer({'WORKSPACE_DIGEST': workspace})
-        self.assertEqual(process.returncode, 0, process.stderr.decode())
-        receipt = json.loads(files['runtime-image.json'])
-        registry = json.loads(files['published-runtime-profiles.json'])
-        self.assertEqual(receipt['images'], dict(IMAGES, workspace=workspace))
-        self.assertEqual((receipt['schemaVersion'], receipt['deliverySchemaVersion']), (3, 4))
-        self.assertEqual(registry['schemaVersion'], 2)
-        self.assertEqual(registry['workspaceImages']['sp-git-workspace-v1']['image'], workspace)
-        self.assertEqual(set(registry['profiles']), {
-            'java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1', 'fish-git-v1'})
+    def test_records_real_source_commit_and_version(self):
+        result, files=self.produce()
+        self.assertEqual(result.returncode,0,result.stderr.decode())
+        receipt=files['runtime-image.json']
+        self.assertEqual(receipt['sourceCommit'],subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip())
+        self.assertEqual(receipt['version'],(ROOT/'VERSION').read_text().strip())
+        for changes in ({'GITHUB_SHA':'f'*40},{'VERSION':'0.0.0'}):
+            with self.subTest(changes=changes):
+                result, files=self.produce(changes)
+                self.assertNotEqual(result.returncode,0)
+                self.assertEqual(files,{})
 
-    def test_workspace_local_id_or_other_role_cannot_be_published(self):
-        self.assert_refused({'WORKSPACE_DIGEST': 'sha256:' + '4' * 64})
-        self.assert_refused({'WORKSPACE_DIGEST': IMAGES['java']})
-
-    def test_local_image_id_is_not_a_published_digest(self):
-        self.assert_refused({'JAVA_DIGEST': 'sha256:' + '1' * 64})
-
-    def test_source_head_mismatch_is_refused(self):
-        self.assert_refused({'GITHUB_SHA': 'f' * 40})
-
-    def test_version_mismatch_is_refused(self):
-        self.assert_refused({'VERSION': '2.2.0'})
-
-    def changed_context(self, relative, change):
-        self.require_context()
-        path = ROOT / '.native-toolchain' / relative
-        data = path.read_bytes()
-        try:
-            if change is None:
-                path.unlink()
-            else:
-                path.write_bytes(change(data))
-            self.assert_refused()
-        finally:
-            path.write_bytes(data)
-
-    def test_missing_baked_view_is_refused(self):
-        self.changed_context('runtime-profiles.json', None)
-        self.changed_context('fish-runtime-profiles.json', None)
-        def stale(data):
-            value = json.loads(data)
-            value['profiles']['fish-git-v1']['sharedFiles']['schemas/grading-descriptor.schema.json'] = '0' * 64
-            return json.dumps(value).encode()
-        self.changed_context('fish-runtime-profiles.json', stale)
-
-    def test_stale_baked_runner_is_refused(self):
-        def stale(data):
-            value = json.loads(data)
-            profile = value['profiles']['java25-junit-v1']
-            digest = profile['runnerSha256']
-            profile['runnerSha256'] = ('0' if digest[0] != '0' else '1') + digest[1:]
-            changed = json.dumps(value).encode()
-            self.assertNotEqual(data, changed)
-            return changed
-        self.changed_context('runtime-profiles.json', stale)
-
-    def test_missing_native_profile_is_refused(self):
-        def remove(data):
-            value = json.loads(data)
-            del value['profiles']['java25-gradle-junit-v1']
-            return json.dumps(value).encode()
-        self.changed_context('runtime-profiles.json', remove)
-
-    def test_stale_prepared_source_is_refused(self):
-        def stale(data):
-            value = json.loads(data)
-            value['source']['commit'] = 'f' * 40
-            return json.dumps(value).encode()
-        self.changed_context('context-manifest.json', stale)
-
-    def test_wrong_generated_lock_is_refused(self):
-        self.changed_context('operator/expected-toolchain-lock.json', lambda b: b + b' ')
-
-
-if __name__ == '__main__':
-    unittest.main()
+if __name__=='__main__': unittest.main()

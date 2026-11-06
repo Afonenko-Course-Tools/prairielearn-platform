@@ -8,9 +8,10 @@ Git и Code Server поставляются этим base; fish — выбран
 Workspace proxy PrairieLearn. Образ работает с UID/GID 1001:1001.
 
 Native exporter кладёт trusted student ZIP и manifest в `workspace/.pl-seed`.
-Manifest `pl-git-workspace-seed-v1` содержит `sha256` архива и
-`files:[{name,sha256}]`. Первая инициализация проверяет ZIP, paths/types,
-inventory/hashes и чистый Git seed с одним A/main до атомарного переноса work.
+Manifest `pl-git-workspace-seed-v1` содержит список путей `files:[string]`.
+Первая инициализация проверяет ZIP, пути, типы, состав файлов и чистый Git seed
+с одним исходным commit на `main` до атомарного переноса work. Проверку
+Git object/index выполняет штатный Git; собственных SHA/форматов квалификации нет.
 Вся переданная object database, включая packed и недостижимые объекты,
 должна совпадать с замыканием A; готовые B или отдельные answer blobs в seed
 отвергаются. Эта проверка выполняется только при первой инициализации:

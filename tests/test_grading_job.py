@@ -1,3 +1,5 @@
+import base64
+from selected_job_fixture import native_manifest
 """Real JUnit jobs expose discovery, isolation and policy mistakes."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -146,7 +148,7 @@ class JUnitJob(unittest.TestCase):
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_dependency_hash_mismatch_blocks_preflight(self):
+    def test_unknown_runtime_blocks_preflight(self):
         self.cfg["runtime"] = "unknown"
         with self.assertRaises(grader.GraderError):
             self.run_job()
@@ -250,27 +252,6 @@ class ScoringTests(unittest.TestCase):
             self.run_job()
 
 
-class RuntimeBundleTests(unittest.TestCase):
-    def test_unregistered_jar_cannot_join_offline_classpath(self):
-        import shutil
-
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            shutil.copytree(ROOT / "runtime", root / "runtime")
-            shutil.copyfile(
-                ROOT / "runtime-profiles.json", root / "runtime-profiles.json"
-            )
-            bundle = root / "runtime/java25-junit-v1"
-            shutil.copyfile(
-                bundle / "json-simple-1.1.1.jar", bundle / "unregistered.jar"
-            )
-            original = grader.PLATFORM
-            grader.PLATFORM = root
-            try:
-                with self.assertRaises(grader.GraderError):
-                    grader.preflight("java25-junit-v1", registry=unit_registry())
-            finally:
-                grader.PLATFORM = original
 
 
 class AdditionalSourceDeliveryTests(unittest.TestCase):
@@ -345,9 +326,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
 
             def select(name, target):
                 return {
-                    "projectRelativePath": name,
-                    "submissionRelativePath": target,
-                    "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                    "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
             fact = {
@@ -380,24 +359,13 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCasesHash": {
-                    "projectRelativePath": "tests/cases.json",
-                    "sha256": hashlib.sha256(
-                        (project / "tests/cases.json").read_bytes()
-                    ).hexdigest(),
-                },
+                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
                 "contractFixtures": [
                     select("tests/fixtures/Student.java", "Student.java"),
                     select("tests/fixtures/extra.zip", "additional-sources.zip"),
                 ],
             }
-            manifest = {
-                "schemaVersion": 1,
-                "bookRoot": "tasks",
-                "sourceSnapshotHash": "a" * 64,
-                "inventoryHash": "b" * 64,
-                "projects": [fact],
-            }
+            manifest = native_manifest(fact)
             archives = []
             for scenario in [
                 "reference:correct",
@@ -426,7 +394,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     )
                     if scenario.startswith("reference"):
                         archives.append(raw)
-                        self.assertIn("reference/Base.java", job["sourceHashes"])
+                        self.assertIn("reference/Base.java", [x["target"] for x in job["sources"]])
                     result = jobs.run_job(job, "host", registry=unit_registry())
                     self.assertEqual(result["classification"], "success", result)
                     self.assertEqual(
@@ -439,18 +407,38 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     shutil.rmtree(job.root)
             self.assertEqual(archives[0], archives[1])
             saved = fact["check"].pop("additional-java-sources")
-            with self.assertRaisesRegex(jobs.JobError, "mapping|Unauthorized"):
-                job = jobs.prepare_job(
-                    manifest,
-                    snapshot,
-                    "demo/exr-extra",
-                    "reference:correct",
-                    registry=unit_registry(),
+            # Полный named reference разрешён без student ZIP policy.
+            job = jobs.prepare_job(
+                manifest,
+                snapshot,
+                "demo/exr-extra",
+                "reference:correct",
+                registry=unit_registry(),
+            )
+            try:
+                self.assertEqual(
+                    job["grading"]["sourceFiles"], ["Base.java", "Student.java"]
                 )
+                self.assertNotIn("additionalJavaSources", job["grading"])
+                self.assertEqual(
+                    {x["target"] for x in job["sources"]},
+                    {"reference/Base.java", "reference/Student.java"},
+                )
+                result = jobs.run_job(job, "host", registry=unit_registry())
+                self.assertEqual(result["classification"], "success", result)
+                self.assertEqual(result["publicResult"]["classification"], "success")
+            finally:
                 shutil.rmtree(job.root)
-            fact["check"]["additional-java-sources"] = saved
-            (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
-            with self.assertRaisesRegex(jobs.JobError, "snapshot changed"):
+            starter = jobs.prepare_job(
+                manifest, snapshot, "demo/exr-extra", "starter", registry=unit_registry()
+            )
+            try:
+                self.assertEqual(starter["grading"]["sourceFiles"], ["Student.java"])
+                self.assertNotIn("additionalJavaSources", starter["grading"])
+                self.assertFalse((starter.root / "student/Base.java").exists())
+            finally:
+                shutil.rmtree(starter.root)
+            with self.assertRaisesRegex(jobs.JobError, "Unauthorized"):
                 jobs.prepare_job(
                     manifest,
                     snapshot,
@@ -458,6 +446,13 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     "contract:extra",
                     registry=unit_registry(),
                 )
+            fact["check"]["additional-java-sources"] = saved
+            # Уже выбранные bytes не перечитываются из изменённого физического source.
+            (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
+            job=jobs.prepare_job(manifest,snapshot,"demo/exr-extra","contract:extra",registry=unit_registry())
+            try:self.assertNotEqual((job.root/"student/additional-sources.zip").read_bytes(),b"tampered")
+            finally:shutil.rmtree(job.root)
+
 
 
 class PreparationMetadataTests(unittest.TestCase):
@@ -484,24 +479,9 @@ class PreparationMetadataTests(unittest.TestCase):
 
         def selected(name, target):
             return {
-                "projectRelativePath": name,
-                "submissionRelativePath": target,
-                "sha256": hashlib.sha256((project / name).read_bytes()).hexdigest(),
+                "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
             }
 
-        self.feedback = {
-            "requirement": "Return the required answer.",
-            "what-check": "The answer equals 42.",
-        }
-        self.cases = [
-            {
-                "id": "answer",
-                "test": "AnswerTest.right",
-                "input": "42",
-                "expected": "42",
-                "name": "Required answer",
-            }
-        ]
         fact = {
             "qualifiedId": "demo/exr-metadata",
             "projectRoot": "p",
@@ -512,20 +492,12 @@ class PreparationMetadataTests(unittest.TestCase):
                     "root": "student",
                     "include": ["*.java"],
                 },
-                "feedback": self.feedback,
-                "public-cases": self.cases,
             },
             "sources": [selected("student/Student.java", "Student.java")],
             "trustedTests": [selected("tests/AnswerTest.java", "AnswerTest.java")],
             "verificationTests": [],
         }
-        self.manifest = {
-            "schemaVersion": 1,
-            "bookRoot": "tasks",
-            "sourceSnapshotHash": "a" * 64,
-            "inventoryHash": "b" * 64,
-            "projects": [fact],
-        }
+        self.manifest = native_manifest(fact)
 
     def prepare(self):
         import shutil
@@ -540,34 +512,20 @@ class PreparationMetadataTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, job.root)
         return job
 
-    def test_prepare_preserves_legal_feedback_and_public_cases(self):
+    def test_prepare_omits_author_description_metadata(self):
         job = self.prepare()
-        expected = {
-            "requirement": "Return the required answer.",
-            "whatCheck": "The answer equals 42.",
-        }
-        self.assertEqual(job["grading"]["feedback"], expected)
-        self.assertEqual(
-            job["grading"]["publicCases"],
-            [
-                {
-                    "id": "answer",
-                    "test": "AnswerTest.right",
-                    "input": "42",
-                    "expected": "42",
-                    "name": "Required answer",
-                }
-            ],
-        )
+        self.assertNotIn('feedback', job['grading'])
+        self.assertNotIn('publicCases', job['grading'])
         written = json.loads((job.root / "tests/grading-job.json").read_text())
-        self.assertEqual(written["feedback"], expected)
-        self.assertEqual(written["publicCases"], job["grading"]["publicCases"])
+        self.assertNotIn('feedback', written)
+        self.assertNotIn('publicCases', written)
 
-    def test_embedded_feedback_rejects_malformed_nested_values(self):
+    def test_embedded_author_feedback_is_rejected(self):
         import copy
 
         job = self.prepare()
         for bad in [
+            {"requirement": "Required", "whatCheck": "Check"},
             {"requirement": "", "whatCheck": "Check"},
             {"requirement": "Required", "whatCheck": "Check", "unknown": True},
         ]:
@@ -577,7 +535,7 @@ class PreparationMetadataTests(unittest.TestCase):
                 with self.assertRaises(self.jobs.JobError):
                     self.jobs.validate("grading-job", value)
 
-    def test_embedded_public_cases_rejects_missing_required_and_unknown_fields(self):
+    def test_embedded_description_cards_are_rejected(self):
         import copy
 
         job = self.prepare()

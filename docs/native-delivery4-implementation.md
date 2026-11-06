@@ -1,58 +1,65 @@
-# Native delivery4: текущая реализация
+# Native delivery v5: текущая реализация
 
-Поставка4 содержит закрытый `kind`: `project`, `native-answer` или `workspace`.
-`project` после удаления только `kind` сохраняет точные method-specific поля3.
-Поставка3 остаётся отдельным строгим контрактом. Job2, Result1, qualified maps и
-области `sourceSnapshotHash`, `inventoryHash`, code-only `verificationInventoryHash`
-не переименованы. Internal получает отдельный `native-answer-package-v1` proof
-в delivery-verification4: deliveryHash, qualifiedId, UUID, public slots и hashes
-фактических HTML controls/server bytes. Private answer остаётся в server.py.
-Manual/Workspace не получают фиктивный Job или runtime.
+Название файла сохранено для существующих ссылок. `classification` в
+`tools/delivery_verification.py` принимает только `schemaVersion: 5`.
+Поставка содержит каталог вопросов, работ и экземпляров курса, список файлов
+и закрытые bindings с `kind: project | native-answer | workspace`.
+Собственных hash-полей и отдельного package-proof envelope у этого контракта нет.
 
-Workspace reader ограничивает размер ZIP, число/размер записей, проверяет exact
-manifest inventory, пути, типы и aliases, Git object closure A/main, index/tree/
-worktree и публичные common-file bytes. ZIP/receipt/seed reader не исполняет.
-Producer прежнего same-operation пути проверяет include-git/common-files и
-currentness до передачи seed. DTO или hash не создаёт права materialization.
+`project` явно задаёт `grading.method`, UUID, `sourceRoot` и форму сдачи.
+Для `external`/`mixed` дополнительно нужны runtime, project-check и выбранные
+источники. `package_integrity` сопоставляет binding с фактическими native
+JSON, controls и приватным дескриптором проверки. Ручной проект не получает
+автоматический Job; приватные tests, server и внешний grader для него запрещены.
+Редакторы и загрузка проверяются по реальному составу starter и источников.
 
-Новый runtime-image receipt3 объявляет public4; receipt2/public3 остаётся строгим.
-Published registry2 сохраняет grader profiles и отдельный закрытый
-`workspaceImages.sp-git-workspace-v1.image`. Источник — source/asset-validated
-release Context с отдельным Workspace image role. Обычный grader image этой
-полномочности не даёт. Production registry/pins не изменены; реальный Workspace
-image ещё не квалифицирован. Unit registry/digest являются вымышленными.
+`native-answer` задаёт тип ответа, публичные `responseSlots`, UUID и способ
+оценивания. `binding4` проверяет структуру slots, а `native_proof` — соответствие
+HTML controls этим slots и наличие `server.py`. Несмотря на историческое имя,
+`native_proof` не создаёт hash DTO. Приватный ключ остаётся в `server.py`;
+`showCorrectAnswer` должен быть `false`, политика `partialCredit` должна
+соответствовать способу оценивания. Такой вопрос не получает code Job.
 
-C render передаёт Core lease только data-only args/stdout/stderr/timeout.
-Executable/cwd/closed env/profiles/token и pre-child fences принадлежат Core496.
-Независимая квалификация G/S/K/L/R/M/E/prior-P, реальные assignment CLI positives,
-whole135, OCI, installed и release остаются открыты. Publish сохраняет явный
-`PL.NATIVE_RELEASE_UNQUALIFIED`. Ordinary/injected builder fixtures не заменяют
-эти gates. Standalone Figure с RawBlock/RawInline по-прежнему явно отвергается;
-произвольный HTML не разрешён и узлы не удаляются молча.
+## Workspace и штатный Git
 
-## Адресная коррекция index/build reader
+Workspace — ручной проект с `singleVariant: true`, элементом `pl-workspace`
+и точными `workspaceOptions`. Image в binding задаётся через `@sha256:`;
+это native OCI identity. Поля gradedFiles должны возвращать рабочие файлы,
+Git state, пояснение и identity первоначального seed.
 
-Workspace index v2 сравнивается с initial A tree по точным path/mode/OID и stage0.
-Количество и encoded UTF-8 pathname length должны совпадать с
-читаемым bounded index. Stat cache (ctime/mtime/dev/inode/uid/gid) не является
-содержимым Git дерева и не закрепляется произвольными timestamp-проверками.
-Подтверждённые mode/type и pathname-length mutants отвергаются до proof. Reader
-не запускает Git; реальный `git diff --cached --raw HEAD` используется только на
-собственном тестовом seed для различающего контроля.
+`seed_proof` читает архив и manifest `pl-git-workspace-seed-v1` со списком путей
+`files:[string]`. Он ограничивает размер ZIP, число и размер записей, проверяет
+состав, пути, типы, aliases и совпадение публичных копий исходников и архива.
+Небезопасные config, внешнее Git state и подмена типов файлов запрещены.
 
-`build-course.py` применяет существующий `package_integrity` к закрытым3/4 после
-export и до provenance/атомарной выдачи candidate. Это проверяет реальные native
-project/Internal/Workspace semantics, не создавая фиктивный code Job. Source-bound
-release capability проверяется отдельно; legacy receipt2(public3) не допускает4.
-Clean-source, final/recheck и no-replacement fences сохранены. Legacy3 положительный
-fixture теперь содержит полный closed3 пакет вместо UUID-only stub. Выдача
-локального UNIT candidate не является release/assignment/image qualification.
+До проверки содержимого `git cat-file --batch-all-objects` сообщает размеры всех
+объектов, включая packed и недостижимые; объект больше 8 MiB отвергается.
+Вывод каждой команды ограничен 8 MiB, память процесса — 256 MiB, CPU и
+время ожидания — 20 секундами.
 
-## Обязательное расширение index tail
+Git проверяет временную копию seed штатными командами `fsck`, `rev-list`,
+`diff-index`, `ls-tree` и `cat-file`: требуется один исходный commit на `main`,
+совпадающие index/tree/файлы и отсутствие объектов вне исходного дерева.
+Поддерживаемые Git форматы, включая packed objects и index v4, читает сам Git.
+Symlink/submodule и лишние начальные файлы отвергаются. Stat cache не служит
+подтверждением содержимого: bytes каждого файла сравниваются с `git cat-file blob`.
+Содержимое ZIP и hooks не исполняются; внешние Git environment/config отключены.
+Собственного разбора object/index и вычисления SHA у reader нет.
 
-После index entries reader разбирает extension headers до SHA1 footer. Неизвестное
-mandatory расширение (первая буква signature вне ASCII A–Z) получает отказ до
-package/receipt proof. Uppercase optional пропускается по declared size, как в
-проверенном Git. Доказанное игнорирование oversized TEST без payload и короткого
-остатка сохранено; дополнительных length/order ограничений не добавлено. Это
-data-only проверка: Git запускается только над собственным UNIT seed в тесте.
+## Потребители и границы проверки
+
+`build-course.py` требует чистый исходный checkout и свежий внешний output,
+запускает установленный exporter, затем проверяет выбранные checks,
+`package_integrity`, UUID и assessments перед атомарной выдачей каталога.
+Приватные checks записываются отдельно от дерева, которое читает PrairieLearn.
+
+`check-course.py --scope delivery` проверяет фактический native пакет и
+запускает сценарии только для автоматических `project`. При отсутствии таких
+проектов отчёт содержит `automatic.state: not-applicable` с причиной
+`no-project-automatic`; фиктивные jobs/results/score не создаются.
+`package_integrity` возвращает `status` и `questionBindings` без hash receipt.
+
+Текущий `runtime-profiles.json` содержит `schemaVersion: 1` и grader profiles
+с native OCI image digests. Эта проверка пакета не подтверждает доступность
+Workspace image, выполнение полного курса, реальный запуск в PrairieLearn или
+браузерную приёмку. Локальные fixture-проверки не заменяют эти наблюдения.

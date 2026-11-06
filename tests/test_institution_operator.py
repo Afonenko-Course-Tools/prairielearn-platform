@@ -20,7 +20,13 @@ class InstitutionOperatorTests(unittest.TestCase):
             path=Path(directory)
             registry={'schema':'pl-courses-v2','courses':[{'id':'course-a','institution':'unknown','repository':'https://example.test/native.git','commit':'a'*40,'mount':'/course'}]}
             (path/'registry.json').write_text(json.dumps(registry))
-            result=subprocess.run(['node',str(self.script),'--registry',str(path/'registry.json'),'--course-key','course-a','--path','/course/course-a/'+'f'*64],env={**os.environ,'PL_ROOT':str(path/'no-native')},capture_output=True,text=True,timeout=10)
+            result=subprocess.run(['node',str(self.script),'--registry',str(path/'registry.json'),'--course-key','course-a','--path','/course/course-a/'+'f'*64,'--actor-uid','operator@example.test'],env={**os.environ,'PL_ROOT':str(path/'no-native')},capture_output=True,text=True,timeout=10)
             self.assertNotEqual(result.returncode,0)
             self.assertIn('Unknown institution key',result.stderr)
+            self.assertNotIn('Cannot find package',result.stderr)
+    def test_actor_is_required_before_native_initialization(self):
+        for script,arguments in [('bootstrap-native-course.mjs',['--registry','/missing','--course-key','demo','--path','/course/demo/current']),('sync-native-course.mjs',['--course-id','7','--path','/course/demo/current'])]:
+            result=subprocess.run(['node',str(ROOT/'tools'/script),*arguments],env={**os.environ,'PL_GATEWAY_CONFIG':'/missing'},capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('--actor-uid',result.stderr)
             self.assertNotIn('Cannot find package',result.stderr)

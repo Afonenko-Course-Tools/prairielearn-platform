@@ -69,7 +69,7 @@ class ProductionCase(unittest.TestCase):
             params = None
             reports = {}
             jars = {}
-            if "PlatformJUnitAdapter" in command and "--module-path" in command:
+            if any(arg.endswith("PlatformJUnitAdapter") for arg in command) and "--module-path" in command:
                 module = Path(
                     command[command.index("--module-path") + 1].split(os.pathsep)[0]
                 )
@@ -159,6 +159,58 @@ class ProductionCase(unittest.TestCase):
 
 class AssertionFeedback(ProductionCase):
 
+    def test_ordinary_junit_keeps_real_leaves_and_private_failure_details(self):
+        (self.job / "tests/AnswerTest.java").write_text("""
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.*;
+public class AnswerTest {
+ @ParameterizedTest(name="Самостоятельный случай {0}") @ValueSource(ints={1,2})
+ void rows(int n){assertEquals((double)n,(double)n,"PRIVATE_PARAMETER_MESSAGE");}
+ @Test @DisplayName("Обычное равенство") void exact(){
+  assertEquals(187.25d,Student.answer(),"PRIVATE_DOUBLE_MESSAGE");
+ }
+ @Test @DisplayName("Две причины одного случая") void grouped(){
+  assertAll("PRIVATE_GROUP_MESSAGE",
+   ()->assertEquals(41,Student.answer(),"PRIVATE_FIRST_MESSAGE"),
+   ()->assertTrue(false,"PRIVATE_SECOND_MESSAGE"));
+ }
+ @Test @DisplayName("Равенство с допуском") void tolerance(){
+  assertEquals(41d,Student.answer(),0.01d,"PRIVATE_TOLERANCE_MESSAGE");
+ }
+ @Test @DisplayName("Успех без обязательного наблюдения") void lazy(){
+  assertEquals(42d,Student.answer(),()->{throw new IllegalStateException("EAGER_MESSAGE");});
+  assertArrayEquals(new boolean[]{true},new boolean[]{true});
+ }
+}
+""")
+        result = self.run_job()
+        counts = result["counts"]
+        self.assertEqual((counts["executed"], counts["passed"], counts["failed"]), (6, 3, 3))
+        self.assertTrue(counts["complete"])
+        self.assertEqual(result["score"], 0.5)
+        cases = counts["cases"]
+        group = next(c for c in cases if c["name"] == "Две причины одного случая")
+        self.assertEqual(len(group["checks"]), 2)
+        self.assertTrue(all(c["delegated"] == "threw" for c in group["checks"]))
+        lazy = next(c for c in cases if c["name"] == "Успех без обязательного наблюдения")
+        self.assertEqual(lazy["status"], "passed")
+        self.assertEqual(len(lazy["checks"]), 2)
+        self.assertTrue(all(check["delegated"] == "returned" and check["availability"] == "complete" for check in lazy["checks"]))
+        raw_cases = result["rawResult"]["tests"]
+        raw_group = next(c for c in raw_cases if c["name"] == "Две причины одного случая")
+        self.assertEqual(raw_group["message"], "")
+        raw_exact = next(c for c in raw_cases if c["name"] == "Обычное равенство")
+        self.assertEqual(raw_exact["message"], "")
+        native = feedback(result, self.cfg)
+        self.assertEqual((native["score"], len(native["tests"])), (0.5, 6))
+        tolerance = next(t for t in native["tests"] if t["name"] == "Равенство с допуском")
+        self.assertIn("Допуск: 0.01", tolerance["message"])
+        public = json.dumps(native, ensure_ascii=False)
+        for private in ("PRIVATE_", "EAGER_MESSAGE", "java25-job-runtime-"):
+            self.assertNotIn(private, public)
+
     def test_real_arguments_reach_native_without_new_points(self):
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;
@@ -190,7 +242,7 @@ public class AnswerTest {
                 "actual": "Отдельное наблюдение",
             },
         )
-        self.assertIn("Ожидается: 41", native["tests"][0]["description"])
+        self.assertIn("Ожидается: 41", native["tests"][0]["message"])
         self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", str(native))
 
     def test_string_difference_beyond_10240_lines_is_localized(self):

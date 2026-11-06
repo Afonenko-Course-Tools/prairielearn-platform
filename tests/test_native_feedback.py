@@ -44,9 +44,20 @@ class NativeFeedbackTests(unittest.TestCase):
         self.assertEqual(
             len(r.get("tests", [])), 1, "Native UI requires tests at the result root"
         )
-        self.assertIn("answer", r["rawResult"]["tests"][0]["message"])
+        self.assertEqual(r["rawResult"]["tests"][0]["message"], "")
         self.assertEqual(r["tests"][0]["points"], 0)
         self.assertEqual(r["tests"][0]["max_points"], 1)
+        native = boundary(r, self.cfg)
+        self.assertEqual(native["feedback"]["cases"], [
+            {"name": "right()", "status": "failed", "checks": []}
+        ])
+        self.assertEqual(native["feedback"]["feedbackCompleteness"], "incomplete")
+        self.assertEqual(len(native["tests"]), 1)
+        leaf = native["tests"][0]
+        self.assertEqual((leaf["name"], leaf["points"], leaf["max_points"]), ("right()", 0, 1))
+        self.assertIn("Подробности сравнения не получены:", leaf["message"])
+        self.assertNotIn("answer", leaf["message"])
+        self.assertNotIn("NoSuchMethodException", leaf["message"])
 
     def test_whole_executor_timeout_is_infrastructure_without_fake_cases(self):
         with self.assertRaises(fixtures.grader.GraderError):

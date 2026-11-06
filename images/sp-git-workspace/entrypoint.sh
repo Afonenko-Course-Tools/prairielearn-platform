@@ -2,7 +2,6 @@
 set -euo pipefail
 # cwd — native workspaceOptions.home; PL восстанавливает его до запуска image.
 python3 - <<'PY'
-import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -15,20 +14,15 @@ import zipfile
 root = Path.cwd()
 seed = root / '.pl-seed'
 manifest = json.loads((seed / 'manifest.json').read_text())
-if set(manifest) != {'schema', 'sha256', 'files'} or manifest['schema'] != 'pl-git-workspace-seed-v1':
+if set(manifest) != {'schema', 'files'} or manifest['schema'] != 'pl-git-workspace-seed-v1':
     raise SystemExit('SP.SEED_INVALID: неверный manifest')
 archive = seed / 'starter.zip'
-digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-if digest != manifest['sha256']:
-    raise SystemExit('SP.SEED_INVALID: изменён архив')
 work = root / 'work'
 identity = seed / 'identity.json'
 if work.exists() or work.is_symlink():
     if work.is_symlink() or not work.is_dir() or not identity.is_file():
         raise SystemExit('SP.RESUME_UNKNOWN: работа сохранена; автоматическая инициализация запрещена')
     chosen = json.loads(identity.read_text())
-    if chosen.get('schema') != manifest['schema'] or chosen.get('sha256') != digest:
-        raise SystemExit('SP.SEED_CHANGED: работа сохранена; выбранная заготовка изменилась')
     # На restart не вызываем даже Git: чтение status может освежить index.
 else:
     if identity.exists():
@@ -36,7 +30,7 @@ else:
     entries = manifest['files']
     if not isinstance(entries, list) or not 1 <= len(entries) <= 4096:
         raise SystemExit('SP.SEED_INVALID: неверный inventory')
-    expected = {entry['name']: entry['sha256'] for entry in entries}
+    expected = set(entries)
     if len(expected) != len(entries):
         raise SystemExit('SP.SEED_INVALID: повтор inventory')
     stage = Path(tempfile.mkdtemp(prefix='.sp-init-', dir=root))
@@ -57,8 +51,6 @@ else:
                     raise SystemExit('SP.SEED_INVALID: небезопасный member')
                 seen.add(name)
                 data = z.read(member)
-                if hashlib.sha256(data).hexdigest() != expected[name]:
-                    raise SystemExit('SP.SEED_INVALID: member не соответствует inventory')
                 target = stage / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
@@ -78,7 +70,7 @@ else:
         stored_objects = set(git('cat-file', '--batch-all-objects', '--batch-check=%(objectname)').splitlines())
         if stored_objects != initial_objects:
             raise SystemExit('SP.SEED_INVALID: object database содержит объекты вне исходного A')
-        chosen = {'schema': manifest['schema'], 'sha256': digest, 'seedCommit': git('rev-parse', 'HEAD')}
+        chosen = {'schema': manifest['schema'], 'seedCommit': git('rev-parse', 'HEAD')}
         # Публикуем проверенный work одним rename, существующую работу не перезаписываем.
         (stage/'work').rename(work)
         for source in stage.iterdir():

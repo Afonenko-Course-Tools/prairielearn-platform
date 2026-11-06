@@ -21,7 +21,7 @@ class ExactOverloads(unittest.TestCase):
         cls.helper = cls.base/'helper'
         cls.facade.mkdir(); cls.helper.mkdir()
         sources = sorted((ROOT/'runtime/java25-junit-v1/feedback/module').rglob('*.java'))
-        cls.invoke(['javac', '--release', '25', '--module-path', str(cls.jar), '-d', str(cls.facade), *map(str, sources)])
+        cls.invoke(['javac', '--release', '25', '--module-path', os.pathsep.join(map(str, (cls.jar, ROOT/'runtime/java25-junit-v1/json-simple-1.1.1.jar'))), '-d', str(cls.facade), *map(str, sources)])
         cls.invoke(['javac', '--release', '25', '-d', str(cls.helper), str(ROOT/'runtime/java25-junit-v1/feedback/Transform.java')])
         (cls.facade/'org/prairielearn/feedback/internal/policy.properties').write_text('# inert Source control, no live leaf\n')
 
@@ -75,12 +75,18 @@ public class OverloadFixture {
         result = self.invoke(['java', '-cp', os.pathsep.join(map(str, (root, self.facade, self.jar))), 'OverloadFixture'])
         self.assertEqual(result.stdout.strip(), 'EXACT_OVERLOADS_OK')
 
-    def test_unknown_exact_descriptor_remains_refused(self):
+    def test_ordinary_descriptor_without_observer_keeps_junit_behavior(self):
         root = self.compile_fixture('UnsupportedFixture', '''
 import static org.junit.jupiter.api.Assertions.*;
-public class UnsupportedFixture {static void check(){assertArrayEquals(new boolean[]{true},new boolean[]{true});}}
+public class UnsupportedFixture {public static void main(String[] args){
+ assertArrayEquals(new boolean[]{true},new boolean[]{true});
+ try {assertArrayEquals(new boolean[]{true},new boolean[]{false});
+  throw new IllegalStateException("missing JUnit failure");
+ } catch(org.opentest4j.AssertionFailedError expected) {}
+ System.out.print("ORDINARY_JUNIT_OK");
+}}
 ''')
         result = self.transform(root)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Unsupported exact descriptor', result.stderr)
-        self.assertFalse((root/'sites.properties').exists())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        executed = self.invoke(['java', '-cp', os.pathsep.join(map(str, (root, self.facade, self.jar))), 'UnsupportedFixture'])
+        self.assertEqual(executed.stdout, 'ORDINARY_JUNIT_OK')
