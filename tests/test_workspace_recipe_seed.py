@@ -124,6 +124,26 @@ class RecipeSeed(unittest.TestCase):
                 with self.assertRaises(JobError):
                     self.proof(root, entries)
 
+    def test_object_at_size_limit_remains_usable(self):
+        root, entries = self.fixture({'notes.txt': b'A' * (8 * 1024**2)}, packed=True)
+        self.proof(root, entries)
+
+    def test_large_compressed_objects_are_rejected_before_content_checks(self):
+        for packed in (False, True):
+            for unreachable in (False, True):
+                with self.subTest(packed=packed, unreachable=unreachable):
+                    def change(git, work):
+                        if unreachable:
+                            (work / 'notes.txt').write_bytes(b'public\n')
+                            git('add', 'notes.txt')
+                            git('commit', '--amend', '--no-edit', '-q')
+                        if packed:
+                            git('repack', '-ad')
+                    root, entries = self.fixture({'notes.txt': b'A' * (9 * 1024**2)}, change=change)
+                    entries['work/notes.txt'] = b'public\n'
+                    with self.assertRaisesRegex(JobError, 'Git object size bound exceeded'):
+                        self.proof(root, entries)
+
     def test_missing_git_object_is_rejected(self):
         root, entries = self.fixture({'notes.txt': b'notes\n'})
         del entries[next(n for n in entries if n.startswith('work/.git/objects/'))]

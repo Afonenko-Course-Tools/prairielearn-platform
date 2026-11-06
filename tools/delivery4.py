@@ -1,5 +1,5 @@
 """Закрытые data-only bindings v4; пакет и seed никогда не исполняются."""
-import io,json,os,re,stat,subprocess,tempfile,unicodedata,zipfile
+import io,json,os,re,resource,stat,subprocess,tempfile,unicodedata,zipfile
 from pathlib import Path
 from grading_job import JobError
 
@@ -115,10 +115,29 @@ def seed_proof(native,prefix,b):
   root=Path(temporary)
   for name,data in entries.items():
    target=root/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
+  object_limit=8*1024**2
+  def limits():
+   resource.setrlimit(resource.RLIMIT_AS,(256*1024**2,256*1024**2))
+   resource.setrlimit(resource.RLIMIT_FSIZE,(object_limit,object_limit))
+   resource.setrlimit(resource.RLIMIT_CPU,(20,20))
+   resource.setrlimit(resource.RLIMIT_CORE,(0,0))
   def git(*args):
    try:
-    return subprocess.run(['git','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',*args],cwd=root/'work',env=env,capture_output=True,check=True,timeout=20).stdout
+    # Файл и OS limit ограничивают stdout до чтения в Python; stderr не копится.
+    with tempfile.TemporaryFile() as output:
+     subprocess.run(['git','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false',*args],cwd=root/'work',env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.DEVNULL,check=True,timeout=20,preexec_fn=limits)
+     output.seek(0);value=output.read(object_limit+1)
+     if len(value)>object_limit:raise JobError('Git output bound exceeded')
+     return value
    except (OSError,subprocess.SubprocessError) as error:raise JobError('Invalid initial Git repository: '+args[0]) from error
+  # Native metadata включает недостижимые и packed объекты; до fsck/content.
+  objects=git('cat-file','--batch-all-objects','--batch-check=%(objectname) %(objectsize)').splitlines()
+  stored=set()
+  for row in objects:
+   oid,size=row.split()
+   if not size.isdigit():raise JobError('Invalid Git object metadata')
+   if int(size)>object_limit:raise JobError('Git object size bound exceeded')
+   stored.add(oid)
   git('fsck','--full','--no-reflogs')
   if git('symbolic-ref','HEAD').strip()!=b'refs/heads/main' or git('rev-list','--count','--all').strip()!=b'1':raise JobError('Initial Git root commit required')
   ref=git('rev-parse','--verify','HEAD^{commit}').decode().strip()
@@ -132,7 +151,6 @@ def seed_proof(native,prefix,b):
    tracked.add(name)
   if not tracked or {n[5:] for n in entries if n.startswith('work/') and not n.startswith('work/.git/')}!=tracked:raise JobError('Untracked initial worktree files')
   reachable=set(git('rev-list','--objects','--no-object-names','HEAD').splitlines())
-  stored=set(git('cat-file','--batch-all-objects','--batch-check=%(objectname)').splitlines())
   if stored!=reachable:raise JobError('Unbound Git objects')
  return {'initialCommit':ref}
 
