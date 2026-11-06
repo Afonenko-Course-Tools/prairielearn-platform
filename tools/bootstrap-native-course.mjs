@@ -41,7 +41,7 @@ try {
  const actor=await verifyNativeAdministrator(options['--actor-uid'],{...(await native('models/user')),isAdministrator:id=>db.queryScalar('SELECT EXISTS(SELECT 1 FROM administrators WHERE user_id=$id)',{id},z.boolean())});
  const institutions=await native('models/institution'),courses=await native('models/course');
  const existing=await courses.selectOptionalCourseByPath(path);
- const existingInstances=await db.queryRows('SELECT id::text,course_id::text,uuid,short_name,deleted_at FROM course_instances WHERE course_id=$id OR uuid=ANY($uuids::uuid[])',{id:existing?.id??'0',uuids:declared.map(i=>i.uuid)},z.object({id:z.string(),course_id:z.string(),uuid:z.string().nullable(),short_name:z.string(),deleted_at:z.unknown()}));
+ const existingInstances=existing?await db.queryRows('SELECT id::text,course_id::text,uuid,short_name,deleted_at FROM course_instances WHERE course_id=$id',{id:existing.id},z.object({id:z.string(),course_id:z.string(),uuid:z.string().nullable(),short_name:z.string(),deleted_at:z.unknown()})):[];
  validateNativeInstances(existing?.id??'0',declared,existingInstances);
  const adapter={...institutions,...courses,withLock:(name,fn)=>namedLocks.doWithLock(name,{timeout:30000},fn)};
  const course=await bootstrapNativeCourse({registry,catalog,courseKey,path,info,actorId:actor.id},adapter);

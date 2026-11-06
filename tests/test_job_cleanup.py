@@ -56,6 +56,17 @@ class JobCleanup(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ['docker','run','--rm','--name','plcleanup-'+'f'*24,'--network','none','--read-only','--entrypoint','/bin/chown','--mount',f'type=bind,src={job.root},dst=/grade,bind-recursive=disabled',IMAGE,'-Rh',f'{os.getuid()}:{os.getgid()}','/grade'])
         self.assertEqual(run.call_args.kwargs, {'capture_output':True, 'text':True, 'timeout':10})
 
+    def test_replaced_root_after_ownership_command_blocks_second_deletion(self):
+        job = self.prepare(); self.execute(job)
+        original = job.root.with_name(job.root.name+'-original')
+        def chown(*args, **kwargs):
+            job.root.rename(original); job.root.mkdir()
+            self.addCleanup(lambda: shutil.rmtree(original))
+            return SimpleNamespace(returncode=0, stderr='')
+        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]) as remove, patch.object(jobs.subprocess, 'run', side_effect=chown):
+            with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
+            self.assertEqual(remove.call_count, 1)
+
     def test_ordinary_cleanup_and_host_or_nonpermission_failures_never_run_docker(self):
         job = self.prepare()
         for backend, error in [('container', None), ('host', PermissionError()), ('container', OSError('io'))]:
@@ -65,15 +76,71 @@ class JobCleanup(unittest.TestCase):
                 else: jobs.cleanup_job(job, backend)
                 run.assert_not_called()
 
-    def test_unknown_live_failed_timeout_and_public_child_block_fallback(self):
+    def test_unknown_live_failed_timeout_and_public_child_block_all_deletion(self):
         timeout = subprocess.TimeoutExpired('docker', 1)
-        for public, outcomes in [(False, None), (False, [OSError('unknown')]), (False, [timeout, SimpleNamespace(returncode=1, stderr='denied')]), (False, [timeout, timeout]), (True, [SimpleNamespace(returncode=0, stderr=''), timeout, SimpleNamespace(returncode=1, stderr='denied')])]:
+        for public, outcomes in [(False, [OSError('unknown')]), (False, [timeout, SimpleNamespace(returncode=1, stderr='denied')]), (False, [timeout, timeout]), (True, [SimpleNamespace(returncode=0, stderr=''), timeout, SimpleNamespace(returncode=1, stderr='denied')])]:
             with self.subTest(public=public, outcomes=outcomes):
                 job = self.prepare(public)
-                if outcomes: self.execute(job, outcomes)
-                with patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()), patch.object(jobs.subprocess, 'run') as run:
-                    with self.assertRaises((jobs.JobError, PermissionError)): jobs.cleanup_job(job, 'container')
+                self.execute(job, outcomes)
+                with patch.object(jobs, 'validate', side_effect=jobs.JobError('invalid retry')):
+                    with self.assertRaises(jobs.JobError): jobs.run_job(job, 'container', self.registry)
+                with patch.object(jobs.shutil, 'rmtree') as remove, patch.object(jobs.subprocess, 'run') as run:
+                    with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
+                    remove.assert_not_called()
                     run.assert_not_called()
+
+    def test_retry_after_failed_container_removal_cannot_forget_live_container(self):
+        job = self.prepare()
+        self.execute(job, [subprocess.TimeoutExpired('docker', 1), SimpleNamespace(returncode=1, stderr='denied')])
+        original_name = job.containerName
+        with patch.object(jobs, 'validate'), patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run, patch.object(jobs.secrets, 'token_hex') as name:
+            with self.assertRaises(jobs.JobError): jobs.run_job(job, 'container', self.registry)
+            run.assert_not_called()
+            name.assert_not_called()
+        self.assertEqual(job.containerName, original_name)
+        self.assertFalse(job._containers_stopped)
+        with patch.object(jobs.shutil, 'rmtree') as remove:
+            with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
+            remove.assert_not_called()
+
+    def test_safe_unlaunched_cleanup_needs_no_image_or_mount_csv(self):
+        for backend in ['container', 'host']:
+            with self.subTest(backend=backend):
+                self.registry['profiles']['java25-junit-v1']['image'] = ''
+                parent = Path(self.temp)/('comma,'+backend); parent.mkdir()
+                with patch.object(tempfile, 'tempdir', str(parent)):
+                    job = self.prepare()
+                with patch.object(jobs.shutil, 'rmtree') as remove, patch.object(jobs.subprocess, 'run') as run:
+                    jobs.cleanup_job(job, backend)
+                    remove.assert_called_once_with(job.root)
+                    run.assert_not_called()
+
+    def test_host_completion_allows_ordinary_cleanup_without_docker(self):
+        job = self.prepare(public=True)
+        del job._containers_stopped
+        grader = SimpleNamespace(grade=lambda root, **kwargs: {'infrastructure':'complete', 'score':1})
+        spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda module: None))
+        with patch.object(jobs, 'validate'), patch.object(jobs.importlib.util, 'spec_from_file_location', return_value=spec), patch.object(jobs.importlib.util, 'module_from_spec', return_value=grader), patch.object(jobs.subprocess, 'run') as run:
+            self.assertEqual(jobs.run_job(job, 'host', self.registry)['infrastructure'], 'complete')
+            with patch.object(jobs.shutil, 'rmtree') as remove:
+                jobs.cleanup_job(job, 'host')
+                remove.assert_called_once_with(job.root)
+            run.assert_not_called()
+
+    def test_validation_or_missing_image_before_launch_allows_cleanup(self):
+        for failure in ['validation', 'image']:
+            with self.subTest(failure=failure):
+                job = self.prepare()
+                if failure == 'image': job['imageDigest'] = ''
+                with patch.object(jobs, 'validate', side_effect=jobs.JobError('invalid') if failure == 'validation' else None), patch.object(jobs.subprocess, 'run') as run:
+                    if failure == 'validation':
+                        with self.assertRaises(jobs.JobError): jobs.run_job(job, 'container', self.registry)
+                    else:
+                        self.assertEqual(jobs.run_job(job, 'container', self.registry)['infrastructure'], 'failure')
+                    run.assert_not_called()
+                with patch.object(jobs.shutil, 'rmtree') as remove:
+                    jobs.cleanup_job(job, 'container')
+                    remove.assert_called_once_with(job.root)
 
     def test_successful_timeout_removal_allows_fallback(self):
         job = self.prepare()
@@ -86,9 +153,10 @@ class JobCleanup(unittest.TestCase):
         job = self.prepare(public=True)
         observed = []
         def run(command, **kwargs):
-            # Попытка привилегированной очистки во время любой grading-фазы запрещена.
-            with patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()):
+            # Любое удаление во время grading-фазы запрещено.
+            with patch.object(jobs.shutil, 'rmtree') as remove:
                 with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
+                remove.assert_not_called()
             root = job.root if not observed else job.root/'public-verification'
             (root/'results').mkdir()
             (root/'results/results.json').write_text('{"infrastructure":"complete","score":1}')
@@ -129,9 +197,10 @@ class JobCleanup(unittest.TestCase):
                 from contextlib import ExitStack
                 with ExitStack() as stack:
                     for context in contexts: stack.enter_context(context)
-                    stack.enter_context(patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()))
+                    remove = stack.enter_context(patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError() if change == 'image' else None))
                     run = stack.enter_context(patch.object(jobs.subprocess, 'run'))
                     with self.assertRaises((jobs.JobError, PermissionError)): jobs.cleanup_job(job, 'container')
+                    if change != 'image': remove.assert_not_called()
                     run.assert_not_called()
 
     def test_mount_csv_separator_in_prepared_scratch_is_rejected(self):

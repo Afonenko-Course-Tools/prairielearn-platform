@@ -440,7 +440,7 @@ def prepare_job(
     job.root = Path(tempfile.mkdtemp(prefix="grading-job-"))
     scratch = job.root.lstat()
     job._scratch = (job.root, scratch.st_dev, scratch.st_ino, os.getuid(), os.getgid(), job["imageDigest"])
-    job._containers_stopped = False
+    job._containers_stopped = True
     for folder, selection in [("student", selected), ("tests", tests)]:
         (job.root / folder).mkdir(exist_ok=True)
         for x in selection:
@@ -575,7 +575,8 @@ def _validate_build_observation(
 
 
 def run_job(job, backend="host", registry=None):
-    job._containers_stopped = False
+    if getattr(job, "_containers_stopped", True) is False:
+        raise JobError("Grading retry requires stopped containers")
     validate("grading-job", job)
     if not getattr(job, "root", None):
         raise JobError("Prepared private job root required")
@@ -630,6 +631,7 @@ def run_job(job, backend="host", registry=None):
                 job["imageDigest"],
                 "--verification",
             ]
+            job._containers_stopped = False
             try:
                 p = subprocess.run(
                     cmd,
@@ -685,7 +687,8 @@ def run_job(job, backend="host", registry=None):
     ) == "complete":
         publicjob = GradingJob(job)
         publicjob.root = job.root / "public-verification"
-        primary_stopped = job._containers_stopped
+        publicjob._containers_stopped = True
+        primary_stopped = getattr(job, "_containers_stopped", True)
         job._containers_stopped = False
         try:
             publicresult = run_job(publicjob, backend, registry)
@@ -738,23 +741,29 @@ def run_job(job, backend="host", registry=None):
 
 def cleanup_job(job, backend):
     """Удалить scratch; вернуть владельца только после остановки всех контейнеров."""
+    prepared = getattr(job, "_scratch", None)
+    if not prepared or not getattr(job, "_containers_stopped", False):
+        raise JobError("Scratch cleanup requires prepared root and stopped containers")
+    root, device, inode, uid, gid, image = prepared
+    def check_root():
+        current = job.root.lstat()
+        if (
+            job.root != root or stat.S_ISLNK(current.st_mode)
+            or not stat.S_ISDIR(current.st_mode) or job.root.resolve() != root
+            or (current.st_dev, current.st_ino, current.st_uid) != (device, inode, uid)
+            or (os.getuid(), os.getgid()) != (uid, gid)
+        ):
+            raise JobError("Scratch cleanup identity changed")
+    check_root()
     try:
         shutil.rmtree(job.root)
         return
     except PermissionError:
         if backend != "container":
             raise
-    prepared = getattr(job, "_scratch", None)
-    if not prepared or not getattr(job, "_containers_stopped", False):
-        raise JobError("Scratch cleanup requires prepared root and stopped containers")
-    root, device, inode, uid, gid, image = prepared
-    current = job.root.lstat()
+    check_root()
     if (
-        job.root != root or stat.S_ISLNK(current.st_mode)
-        or not stat.S_ISDIR(current.st_mode) or job.root.resolve() != root
-        or (current.st_dev, current.st_ino, current.st_uid) != (device, inode, uid)
-        or (os.getuid(), os.getgid()) != (uid, gid)
-        or not image or job.get("imageDigest") != image
+        not image or job.get("imageDigest") != image
         or any(c in str(root) for c in ",\"\r\n")
     ):
         raise JobError("Scratch cleanup identity changed")
@@ -786,6 +795,7 @@ def cleanup_job(job, backend):
         raise JobError("Scratch ownership cleanup timed out; container removed") from error
     if result.returncode:
         raise JobError("Scratch ownership cleanup failed: " + result.stderr)
+    check_root()
     shutil.rmtree(job.root)
 
 
