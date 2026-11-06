@@ -9,7 +9,7 @@ class GatewayContracts(unittest.TestCase):
         result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_closed_assignment_completion_and_canonical_contract(self):
+    def test_native_delivery_canonical_contract(self):
         self.run_contract(['node', 'tests/bridge/policy.test.mjs'])
 
     def test_private_native_enrollment(self):

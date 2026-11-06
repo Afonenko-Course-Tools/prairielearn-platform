@@ -1,6 +1,5 @@
-"""Read-only ordinary Student ACL/results checks using real issued cookie jars."""
+"""Проверки native Student ACL с уже выданными cookie; без Bridge results API."""
 import json,os,pathlib,urllib.request,urllib.error,unittest
-import jsonschema
 
 @unittest.skipUnless(os.environ.get('PL_GATEWAY_STUDENT_FIXTURE'),'verified Student fixture not configured')
 class OrdinaryStudentAcl(unittest.TestCase):
@@ -16,27 +15,15 @@ class OrdinaryStudentAcl(unittest.TestCase):
         try:r=urllib.request.build_opener(NoRedirect).open(req,timeout=20)
         except urllib.error.HTTPError as e:r=e
         with r:return r.status,r.read().decode()
-    def test_students_see_assigned_defense_and_not_foreign(self):
+    def test_native_student_list_exposes_only_accessible_work(self):
         for student in self.fixture['students']:
-            with self.subTest(student=student['assignmentId']):
+            with self.subTest(student=student['userUid']):
                 status,body=self.native(student,self.fixture['listPath'])
                 self.assertEqual(status,200)
                 self.assertIn(student['ownWork'],body)
                 self.assertNotIn(student['foreignWork'],body)
-    def test_foreign_defense_direct_url_denied_in_existing_session(self):
+    def test_native_direct_url_enforces_access_in_existing_student_session(self):
         for student in self.fixture['students']:
-            with self.subTest(student=student['assignmentId']):
+            with self.subTest(student=student['userUid']):
                 self.assertIn(self.native(student,student['foreignPath'])[0],(403,404))
                 self.assertIn(self.native(student,student['ownPath'])[0],(200,302))
-    def test_results_are_schema_valid_and_bound_to_current_student(self):
-        token=pathlib.Path(self.fixture['tokenFile']).read_text().strip()
-        schema=json.loads((pathlib.Path(__file__).parents[1]/'schemas/gateway-results.schema.json').read_text())
-        for student in self.fixture['students']:
-            path=f"/internal/gateway/results?assignmentId={student['assignmentId']}&version={student['version']}"
-            req=urllib.request.Request(self.fixture['bridgeUrl']+path,headers={'Authorization':'Bearer '+token})
-            with urllib.request.urlopen(req,timeout=20) as r:result=json.load(r)
-            jsonschema.validate(result,schema)
-            self.assertEqual(result['userUid'],student['userUid'])
-            self.assertEqual(result['workId'],student['ownWork'])
-            self.assertEqual(result['courseKey'],self.fixture['courseKey'])
-            self.assertEqual(result['version'],student['version'])
