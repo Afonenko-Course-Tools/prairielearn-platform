@@ -33,7 +33,7 @@ async function fixture(t, options = {}) {
   await writeFile(join(path, 'config.json'), JSON.stringify(settings));
   const ci = { id: '73', course_id: '7', uuid, short_name: 'fall', deleted_at: null, modern_publishing: true, ...options.ci };
   const state = { migrations: 0, enrollmentWrites: [], locks: [], nativeReads: 0, bodyReads: 0, queries: 0,
-    courseGrants: [], instanceGrants: [], administrators: new Set(), courseRole: options.courseRole ?? null, instanceRole: options.instanceRole ?? null, accessChecks: [] };
+    courseGrants: [], instanceGrants: [], administrators: new Set(), courseRole: options.courseRole ?? null, instanceRole: options.instanceRole ?? null, accessChecks: [], reservationLookups: 0, contextModes: [] };
   let handler;
   const args = {
     z, readFile, ...policy, Buffer, URL, timingSafeEqual,
@@ -85,11 +85,19 @@ async function fixture(t, options = {}) {
         assert.equal(value.user.id, value.user.uid.startsWith('teacher') ? '22' : '21');
         assert.equal(value.is_administrator, false); assert.equal(value.ip, null);
         assert.ok(value.req_date instanceof Date);
+        // Pinned native authz-data.ts выбирает overrides.mode до ipToMode;
+        // exam-mode.ts отклоняет null IP до запроса reservation.
+        const mode = value.overrides?.mode ?? await (async () => {
+          state.reservationLookups++;
+          if (value.ip == null) throw new Error('IP address is required');
+          return 'Public';
+        })();
+        state.contextModes.push(mode);
         state.accessChecks.push({userId: value.user.id, courseRole: state.courseRole, instanceRole: state.instanceRole});
         const courseRole = state.courseGrants.some(row => row.uid === value.user.uid) ? state.courseRole : options.courseRole ?? 'None';
         const instanceRole = state.instanceGrants.some(row => row.user_id === value.user.id) ? state.instanceRole : options.instanceRole ?? 'None';
         return {authzData: options.nullContext ? null : {
-          user: value.user, mode: 'Public', is_institution_administrator: false,
+          user: value.user, mode, is_institution_administrator: false,
           course_role: courseRole, course_instance_role: instanceRole,
           has_course_permission_preview: ['Previewer', 'Viewer', 'Editor', 'Owner'].includes(courseRole),
           has_course_permission_view: ['Viewer', 'Editor', 'Owner'].includes(courseRole),
@@ -391,4 +399,16 @@ test('прежние native staff права сохраняют вход Student
 test('отсутствующий native authz context закрывает вход после trusted grant', async t => {
   const f = await fixture(t, {nullContext: true});
   assert.equal((await f.send({body: {...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher'}})).status, 403);
+});
+
+
+test('внутренний admission context без browser IP не ищет exam reservation и не расширяет wire', async t => {
+  const f = await fixture(t);
+  const result = await f.send();
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {schemaVersion: 1, ...request, enrolled: true, path: '/pl/course_instance/73/assessments'});
+  assert.equal(f.state.reservationLookups, 0);
+  assert.deepEqual(f.state.contextModes, ['Public']);
+  assert.equal((await f.send({body: {...loginRequest, mode: 'Exam'}})).status, 400);
+  assert.deepEqual(f.state.contextModes, ['Public']);
 });

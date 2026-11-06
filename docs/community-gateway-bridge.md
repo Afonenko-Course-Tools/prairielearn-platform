@@ -38,6 +38,8 @@ Gateway передаёт доверенные роль и email из прове�
 
 Проверка использует `is_administrator: false`: global Administrator без активного native admin mode cookie не считается автоматически staff этого курса. Teacher и владелец получают scoped staff-права до проверки публикации, поэтому первый доверенный вход в закрытый для Student курс возможен. Прежние native staff-права также учитываются при входящем `role: student`, без новых grants. Реальные browser mode, cookie и дальнейший доступ по URL по-прежнему проверяет PL.
 
+Для внутреннего course/enrollment ACL вызова передаётся native `overrides.mode: 'Public'`: у Bridge нет browser IP, а native `ipToMode` требует его для поиска exam reservation. Этот mode не выдаёт course/instance права и не заменяет проверки публикации. Он не включается в wire-ответ, cookies или native assessment context. После handoff PL самостоятельно вычисляет browser mode по реальному IP и сохраняет exam/assessment guards.
+
 ## Доверенные права
 
 Точное совпадение `email` с private `administratorEmail` выдаёт native global Administrator и scoped `Editor` курса + `Student Data Editor` экземпляра при обеих ролях, включая `role: student` для Moodle Learner. Для владельца оператор задаёт доверенный canonical адрес в конфигурации. Адрес не встроен в handler и не определяет UID.

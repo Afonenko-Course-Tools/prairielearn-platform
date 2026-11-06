@@ -132,6 +132,8 @@ async function enrollBasic(request) {
       req_date: new Date(),
       // Проверяем обычный native вход без предположения об активном admin mode cookie.
       is_administrator: false,
+      // Это course/enrollment ACL, а не browser assessment context с известным IP.
+      overrides: { mode: 'Public' },
     });
     const hasStaffAccess = authzData?.has_course_permission_preview ||
       authzData?.has_course_instance_permission_view;
