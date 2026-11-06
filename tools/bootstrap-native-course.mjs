@@ -25,7 +25,6 @@ const {delivery,info}=await readNativeCoursePayload(path);
 authorizeCourseSync({path,sourceCourseId:courseKey,courseUuid:null,infoUuid:info.uuid});
 if(delivery.courseId!==courseKey)throw new Error('Registry source course ID mismatch');
 const declared=await readDeclaredInstances(path,delivery);
-const {bridgeDeliverySchema}=await import('../bridge/delivery.mjs');bridgeDeliverySchema.parse(delivery);
 const db=await import('@prairielearn/postgres');
 const namedLocks=await import('@prairielearn/named-locks');
 const {z}=await import('zod');
