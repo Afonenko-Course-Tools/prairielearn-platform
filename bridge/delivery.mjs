@@ -7,7 +7,7 @@ const relativePath=z.string().min(1).refine(p=>!p.startsWith('/')&&!/^[A-Za-z]:/
 const submission=z.strictObject({mode:z.enum(['upload','editor']),aceMode:z.string().regex(/^ace\/mode\/[a-z][a-z0-9_]*$/).optional(),layout:z.enum(['files','zip','files-or-zip']).optional()}).refine(s=>s.mode==='editor'||s.aceMode===undefined).refine(s=>s.mode==='upload'||s.layout===undefined);
 const commonBinding={uuid:z.string().uuid(),submission,sourceRoot:relativePath};
 const gradingBinding=z.union([
- z.strictObject({...commonBinding,grading:z.strictObject({method:z.literal('manual')})}).refine(b=>b.submission.mode==='upload'),
+ z.strictObject({...commonBinding,grading:z.strictObject({method:z.literal('manual')})}),
  z.strictObject({...commonBinding,grading:z.strictObject({method:z.enum(['external','mixed'])}),projectCheck:z.string().min(1),runtime:z.string().min(1),sources:z.array(z.strictObject({projectRelativePath:relativePath,submissionRelativePath:relativePath})).min(1)})
 ]);
 const slotSchema=z.strictObject({id:z.string(),selection:z.enum(['fixed','random','choice']),candidates:idsSchema.min(1),assignment:z.strictObject({stage:z.enum(['demonstration','classroom','homework']).optional(),requirement:z.enum(['required','optional']),workMode:z.enum(['individual','pair','group'])})}).refine(slot=>slot.selection==='fixed'?slot.candidates.length===1&&slot.id.split('/').at(-1)===slot.candidates[0].split('/').at(-1):slot.candidates.length>=2&&/^alt-[a-z0-9][a-z0-9-]*$/.test(slot.id.split('/').at(-1))).refine(slot=>slot.selection!=='choice'||slot.assignment.requirement==='required');

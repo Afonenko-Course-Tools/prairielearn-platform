@@ -8,11 +8,11 @@ const modulePath=new URL('../../tools/native-course-payload.mjs',import.meta.url
 test('verified native payload reader exists',()=>assert.ok(existsSync(modulePath),'Bootstrap payload validation is missing'));
 if(existsSync(modulePath)) {
  const {readNativeCoursePayload}=await import(modulePath.href);
- async function fixture(run,candidate=false) {
+ async function fixture(run,candidate=false,submission={mode:'upload'}) {
   const root=await mkdtemp(join(tmpdir(),'native-bootstrap-'));
   const info='{"name":"SYN","title":"Synthetic","timezone":"Europe/Minsk"}';
   const q='demo/exr-a',slot='demo/lab/exr-a';
-  const payload={schemaVersion:5,courseId:'demo',bookRoot:'tasks',questions:[q],gradingPayloads:{[q]:{kind:'project',uuid:'37d79ee7-fd7d-44db-bd45-6587711862a5',grading:{method:'manual'},submission:{mode:'upload'},sourceRoot:'projects/a'}},works:[{id:'lab',slots:[{id:slot,selection:'fixed',candidates:[q],assignment:{requirement:'required',workMode:'individual'}}],policy:{},completion:{schemaVersion:2,mode:'required-slot-completion',source:'per-slot-results-v2',slotIds:[slot],requiredSlotIds:[slot],atLeast:1,fullyCompletedScore:1}}],instances:{fixture:{works:['lab'],selfEnrollment:false}},files:['infoCourse.json'],...(candidate?{candidate:true}:{})};
+  const payload={schemaVersion:5,courseId:'demo',bookRoot:'tasks',questions:[q],gradingPayloads:{[q]:{kind:'project',uuid:'37d79ee7-fd7d-44db-bd45-6587711862a5',grading:{method:'manual'},submission,sourceRoot:'projects/a'}},works:[{id:'lab',slots:[{id:slot,selection:'fixed',candidates:[q],assignment:{requirement:'required',workMode:'individual'}}],policy:{},completion:{schemaVersion:2,mode:'required-slot-completion',source:'per-slot-results-v2',slotIds:[slot],requiredSlotIds:[slot],atLeast:1,fullyCompletedScore:1}}],instances:{fixture:{works:['lab'],selfEnrollment:false}},files:['infoCourse.json'],...(candidate?{candidate:true}:{})};
   const path=join(root,'current');
   await mkdir(path);await writeFile(join(path,'infoCourse.json'),info);
   await writeFile(join(path,'delivery.json'),JSON.stringify(payload));
@@ -21,6 +21,11 @@ if(existsSync(modulePath)) {
  test('native payload reader loads current metadata',()=>fixture(async path=>{
   const result=await readNativeCoursePayload(path);assert.equal(result.info.name,'SYN');assert.equal(result.delivery.schemaVersion,5);
  }));
+ test('читатель принимает проект с ручной проверкой из редактора',()=>fixture(async path=>{
+  const result=await readNativeCoursePayload(path);
+  assert.deepEqual(result.delivery.gradingPayloads['demo/exr-a'].submission,{mode:'editor',aceMode:'ace/mode/java'});
+  assert.equal(result.delivery.gradingPayloads['demo/exr-a'].grading.method,'manual');
+ },false,{mode:'editor',aceMode:'ace/mode/java'}));
  test('reader observes changed native metadata bytes',()=>fixture(async path=>{
   await writeFile(join(path,'infoCourse.json'),'{"name":"UPDATED"}');assert.equal((await readNativeCoursePayload(path)).info.name,'UPDATED');
  }));
@@ -32,4 +37,7 @@ if(existsSync(modulePath)) {
  test('candidate payload cannot create a production native institution',()=>fixture(async path=>{
   await assert.rejects(()=>readNativeCoursePayload(path),/Candidate/);
  },true));
+ test('проект в редакторе не обходит запрет candidate',()=>fixture(async path=>{
+  await assert.rejects(()=>readNativeCoursePayload(path),/Candidate/);
+ },true,{mode:'editor',aceMode:'ace/mode/java'}));
 }
