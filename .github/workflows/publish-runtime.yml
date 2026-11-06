@@ -120,6 +120,7 @@ jobs:
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/prairielearn/Dockerfile -t "$COMMUNITY_IMAGE" .
           docker run --rm --entrypoint node "$COMMUNITY_IMAGE" --check /PrairieLearn/apps/prairielearn/bridge/server.mjs
           node --test tests/bridge/*.test.mjs
+          python3 -B tests/bridge/enrollment-schema.test.py
           python3 tests/bridge/cookie-domain.test.py
           python3 tests/bridge/grader-patch.test.py
       - name: Собрать и проверить fish
@@ -188,8 +189,10 @@ jobs:
           echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
       - name: Проверить Community Source contracts
         run: |
+          python3 -m pip install --requirement requirements.txt
           npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/bridge/*.test.mjs
+          python3 -B tests/bridge/enrollment-schema.test.py
           for TEST in tests/recognized-*.test.mjs; do
             if [[ "$TEST" == tests/recognized-aggregate.test.mjs ]]; then
               python3 -B images/prairielearn/patch-recognized-credit.py --stdin assessment-grading < tests/fixtures/native-credit-upstream/dist/lib/assessment-grading.js > "$RUNNER_TEMP/recognized-assessment-grading.js"
