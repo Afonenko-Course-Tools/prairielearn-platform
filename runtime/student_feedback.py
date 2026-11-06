@@ -74,6 +74,23 @@ def student_result(result, descriptor):
     if result.get("infrastructure") == "failure" or result.get("grading_error"):
         kind = "infrastructure"
     reason, observed, what_check = _EXPLANATIONS[kind]
+    if kind == "infrastructure" and result.get("timed_out") is True:
+        limits = descriptor.get("limits") if isinstance(descriptor, dict) else None
+        limit = limits.get("run-seconds") if isinstance(limits, dict) else None
+        try:
+            valid_limit = (
+                isinstance(limit, (int, float)) and not isinstance(limit, bool)
+                and math.isfinite(limit) and limit > 0
+            )
+        except OverflowError:
+            valid_limit = False
+        reason = "Превышен общий лимит выполнения проверок."
+        observed = (
+            f"Проверки остановлены по лимиту {limit:g} с. Достоверная оценка не получена."
+            if valid_limit else
+            "Проверки остановлены по общему пределу времени. Достоверная оценка не получена."
+        )
+        what_check = "Сохраните ответ и повторите отправку; при повторении сообщите преподавателю."
     feedback = {
         "kind": kind,
         "reason": reason,

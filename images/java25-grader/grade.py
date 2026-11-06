@@ -1501,6 +1501,17 @@ def _execute(
                 dependentExecution="complete",
                 apiContainment=api_containment,
             )
+        if reason == "timeout":
+            return {
+                "gradable": False,
+                "grading_error": True,
+                "classification": "infrastructure-failure",
+                "infrastructure": "failure",
+                "timed_out": True,
+                "studentCompilation": "success",
+                "trustedCompilation": "success",
+                "message": "Полный отчёт JUnit не получен: исполнитель остановлен (timeout)",
+            }
         if reason:
             raise GraderError(
                 "Полный отчёт JUnit не получен: исполнитель остановлен (" + reason + ")"
