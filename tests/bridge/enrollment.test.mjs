@@ -288,3 +288,21 @@ test('native ошибки скрыты и не раскрывают токен',
   assert.deepEqual(result.body, { error: 'Bridge operation failed' });
   assert.equal(result.headers['Cache-Control'], 'no-store');
 });
+
+test('canonical settings example запускает auth-only Bridge без delivery конфигурации', async t => {
+  const example = JSON.parse(await readFile(new URL('../../config/pl.gateway.example.json', import.meta.url), 'utf8'));
+  const schema = new Function('z', 'isCanonicalEmail',
+    source.slice(source.indexOf('const settingsSchema ='), source.indexOf('const settings =')) + ';return settingsSchema;')(z, policy.isCanonicalEmail);
+  schema.parse(example);
+  const f = await fixture(t, { settings: example });
+  assert.equal(f.state.migrations, 0);
+  assert.equal(f.state.nativeReads, 0);
+  assert.deepEqual(f.bindings, example.bindings);
+});
+
+test('settings example не допускает прежние delivery и login-only варианты', async t => {
+  for (const settings of [
+    { listenHost: '0.0.0.0', listenPort: 3001, administratorUid: null, bindings: [{ deliveryPath: '/course-deliveries/approved', courseInstanceId: '1' }] },
+    { mode: 'login-only', listenHost: '0.0.0.0', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding] },
+  ]) await assert.rejects(fixture(t, { settings }), error => error instanceof z.ZodError);
+});

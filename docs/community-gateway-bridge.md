@@ -10,6 +10,10 @@ Private settings содержат только `listenHost`, `listenPort`, `toke
 
 `mode`, `administratorUid` и `deliveryPath` запрещены. Альтернативного grading или login-only режима нет. Delivery manifest, работы и assignment labels не участвуют в запуске или зачислении Bridge. Перед подключением DB сервер требует `NODE_ENV=production`, `devMode=false`, `hasShib=true`. Deploy config должен соответствовать этому единственному формату.
 
+Единственный [пример private settings](../config/pl.gateway.example.json) содержит вымышленные native IDs и UUID. Оператор заменяет их данными фактической регистрации, задаёт `tokenFile` и при необходимости доверенный `administratorEmail`; `null` оставляет Administrator grant выключенным.
+
+В `compose/compose.gateway.yml` Bridge получает только private config и token. В `compose/compose.prod.yml` native каталог курса монтируется в `/course` только у PL. Gateway получает private config и своё постоянное хранилище; файлы курса и delivery ему не нужны.
+
 ## Запрос и native доступ
 
 Запрос соответствует [закрытой схеме](../schemas/gateway-enrollment.schema.json) и содержит ровно пять обязательных полей:
