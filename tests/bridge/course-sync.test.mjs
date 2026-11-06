@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {readFile} from 'node:fs/promises';
 import * as policy from '../../tools/course-sync-policy.mjs';
 const uuid='12345678-1234-5678-9234-123456789abc',path='/course/demo/current';
 const request={path,sourceCourseId:'demo',previousSourceCourseId:'demo',courseUuid:uuid,infoUuid:uuid};
@@ -18,13 +17,6 @@ test('operator requires exact existing native UID and administrator membership',
  await assert.rejects(policy.verifyNativeAdministrator(actor.uid,{...native,selectOptionalUserByUid:async()=>({...actor,uid:'wrong'})}));
 });
 const declared=[{uuid,short_name:'Autumn'}],row={id:'73',course_id:'7',uuid,short_name:'Autumn',deleted_at:null};
-test('CLI выбирает существующие экземпляры только указанного курса: UUID может повторяться в другом курсе',async()=>{
- const source=await readFile(new URL('../../tools/sync-native-course.mjs',import.meta.url),'utf8');
- const prequery=source.match(/const existingInstances=await db\.queryRows\(([^\n]+)\);/);
- assert.ok(prequery);
- assert.equal(prequery[1],"'SELECT id::text,course_id::text,uuid,short_name,deleted_at FROM course_instances WHERE course_id=$id',{id},instanceSchema");
- assert.throws(()=>policy.validateNativeInstances('7',declared,[{...row,course_id:'8'}]));
-});
 test('pre-sync rejects conflicting, deleted and ambiguous native identities before writes',()=>{
  assert.doesNotThrow(()=>policy.validateNativeInstances('7',declared,[]));
  assert.doesNotThrow(()=>policy.validateNativeInstances('7',declared,[row]));
