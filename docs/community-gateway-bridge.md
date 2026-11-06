@@ -34,15 +34,19 @@ Gateway передаёт доверенные роль и email из прове�
 
 На каждом входе Bridge сверяет native CI по ID, course ID, UUID и short name и отклоняет удалённый экземпляр. Пользователь выбирается только по существующему `userUid`; неизвестный UID получает 404. Email не вычисляет identity, не объединяет пользователей и не меняет native IDs.
 
-В native транзакции advisory lock по экземпляру и UID сериализует зачисление и grant. Blocked enrollment отклоняется до ensure. Затем требуется joined enrollment, modern publishing и текущий native Student access. Отказ не возвращает путь и не выдаёт staff права.
+В native транзакции advisory lock по экземпляру и UID сериализует зачисление и grant. Blocked enrollment отклоняется до ensure для всех ролей; затем требуется joined enrollment. После доверенных grants Bridge вызывает native `constructCourseOrInstanceContext` для того же user/course/instance. Как штатный `authzHasCourseInstanceAccess`, проверка допускает фактический course preview или instance view, либо Student access с enrollment. Для пользователя без native staff прав дополнительно сохраняется требование modern publishing; неопубликованный или закрытый для Student экземпляр отклоняется. Отказ не возвращает путь и откатывает транзакцию.
+
+Проверка использует `is_administrator: false`: global Administrator без активного native admin mode cookie не считается автоматически staff этого курса. Teacher и владелец получают scoped staff-права до проверки публикации, поэтому первый доверенный вход в закрытый для Student курс возможен. Прежние native staff-права также учитываются при входящем `role: student`, без новых grants. Реальные browser mode, cookie и дальнейший доступ по URL по-прежнему проверяет PL.
 
 ## Доверенные права
 
-Точное совпадение `email` с private `administratorEmail` выдаёт native global Administrator при обеих ролях, включая `role: student` для Moodle Learner. Для владельца оператор задаёт доверенный canonical адрес в конфигурации. Адрес не встроен в handler и не определяет UID.
+Точное совпадение `email` с private `administratorEmail` выдаёт native global Administrator и scoped `Editor` курса + `Student Data Editor` экземпляра при обеих ролях, включая `role: student` для Moodle Learner. Для владельца оператор задаёт доверенный canonical адрес в конфигурации. Адрес не встроен в handler и не определяет UID.
 
 Остальные Teacher получают native `Editor` курса и `Student Data Editor` экземпляра через штатные permission API. После API проверяются прежние native user ID/UID и фактические права. Student с другим email новых staff/admin прав не получает. Права additive: повторный вход и смена входящей роли на Student не отзывают ранее выданные Owner, Editor или Administrator.
 
-Administrator SQL связывает UID и native user ID как при вставке, так и при повторной проверке. `ON CONFLICT DO NOTHING` сохраняет идемпотентность; native audit создаётся только из новой administrator записи, с тем же native user ID в качестве actor. Grant и enrollment проходят в одной транзакции после access guards.
+Administrator SQL связывает UID и native user ID как при вставке, так и при повторной проверке. `ON CONFLICT DO NOTHING` сохраняет идемпотентность; native audit создаётся только из новой administrator записи, с тем же native user ID в качестве actor. Grant и enrollment проходят в одной транзакции после identity/blocked/joined guards; итоговый native staff-or-student access проверяется до commit.
+
+Native semantics сверены с закреплённым Community `92584fe426ececb84bc2d09de9975c7056c0c5f6`: [построение course/instance authz](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/lib/authz-data.ts), [допуск staff или enrolled Student](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/middlewares/authzHasCourseInstanceAccess.ts) и [native admin mode](https://github.com/PrairieLearn/PrairieLearn/blob/92584fe426ececb84bc2d09de9975c7056c0c5f6/apps/prairielearn/src/lib/authn.ts). Gateway передаёт доверенный контекст и открывает возвращённый native путь; собственную role/email policy он не добавляет.
 
 ## Ответ и ограничения
 

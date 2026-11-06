@@ -80,17 +80,17 @@ const enrollmentQuerySchema = z.strictObject({
   email: z.string().refine(isCanonicalEmail).nullable(),
 });
 async function grantTrustedLoginRole(request, ci, user) {
-  if (settings.administratorEmail !== null && request.email === settings.administratorEmail) {
+  const administrator = settings.administratorEmail !== null && request.email === settings.administratorEmail;
+  if (administrator) {
     const answer = await db.queryRow(sql.grant_administrator,
       { uid: user.uid, user_id: user.id }, z.object({ administrator: z.boolean() }));
     if (!answer.administrator) throw new BridgeError(409, 'Не удалось выдать native Administrator');
-    return;
   }
-  if (request.role !== 'teacher') return;
-  const teacher = await coursePermissions.insertCoursePermissionsByUserUid({
+  if (!administrator && request.role !== 'teacher') return;
+  const staffUser = await coursePermissions.insertCoursePermissionsByUserUid({
     course_id: ci.course_id, uid: user.uid, course_role: 'Editor', authn_user_id: user.id,
   });
-  if (teacher.id !== user.id || teacher.uid !== user.uid)
+  if (staffUser.id !== user.id || staffUser.uid !== user.uid)
     throw new BridgeError(409, 'Native identity изменилась при выдаче роли');
   await coursePermissions.insertCourseInstancePermissions({
     course_id: ci.course_id, course_instance_id: ci.id, user_id: user.id,
@@ -123,13 +123,20 @@ async function enrollBasic(request) {
     });
     if (!enrollment || enrollment.status !== 'joined')
       throw new BridgeError(403, 'Enrollment unavailable');
-    if (
-      !ci.modern_publishing ||
-      !(await studentAccess.calculateModernCourseInstanceStudentAccess(ci, user.id, new Date()))
-        .has_student_access_with_enrollment
-    )
-      throw new BridgeError(403, 'Native Student instance access denied');
     await grantTrustedLoginRole(request, ci, user);
+    const { authzData } = await studentAccess.constructCourseOrInstanceContext({
+      user,
+      course_id: ci.course_id,
+      course_instance_id: ci.id,
+      ip: null,
+      req_date: new Date(),
+      // Проверяем обычный native вход без предположения об активном admin mode cookie.
+      is_administrator: false,
+    });
+    const hasStaffAccess = authzData?.has_course_permission_preview ||
+      authzData?.has_course_instance_permission_view;
+    if (!hasStaffAccess && (!ci.modern_publishing || !authzData?.has_student_access_with_enrollment))
+      throw new BridgeError(403, 'Native course instance access denied');
     return {
       schemaVersion: 1,
       userUid: user.uid,

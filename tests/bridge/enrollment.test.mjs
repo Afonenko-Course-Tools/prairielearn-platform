@@ -33,7 +33,7 @@ async function fixture(t, options = {}) {
   await writeFile(join(path, 'config.json'), JSON.stringify(settings));
   const ci = { id: '73', course_id: '7', uuid, short_name: 'fall', deleted_at: null, modern_publishing: true, ...options.ci };
   const state = { migrations: 0, enrollmentWrites: [], locks: [], nativeReads: 0, bodyReads: 0, queries: 0,
-    courseGrants: [], instanceGrants: [], administrators: new Set(), courseRole: options.courseRole ?? null, instanceRole: null };
+    courseGrants: [], instanceGrants: [], administrators: new Set(), courseRole: options.courseRole ?? null, instanceRole: options.instanceRole ?? null, accessChecks: [] };
   let handler;
   const args = {
     z, readFile, ...policy, Buffer, URL, timingSafeEqual,
@@ -59,25 +59,49 @@ async function fixture(t, options = {}) {
     users: { selectOptionalUserByUid: async uid => { state.nativeReads++; return options.missingUser ? null : { id: uid.startsWith('teacher') ? '22' : '21', uid }; } },
     coursePermissions: {
       insertCoursePermissionsByUserUid: async value => {
-        assert.equal(value.course_id, '7'); assert.equal(value.uid, 'teacher@fixture.invalid');
-        assert.equal(value.course_role, 'Editor'); assert.equal(value.authn_user_id, '22');
+        assert.equal(value.course_id, '7');
+        assert.ok(['teacher@fixture.invalid', 'student@fixture.invalid'].includes(value.uid));
+        const userId = value.uid.startsWith('teacher') ? '22' : '21';
+        assert.equal(value.course_role, 'Editor'); assert.equal(value.authn_user_id, userId);
         state.courseGrants.push(value); state.courseRole = options.courseRole ?? 'Editor';
-        return { id: options.changedUser ? '99' : '22', uid: value.uid };
+        return { id: options.changedUser ? '99' : userId, uid: value.uid };
       },
       insertCourseInstancePermissions: async value => {
         assert.equal(value.course_id, '7'); assert.equal(value.course_instance_id, '73');
-        assert.equal(value.user_id, '22'); assert.equal(value.course_instance_role, 'Student Data Editor');
-        assert.equal(value.authn_user_id, '22'); state.instanceGrants.push(value);
+        assert.ok(['21', '22'].includes(value.user_id)); assert.equal(value.course_instance_role, 'Student Data Editor');
+        assert.equal(value.authn_user_id, value.user_id); state.instanceGrants.push(value);
         if (!options.permissionFailure) state.instanceRole = 'Student Data Editor';
       },
-      selectCoursePermissionForUser: async value => { assert.deepEqual(value, { course_id: '7', user_id: '22' }); return state.courseRole; },
-      selectCourseInstancePermissionForUser: async value => { assert.deepEqual(value, { course_instance_id: '73', user_id: '22' }); return state.instanceRole; },
+      selectCoursePermissionForUser: async value => { assert.equal(value.course_id, '7'); assert.ok(['21', '22'].includes(value.user_id)); return state.courseRole; },
+      selectCourseInstancePermissionForUser: async value => { assert.equal(value.course_instance_id, '73'); assert.ok(['21', '22'].includes(value.user_id)); return state.instanceRole; },
     },
     enrollments: {
       selectOptionalEnrollmentByUserId: async () => options.prior ?? null,
       ensureUncheckedEnrollment: async value => { state.enrollmentWrites.push(value); return options.unavailable ? null : { id: '11', status: 'joined' }; },
     },
-    studentAccess: { calculateModernCourseInstanceStudentAccess: async () => ({ has_student_access_with_enrollment: !options.denied }) },
+    studentAccess: {
+      constructCourseOrInstanceContext: async value => {
+        assert.equal(value.course_id, '7'); assert.equal(value.course_instance_id, '73');
+        assert.equal(value.user.id, value.user.uid.startsWith('teacher') ? '22' : '21');
+        assert.equal(value.is_administrator, false); assert.equal(value.ip, null);
+        assert.ok(value.req_date instanceof Date);
+        state.accessChecks.push({userId: value.user.id, courseRole: state.courseRole, instanceRole: state.instanceRole});
+        const courseRole = state.courseGrants.some(row => row.uid === value.user.uid) ? state.courseRole : options.courseRole ?? 'None';
+        const instanceRole = state.instanceGrants.some(row => row.user_id === value.user.id) ? state.instanceRole : options.instanceRole ?? 'None';
+        return {authzData: options.nullContext ? null : {
+          user: value.user, mode: 'Public', is_institution_administrator: false,
+          course_role: courseRole, course_instance_role: instanceRole,
+          has_course_permission_preview: ['Previewer', 'Viewer', 'Editor', 'Owner'].includes(courseRole),
+          has_course_permission_view: ['Viewer', 'Editor', 'Owner'].includes(courseRole),
+          has_course_permission_edit: ['Editor', 'Owner'].includes(courseRole),
+          has_course_permission_own: courseRole === 'Owner',
+          has_course_instance_permission_view: ['Student Data Viewer', 'Student Data Editor'].includes(instanceRole),
+          has_course_instance_permission_edit: instanceRole === 'Student Data Editor',
+          has_student_access: !options.denied,
+          has_student_access_with_enrollment: !options.denied,
+        }};
+      },
+    },
     createServer: fn => { handler = fn; return {}; },
   };
   const parsed = await new AsyncFunction(...Object.keys(args), core + ';return {settings, bindings};')(...Object.values(args));
@@ -220,13 +244,16 @@ test('точное подтверждённое session email выдаёт Admin
     for (let i = 0; i < 2; i++) assert.equal((await f.send({ body: { ...loginRequest, userUid, role, email: 'owner@fixture.invalid' } })).status, 200);
   }
   assert.deepEqual([...f.state.administrators], ['21', '22']);
-  assert.equal(f.state.courseGrants.length, before);
+  assert.equal(f.state.courseGrants.length, before + 4);
+  assert.equal(f.state.instanceGrants.length, before + 4);
 });
 
 test('неподтверждённая native Administrator запись отклоняется', async t => {
   const settings = { listenHost: '127.0.0.1', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding] };
   const f = await fixture(t, { settings, adminGrantFailure: true });
   assert.equal((await f.send({ body: { ...loginRequest, email: 'owner@fixture.invalid' } })).status, 409);
+  assert.deepEqual(f.state.courseGrants, []);
+  assert.deepEqual(f.state.instanceGrants, []);
 });
 
 test('неподтверждённый вызов, неизвестная роль и неканонический email не дают grant', async t => {
@@ -254,8 +281,8 @@ test('teacher grant проверяет native identity и фактические
   assert.equal(owner.state.courseRole, 'Owner');
 });
 
-test('отказ existing UID, blocked или native access происходит до teacher/admin grant', async t => {
-  for (const options of [{ missingUser: true }, { prior: { status: 'blocked' } }, { denied: true }]) {
+test('отказ existing UID или blocked происходит до teacher/admin grant', async t => {
+  for (const options of [{ missingUser: true }, { prior: { status: 'blocked' } }]) {
     const f = await fixture(t, options);
     const result = await f.send({ body: { ...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher', email: 'owner@fixture.invalid' } });
     assert.equal(result.status, options.missingUser ? 404 : 403);
@@ -305,4 +332,63 @@ test('settings example не допускает прежние delivery и login-
     { listenHost: '0.0.0.0', listenPort: 3001, administratorUid: null, bindings: [{ deliveryPath: '/course-deliveries/approved', courseInstanceId: '1' }] },
     { mode: 'login-only', listenHost: '0.0.0.0', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding] },
   ]) await assert.rejects(fixture(t, { settings }), error => error instanceof z.ZodError);
+});
+
+
+test('закрытый Student доступ не блокирует первый Teacher и owner-Learner вход', async t => {
+  for (const [body, userId, administrators] of [
+    [{...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher'}, '22', []],
+    [{...loginRequest, email: 'owner@fixture.invalid'}, '21', ['21']],
+  ]) {
+    const f = await fixture(t, {denied: true, settings: {
+      listenHost: '127.0.0.1', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding],
+    }});
+    for (let i = 0; i < 2; i++) {
+      const result = await f.send({body});
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.body, {schemaVersion: 1, ...request, userUid: body.userUid, enrolled: true, path: '/pl/course_instance/73/assessments'});
+    }
+    assert.deepEqual([...f.state.administrators], administrators);
+    assert.deepEqual(f.state.courseGrants.map(row => row.uid), [body.userUid, body.userUid]);
+    assert.deepEqual(f.state.instanceGrants.map(row => row.user_id), [userId, userId]);
+    assert.deepEqual(f.state.accessChecks, [
+      {userId, courseRole: 'Editor', instanceRole: 'Student Data Editor'},
+      {userId, courseRole: 'Editor', instanceRole: 'Student Data Editor'},
+    ]);
+  }
+});
+
+test('закрытый курс сохраняет Student denial и общий blocked guard до grants', async t => {
+  const settings = {listenHost: '127.0.0.1', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding]};
+  for (const body of [loginRequest, {...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher'}, {...loginRequest, email: 'owner@fixture.invalid'}]) {
+    const blocked = await fixture(t, {denied: true, prior: {status: 'blocked'}, settings: {...settings}});
+    assert.equal((await blocked.send({body})).status, 403);
+    assert.deepEqual(blocked.state.enrollmentWrites, []);
+    assert.deepEqual(blocked.state.courseGrants, []);
+    assert.deepEqual(blocked.state.instanceGrants, []);
+    assert.equal(blocked.state.administrators.size, 0);
+    assert.deepEqual(blocked.state.accessChecks, []);
+  }
+  const student = await fixture(t, {denied: true});
+  assert.equal((await student.send()).status, 403);
+  assert.deepEqual(student.state.courseGrants, []);
+  assert.deepEqual(student.state.instanceGrants, []);
+  assert.equal(student.state.administrators.size, 0);
+});
+
+test('прежние native staff права сохраняют вход Student в закрытый курс без новых grants', async t => {
+  for (const rights of [{courseRole: 'Owner'}, {instanceRole: 'Student Data Editor'}]) {
+    const f = await fixture(t, {denied: true, ...rights});
+    assert.equal((await f.send()).status, 200);
+    assert.deepEqual(f.state.courseGrants, []);
+    assert.deepEqual(f.state.instanceGrants, []);
+    assert.equal(f.state.administrators.size, 0);
+    if (rights.courseRole) assert.equal(f.state.courseRole, 'Owner');
+    if (rights.instanceRole) assert.equal(f.state.instanceRole, 'Student Data Editor');
+  }
+});
+
+test('отсутствующий native authz context закрывает вход после trusted grant', async t => {
+  const f = await fixture(t, {nullContext: true});
+  assert.equal((await f.send({body: {...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher'}})).status, 403);
 });
