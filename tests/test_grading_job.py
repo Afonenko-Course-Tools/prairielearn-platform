@@ -131,8 +131,16 @@ class JUnitJob(unittest.TestCase):
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){while(true){}}}"
         )
-        with self.assertRaises(grader.GraderError):
-            self.run_job()
+        result = self.run_job()
+        self.assertFalse(result["gradable"])
+        self.assertTrue(result["grading_error"])
+        self.assertEqual(result["classification"], "infrastructure-failure")
+        self.assertEqual(result["infrastructure"], "failure")
+        self.assertIs(result["timed_out"], True)
+        self.assertEqual(result["studentCompilation"], "success")
+        self.assertEqual(result["trustedCompilation"], "success")
+        for field in ("score", "counts", "tests", "rawResult", "dependentExecution"):
+            self.assertNotIn(field, result)
 
     def test_whole_executor_output_stop_is_incomplete_infrastructure(self):
         (self.job / "student/Student.java").write_text(
