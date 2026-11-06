@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UID = 'synthetic-user@example.test'
 NAME = 'v1.VGVzdCBVc2Vy'
 TARGET = '/pl/course_instance/7/assessments'
+BROWSER_COOKIE = 'GatewayLogin=' + 'b' * 43
 FORGED = {
     'X-Forwarded-For': '192.0.2.123, 198.51.100.45',
     'X-Real-IP': '192.0.2.123',
@@ -23,14 +24,15 @@ FORGED = {
     'X-Trust-Auth-Name': 'Forged',
     'X-Trust-Auth-Name-UTF8-B64': 'v1.Rm9yZ2Vk',
     'X-Trust-Auth-Uin': 'forged',
-    'Cookie': 'GatewayLogin=synthetic; pl2_session=synthetic',
+    'Cookie': BROWSER_COOKIE + '; pl2_session=synthetic',
 }
 
 
 class Upstream(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/internal/handoff'):
-            if self.headers.get('Authorization') != 'Bearer synthetic-test-token':
+            if (self.headers.get('Authorization') != 'Bearer synthetic-test-token'
+                    or self.headers.get('Cookie') != FORGED['Cookie']):
                 self.send_error(403)
                 return
             self.send_response(200)
@@ -39,6 +41,8 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.send_header('X-Verified-Target', TARGET)
             self.end_headers()
             return
+        if self.path == '/pl/shibcallback':
+            self.server.callbacks += 1
         body = json.dumps({'path': self.path, 'headers': dict(self.headers)}).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
@@ -56,6 +60,8 @@ class ProductionProxy(unittest.TestCase):
         cls.addClassCleanup(temporary.cleanup)
         directory = Path(temporary.name)
         upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        upstream.callbacks = 0
+        cls.upstream = upstream
         cls.addClassCleanup(upstream.server_close)
         threading.Thread(target=upstream.serve_forever, daemon=True).start()
         cls.addClassCleanup(upstream.shutdown)
@@ -124,7 +130,13 @@ class ProductionProxy(unittest.TestCase):
         connection = http.client.HTTPSConnection(
             '127.0.0.1', cls.port, context=cls.context, timeout=5)
         try:
-            connection.request('GET', path, headers=headers)
+            if isinstance(headers, list):
+                connection.putrequest('GET', path)
+                for name, value in headers:
+                    connection.putheader(name, value)
+                connection.endheaders()
+            else:
+                connection.request('GET', path, headers=headers)
             response = connection.getresponse()
             return response.status, response.read()
         finally:
@@ -160,6 +172,24 @@ class ProductionProxy(unittest.TestCase):
                 self.assertNotIn('x-trust-auth-name', headers)
                 self.assertNotIn('x-trust-auth-uin', headers)
                 self.assertEqual(headers.get('cookie'), 'pl2_pre_auth_url=' + TARGET)
+
+    def test_rejected_browser_proof_never_reaches_native_callback(self):
+        invalid = [
+            {},
+            {'Cookie': 'pl2_session=synthetic'},
+            {'Cookie': 'GatewayLogin=' + 'c' * 43},
+            {'Cookie': BROWSER_COOKIE + '; ' + BROWSER_COOKIE},
+            {'Cookie': 'GatewayLogin=bad'},
+            {'Cookie': 'GatewayLogin; ' + BROWSER_COOKIE},
+            [('Cookie', BROWSER_COOKIE), ('Cookie', BROWSER_COOKIE)],
+        ]
+        for prefix in ['/gateway/pl/', '/gateway/courses/synthetic/pl/']:
+            for headers in invalid:
+                with self.subTest(prefix=prefix, headers=headers):
+                    before = self.upstream.callbacks
+                    status, _ = self.request(prefix + 'a' * 43, headers)
+                    self.assertEqual(status, 403)
+                    self.assertEqual(self.upstream.callbacks, before)
 
     def test_private_and_callback_routes_remain_closed(self):
         for path, expected in [('/internal/handoff/test', 404), ('/__verified_handoff', 404),
