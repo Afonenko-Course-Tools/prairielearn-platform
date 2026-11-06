@@ -61,7 +61,8 @@
                   "student-output-overflow",
                   "unsafe-submission",
                   "infrastructure-failure",
-                  "student-api-mismatch"
+                  "student-api-mismatch",
+                  "student-runtime-failure"
                 ]
               },
               "required-tests": {
