@@ -287,8 +287,24 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     complete = true;
   }
   private String failureKind(Throwable failure) {
-    while (failure instanceof InvocationTargetException && failure.getCause() != null)
-      failure = failure.getCause();
+    Set<Throwable> wrappers = Collections.newSetFromMap(new IdentityHashMap<>());
+    for (int depth = 0; ; depth++) {
+      // Только reflection и известные VM initialization wrappers, не произвольные causes.
+      if (depth == 16 || !wrappers.add(failure))
+        return "infrastructure";
+      Throwable cause = null;
+      if (failure instanceof InvocationTargetException
+          || failure.getClass() == ExceptionInInitializerError.class)
+        cause = failure.getCause();
+      else if (failure.getClass() == NoClassDefFoundError.class) {
+        Throwable candidate = failure.getCause();
+        if (candidate != null && candidate.getClass() == ExceptionInInitializerError.class)
+          cause = candidate;
+      }
+      if (cause == null)
+        break;
+      failure = cause;
+    }
     String consoleKind = consoleFailures.get(failure.getClass());
     if (consoleKind != null)
       return consoleKind;
