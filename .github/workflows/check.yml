@@ -20,22 +20,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course-prairielearn
-          ref: c41486739de77ab1e0ccef29f01ad08c49816a96
+          ref: 324056b1218b3b69f1eb9f5a09dde510a442ad4b
           path: .ci-deps/exporter
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-course
+          ref: c62e6c877f769f33a9ffd6fe713811df75c794c6
+          path: .ci-deps/core
+          persist-credentials: false
+      - name: Проверить закреплённый Core
+        run: |
+          git -C .ci-deps/core rev-parse HEAD
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "c62e6c877f769f33a9ffd6fe713811df75c794c6"
       - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
         with:
           version: '1.11.5'
+      - name: Карта типов фактического Core для synthetic fixtures
+        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json")
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.7.14
       - name: Создать настоящие synthetic delivery4 packages вне Git
         run: |
-          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = c41486739de77ab1e0ccef29f01ad08c49816a96
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = 324056b1218b3b69f1eb9f5a09dde510a442ad4b
           export PL_DELIVERY4_FIXTURES="$RUNNER_TEMP/delivery4-fixtures"
           mkdir "$PL_DELIVERY4_FIXTURES"
-          (cd .ci-deps/exporter && deno test --no-config --no-lock -A tests/native-answer.test.ts tests/delivery4-workspace.test.ts)
-          printf '%s\n' c41486739de77ab1e0ccef29f01ad08c49816a96 > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
+          (cd .ci-deps/exporter && deno test --no-config --no-lock --import-map "$RUNNER_TEMP/pl-native-imports.json" -A tests/native-answer.test.ts tests/delivery4-workspace.test.ts)
+          printf '%s\n' 324056b1218b3b69f1eb9f5a09dde510a442ad4b > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
           echo "PL_DELIVERY4_FIXTURES=$PL_DELIVERY4_FIXTURES" >> "$GITHUB_ENV"
       - name: Установить fish для проверки текстового runtime
         run: |
