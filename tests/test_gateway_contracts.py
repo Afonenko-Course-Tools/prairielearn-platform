@@ -12,8 +12,8 @@ class GatewayContracts(unittest.TestCase):
     def test_closed_assignment_completion_and_canonical_contract(self):
         self.run_contract(['node', 'tests/bridge/policy.test.mjs'])
 
-    def test_authorized_attempt_snapshot(self):
-        self.run_contract(['node', 'tests/bridge/attempt-consistency.test.mjs'])
+    def test_private_native_enrollment(self):
+        self.run_contract(['node', 'tests/bridge/enrollment.test.mjs'])
 
     def test_narrow_production_cookie_patch(self):
         self.run_contract(['python3', 'tests/bridge/cookie-domain.test.py'])

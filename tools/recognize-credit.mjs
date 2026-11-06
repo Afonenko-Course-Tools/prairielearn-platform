@@ -10,5 +10,5 @@ export async function recognizeMappedCreditAndFiles(input,approval,{sourceRoot,d
  const grade=await nativeAdmin.recognizePreviousCredit(input,approval);
  if(grade.status==='NEEDS_NATIVE_ADMIN_EVENT')return{...grade,files:'NOT_WRITTEN'};
  const files=await attachRecognizedPrivateFiles({sourceRoot,refs,target:input.target,actorUserId:input.actorUserId},api);
- return{status:'NATIVE_CREDIT_AND_PRIVATE_FILE_ADMIN_READBACK_VERIFIED',grade,files,studentDownloadRoute:'NOT_QUALIFIED',assignmentBinding:'NOT_YET_BOUND_BY_THIS_OPERATION',nativeRuntimeQualification:'REQUIRED_SEPARATE_ISOLATED_TEST'};
+ return{status:'NATIVE_CREDIT_AND_PRIVATE_FILE_ADMIN_READBACK_VERIFIED',grade,files,studentDownloadRoute:'NOT_QUALIFIED',nativeRuntimeQualification:'REQUIRED_SEPARATE_ISOLATED_TEST'};
 }
