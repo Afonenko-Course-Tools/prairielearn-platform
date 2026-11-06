@@ -50,10 +50,10 @@ class JobCleanup(unittest.TestCase):
     def test_permission_fallback_uses_only_prepared_mount_and_exact_image(self):
         job = self.prepare()
         self.execute(job)
-        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError('mixed owner'), None]) as remove, patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run:
+        with patch.object(jobs.secrets, 'token_hex', return_value='f'*24), patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError('mixed owner'), None]) as remove, patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run:
             jobs.cleanup_job(job, 'container')
         self.assertEqual(remove.call_count, 2)
-        self.assertEqual(run.call_args.args[0], ['docker','run','--rm','--network','none','--read-only','--entrypoint','/bin/chown','--mount',f'type=bind,src={job.root},dst=/grade,bind-recursive=disabled',IMAGE,'-Rh',f'{os.getuid()}:{os.getgid()}','/grade'])
+        self.assertEqual(run.call_args.args[0], ['docker','run','--rm','--name','plcleanup-'+'f'*24,'--network','none','--read-only','--entrypoint','/bin/chown','--mount',f'type=bind,src={job.root},dst=/grade,bind-recursive=disabled',IMAGE,'-Rh',f'{os.getuid()}:{os.getgid()}','/grade'])
         self.assertEqual(run.call_args.kwargs, {'capture_output':True, 'text':True, 'timeout':10})
 
     def test_ordinary_cleanup_and_host_or_nonpermission_failures_never_run_docker(self):
@@ -148,6 +148,26 @@ class JobCleanup(unittest.TestCase):
             job = self.prepare(); self.execute(job)
             with patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()), patch.object(jobs.subprocess, 'run', side_effect=outcome if isinstance(outcome, Exception) else None, return_value=outcome):
                 with self.assertRaises((jobs.JobError, OSError)): jobs.cleanup_job(job, 'container')
+
+    def test_ownership_timeout_removes_only_its_named_container_without_retrying_rmtree(self):
+        cases = [
+            (SimpleNamespace(returncode=0, stderr=''), 'timed out; container removed'),
+            (SimpleNamespace(returncode=1, stderr='No such container'), 'timed out; container removed'),
+            (SimpleNamespace(returncode=1, stderr='denied'), 'container cleanup failed: denied'),
+            (subprocess.TimeoutExpired('docker rm',10), 'container cleanup failed'),
+            (OSError('daemon unavailable'), 'container cleanup failed'),
+        ]
+        for removal, message in cases:
+            with self.subTest(removal=removal):
+                job=self.prepare(); self.execute(job)
+                with patch.object(jobs.secrets, 'token_hex', return_value='a'*24), patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()) as remove, patch.object(jobs.subprocess, 'run', side_effect=[subprocess.TimeoutExpired('docker run',10), removal]) as run:
+                    with self.assertRaisesRegex(jobs.JobError, message): jobs.cleanup_job(job, 'container')
+                self.assertEqual(remove.call_count, 1)
+                self.assertEqual(run.call_count, 2)
+                command=run.call_args_list[0].args[0]
+                self.assertEqual(command[command.index('--name')+1], 'plcleanup-'+'a'*24)
+                self.assertEqual(run.call_args_list[1].args[0], ['docker','rm','--force','plcleanup-'+'a'*24])
+                self.assertEqual(run.call_args_list[1].kwargs, {'capture_output':True, 'text':True, 'timeout':10})
 
     def test_cli_retains_results_on_ownership_command_failure_or_timeout(self):
         spec=importlib.util.spec_from_file_location('cleanup_failure_cli', jobs.ROOT/'tools/check-course.py')

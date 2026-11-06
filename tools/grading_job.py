@@ -758,16 +758,32 @@ def cleanup_job(job, backend):
         or any(c in str(root) for c in ",\"\r\n")
     ):
         raise JobError("Scratch cleanup identity changed")
+    cleanup_name = "plcleanup-" + secrets.token_hex(12)
     try:
         result = subprocess.run(
-            ["docker", "run", "--rm", "--network", "none", "--read-only",
+            ["docker", "run", "--rm", "--name", cleanup_name, "--network", "none", "--read-only",
              "--entrypoint", "/bin/chown", "--mount",
              f"type=bind,src={root},dst=/grade,bind-recursive=disabled",
              image, "-Rh", f"{uid}:{gid}", "/grade"],
             capture_output=True, text=True, timeout=10,
         )
     except subprocess.TimeoutExpired as error:
-        raise JobError("Scratch ownership cleanup timed out") from error
+        try:
+            cleanup = subprocess.run(
+                ["docker", "rm", "--force", cleanup_name],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as cleanup_error:
+            raise JobError(
+                "Scratch ownership cleanup timed out; container cleanup failed: "
+                + str(cleanup_error)
+            ) from cleanup_error
+        if cleanup.returncode and "No such container" not in cleanup.stderr:
+            raise JobError(
+                "Scratch ownership cleanup timed out; container cleanup failed: "
+                + cleanup.stderr
+            ) from error
+        raise JobError("Scratch ownership cleanup timed out; container removed") from error
     if result.returncode:
         raise JobError("Scratch ownership cleanup failed: " + result.stderr)
     shutil.rmtree(job.root)
