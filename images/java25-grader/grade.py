@@ -1409,6 +1409,7 @@ def _execute(
         )
         containment = "host-diagnostic"
         prefix = []
+        junit_properties = []
         if os.environ.get("PL_CONTAINMENT") == "official":
             if (
                 os.geteuid() != 0
@@ -1441,6 +1442,13 @@ def _execute(
                 "--",
                 "/usr/local/bin/landlock_sandbox",
             ]
+            # Как у Gradle, файловый источник свежей OS-энтропии исключает
+            # медленный ThreadedSeedGenerator при JUnit @TempDir в Landlock.
+            junit_seed = stage / "junit.seed"
+            with junit_seed.open("xb") as stream:
+                os.fchmod(stream.fileno(), 0o444)
+                stream.write(secrets.token_bytes(65536))
+            junit_properties = ["-Djava.security.egd=" + junit_seed.as_uri()]
             containment = "official-landlock-sbuser"
         classpath = os.pathsep.join(
             [
@@ -1461,6 +1469,7 @@ def _execute(
             "-XX:+DisableAttachMechanism",
             "--illegal-native-access=deny",
             "--sun-misc-unsafe-memory-access=deny",
+            *junit_properties,
             *runtime.module_flags(observer),
             "-Djunit.jupiter.extensions.autodetection.enabled="
             + str(not student_tests).lower(),
