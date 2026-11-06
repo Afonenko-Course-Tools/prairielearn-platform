@@ -16,12 +16,6 @@ export function isCanonicalEmail(value) {
   return labels.length >= 2 && labels.every(label => label.length >= 1 && label.length <= 63 &&
     /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
 }
-export function authorizeAdministrator(requested, configured) {
-  const identities = Array.isArray(configured) ? configured : [configured];
-  if (!identities.length || identities.some(uid => typeof uid !== 'string' || !/^gw-[a-f0-9]{64}@example\.invalid$/.test(uid)) || !identities.includes(requested))
-    throw new BridgeError(403, 'Explicit administrator identity required');
-  return requested;
-}
 const fail = (message) => {
   throw new BridgeError(409, message);
 };
@@ -44,16 +38,6 @@ export function canonicalJSONString(value) {
     '}'
   );
 }
-export function validateBindings(bindings) {
-  const seen = new Set();
-  for (const binding of bindings)
-    for (const instance of Object.keys(binding.delivery.instances)) {
-      const key = binding.delivery.courseId + '/' + instance;
-      if (seen.has(key)) fail('Ambiguous delivery/instance binding');
-      seen.add(key);
-    }
-}
-
 export function assertProductionRuntime(environment, config) {
   if (environment !== 'production' || config.devMode !== false || config.hasShib !== true)
     fail('Gateway bridge requires production, devMode=false and hasShib=true');

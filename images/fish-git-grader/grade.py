@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Изолированное выполнение текстового ответа fish и доверенных проверок."""
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,9 +12,6 @@ import types
 ROOT=Path(__file__).resolve().parents[2]
 RUNTIME='fish-git-v1'
 class GraderError(Exception): pass
-def digest(value):
-    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
-
 def file(root,name):
     if not isinstance(name,str) or not name or '\\' in name or name.startswith('/') or any(x in ('','.','..') for x in name.split('/')): raise GraderError('Unsafe input path')
     p=Path(root)
