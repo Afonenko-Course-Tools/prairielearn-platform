@@ -153,8 +153,21 @@ public class AnswerTest {
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){while(true){}}}"
         )
-        with self.assertRaises(grader.GraderError):
-            self.run_job()
+        result = self.run_job()
+        self.assertEqual(result["classification"], "infrastructure-failure")
+        self.assertIs(result["timed_out"], True)
+        self.assertFalse(result["gradable"])
+        self.assertTrue(result["grading_error"])
+        public = self.public_result(result)
+        self.assertFalse(public["gradable"])
+        self.assertTrue(public["grading_error"])
+        self.assertEqual(public["feedback"]["kind"], "infrastructure")
+        self.assertIn("3 с", public["message"])
+        for value in (result, public):
+            for field in ("score", "counts", "tests", "rawResult", "dependentExecution"):
+                self.assertNotIn(field, value)
+        self.assertNotIn("cases", public["feedback"])
+        self.assertNotIn("feedbackCompleteness", public["feedback"])
 
     def test_missing_duplicate_and_inconsistent_event_records_are_rejected(self):
         import tempfile

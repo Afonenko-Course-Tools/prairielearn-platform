@@ -60,11 +60,23 @@ class NativeFeedbackTests(unittest.TestCase):
         self.assertNotIn("NoSuchMethodException", leaf["message"])
 
     def test_whole_executor_timeout_is_infrastructure_without_fake_cases(self):
-        with self.assertRaises(fixtures.grader.GraderError):
-            self.result(
-                "timeout",
-                "public class Student {public static int answer(){while(true){}}}",
-            )
+        result = self.result(
+            "timeout",
+            "public class Student {public static int answer(){while(true){}}}",
+        )
+        self.assertEqual(result["classification"], "infrastructure-failure")
+        self.assertIs(result["timed_out"], True)
+        native = boundary(result, self.cfg)
+        self.assertEqual(native["classification"], "infrastructure-failure")
+        self.assertEqual(native["feedback"]["kind"], "infrastructure")
+        self.assertIn("3 с", native["message"])
+        for value in (result, native):
+            self.assertFalse(value["gradable"])
+            self.assertTrue(value["grading_error"])
+            for field in ("score", "counts", "tests", "rawResult"):
+                self.assertNotIn(field, value)
+        self.assertNotIn("cases", native["feedback"])
+        self.assertNotIn("feedbackCompleteness", native["feedback"])
 
     def test_whole_executor_output_stop_is_infrastructure_without_fake_cases(self):
         with self.assertRaises(fixtures.grader.GraderError):
