@@ -42,7 +42,7 @@ try {
  authorizeCourseSync({path,sourceCourseId:delivery.courseId,previousSourceCourseId:previousDelivery.courseId,courseUuid:previousInfo.uuid,infoUuid:info.uuid});
  const actor=await verifyNativeAdministrator(options['--actor-uid'],{...(await native('models/user')),isAdministrator:id=>db.queryScalar('SELECT EXISTS(SELECT 1 FROM administrators WHERE user_id=$id)',{id},z.boolean())});
  const instanceSchema=z.object({id:z.string(),course_id:z.string(),uuid:z.string().nullable(),short_name:z.string(),deleted_at:z.unknown()});
- const existingInstances=await db.queryRows('SELECT id::text,course_id::text,uuid,short_name,deleted_at FROM course_instances WHERE course_id=$id OR uuid=ANY($uuids::uuid[])',{id,uuids:declared.map(i=>i.uuid)},instanceSchema);
+ const existingInstances=await db.queryRows('SELECT id::text,course_id::text,uuid,short_name,deleted_at FROM course_instances WHERE course_id=$id',{id},instanceSchema);
  validateNativeInstances(id,declared,existingInstances);
  if(record) {
   const institutions=await native('models/institution');
