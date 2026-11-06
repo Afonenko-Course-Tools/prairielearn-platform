@@ -228,6 +228,23 @@ DEV_TLS_DIR=/private/dev-tls docker compose -p pl-proxy-check \
   -f compose/compose.proxy-test.yml down
 ```
 
+Production-конфигурацию отдельно проверяет native Nginx probe. Нужны локальные
+`nginx` с модулем `auth_request`, `/etc/nginx/mime.types`, `openssl` и Python 3:
+
+```sh
+python3 tests/prod_proxy_probe.py
+```
+
+Probe читает `proxy/nginx.prod.conf`, заменяет только адреса, пути временных
+файлов и число workers, затем запускает `nginx -t` и собственный Nginx на
+временном loopback-порту с тестовым TLS. Synthetic upstream проверяет замену
+клиентских `X-Forwarded-For`/`X-Real-IP`, удаление `Forwarded`, сохранение
+verified identity и cookie handoff, а также запреты прямого callback/internal
+доступа. Docker, настоящие PL/Gateway и их конфигурации не используются.
+Это отдельная явная проверка; в общий `unittest discover` она не входит и
+при отсутствии native зависимостей завершается ошибкой. Приёмка развёрнутого
+proxy и native ACL остаётся отдельным этапом.
+
 Storage tests use temporary Git repositories and a verified HTTPS loopback
 server. Proxy integration uses a separate synthetic upstream, without the PL
 DB, identities or Docker socket. Grading acceptance must also use real PL UI;
