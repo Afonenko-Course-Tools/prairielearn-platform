@@ -4,13 +4,10 @@ import {existsSync} from 'node:fs';
 import {mkdtemp,mkdir,readFile,writeFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createHash} from 'node:crypto';
-import {canonicalJSONString} from '../../bridge/policy.mjs';
 const modulePath=new URL('../../tools/native-course-payload.mjs',import.meta.url);
 test('verified native payload reader exists',()=>assert.ok(existsSync(modulePath),'Bootstrap payload validation is missing'));
 if(existsSync(modulePath)) {
  const {readNativeCoursePayload}=await import(modulePath.href);
- const hash=s=>createHash('sha256').update(s).digest('hex');
  async function fixture(run,candidate=false) {
   const root=await mkdtemp(join(tmpdir(),'native-bootstrap-'));
   const info='{"name":"SYN","title":"Synthetic","timezone":"Europe/Minsk"}';
@@ -21,10 +18,10 @@ if(existsSync(modulePath)) {
   await writeFile(join(path,'delivery.json'),JSON.stringify(payload));
   try{await run(path,root);}finally{await rm(root,{recursive:true,force:true});}
  }
- test('valid immutable manifest resolves hashed native metadata',()=>fixture(async path=>{
+ test('native payload reader loads current metadata',()=>fixture(async path=>{
   const result=await readNativeCoursePayload(path);assert.equal(result.info.name,'SYN');assert.equal(result.delivery.schemaVersion,5);
  }));
- test('tampered native metadata rejects before bootstrap',()=>fixture(async path=>{
+ test('reader observes changed native metadata bytes',()=>fixture(async path=>{
   await writeFile(join(path,'infoCourse.json'),'{"name":"UPDATED"}');assert.equal((await readNativeCoursePayload(path)).info.name,'UPDATED');
  }));
  test('symlinked metadata and root reject before bootstrap',()=>fixture(async(path,root)=>{
