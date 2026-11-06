@@ -9,7 +9,7 @@ RUN python3 -B /tmp/patch-gateway-name.py /PrairieLearn/apps/prairielearn/src/pa
 COPY images/prairielearn/patch-recognized-credit.py /tmp/patch-recognized-credit.py
 RUN python3 -B /tmp/patch-recognized-credit.py /PrairieLearn/apps/prairielearn && rm /tmp/patch-recognized-credit.py
 COPY bridge /PrairieLearn/apps/prairielearn/bridge
-COPY tools/sync-native-course.mjs tools/course-sync-policy.mjs tools/institution-bootstrap.mjs tools/bootstrap-native-course.mjs tools/native-course-payload.mjs tools/recognize-credit.mjs tools/recognized-credit-files.mjs tools/recognized-assignment-native.mjs /PrairieLearn/apps/prairielearn/tools/
+COPY tools/sync-native-course.mjs tools/course-sync-policy.mjs tools/institution-bootstrap.mjs tools/bootstrap-native-course.mjs tools/native-course-payload.mjs tools/recognize-credit.mjs tools/recognized-credit-files.mjs /PrairieLearn/apps/prairielearn/tools/
 COPY config/institutions.json /PrairieLearn/apps/prairielearn/config/institutions.json
 COPY images/prairielearn/start-bridge.sh /PrairieLearn/scripts/start-gateway-bridge.sh
 CMD ["/PrairieLearn/scripts/start-gateway-bridge.sh"]
