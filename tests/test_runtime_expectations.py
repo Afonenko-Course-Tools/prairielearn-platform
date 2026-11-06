@@ -1,5 +1,6 @@
 """Ожидаемая ошибка исполнения заготовки проходит штатную подготовку Job."""
 import copy
+import json
 import shutil
 import tempfile
 import unittest
@@ -11,6 +12,39 @@ g = fixtures.g
 
 
 class RuntimeExpectations(unittest.TestCase):
+    def test_runtime_failure_contract_reaches_prepared_job(self):
+        manifest = fixtures.manifest()
+        project = manifest['projects'][0]
+        project['check']['contract-cases'] = 'cases.json'
+        project['contractCases'] = fixtures.row('cases.json', json.dumps({
+            'schemaVersion': 1,
+            'cases': [{
+                'id': 'runtime',
+                'sources': [{'fixture': 'tests/fixtures/runtime.java', 'submission': 'Answer.java'}],
+                'expected': {'classification': 'student-runtime-failure', 'score': {'exactly': 0}},
+            }],
+        }).encode(), 'tests/cases.json')
+        project['contractFixtures'] = [fixtures.row(
+            'Answer.java', b'public class Answer { static int value() { throw new IllegalStateException(); } }',
+            'tests/fixtures/runtime.java',
+        )]
+        with tempfile.TemporaryDirectory() as snapshot:
+            try:
+                scenarios = g.scenario_inventory(manifest, Path(snapshot))
+            except g.JobError:
+                self.fail('Контрактная схема отвергла существующую классификацию student-runtime-failure')
+            self.assertEqual([entry['scenario'] for entry in scenarios], ['contract:runtime', 'starter'])
+            job = g.prepare_job(manifest, Path(snapshot), 'demo/exr-answer', 'contract:runtime',
+                                registry=fixtures.registry())
+            try:
+                self.assertEqual(job['expectations']['classification'], 'student-runtime-failure')
+                self.assertEqual(job['expectations']['score'], {'exactly': 0})
+                job['expectations']['classification'] = 'unknown-runtime-outcome'
+                with self.assertRaisesRegex(g.JobError, 'unknown-runtime-outcome'):
+                    g.validate('grading-job', job)
+            finally:
+                shutil.rmtree(job.root)
+
     def test_runtime_failure_starter_reaches_prepared_job(self):
         manifest = fixtures.manifest()
         manifest['projects'][0]['check']['verification-expectations'] = {
@@ -52,6 +86,15 @@ class RuntimeExpectations(unittest.TestCase):
                     }
                     with self.assertRaises(g.JobError):
                         g.validate(schema, check if schema == 'project-check' else manifest)
+
+    def test_unknown_contract_classification_remains_rejected(self):
+        cases = {'schemaVersion': 1, 'cases': [{
+            'id': 'runtime',
+            'sources': [{'fixture': 'tests/runtime.java', 'submission': 'Answer.java'}],
+            'expected': {'classification': 'unknown-runtime-outcome'},
+        }]}
+        with self.assertRaisesRegex(g.JobError, 'unknown-runtime-outcome'):
+            g.validate('contract-cases', cases)
 
 
 if __name__ == '__main__':
