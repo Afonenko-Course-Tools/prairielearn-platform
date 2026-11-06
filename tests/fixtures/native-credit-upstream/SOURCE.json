@@ -1,46 +1,16 @@
 {
   "upstream": "92584fe426ececb84bc2d09de9975c7056c0c5f6",
-  "files": {
-    "lib/grading.ts": {
-      "source_sha256": "b2b31be8a082c36a9d4e481150b8dd6c0cac930d724bef5f51be0d030091f3fb",
-      "patched_sha256": "0c963b8261953cc54904d54a6eaac0ff3d62e774190b2b78907af9402dd75bd4"
-    },
-    "lib/assessment-grading.ts": {
-      "source_sha256": "71b0aa36b8f5356445850c909ccd3bd194c65ddb87cd7bc576f1ac9184ba0c66",
-      "patched_sha256": "14a72cb15170849def3e846818122651276d355e332ad315f7a93f3b2cf9b67b"
-    },
-    "models/grading-job.ts": {
-      "source_sha256": "d6e813fe2dccb286ca37f592e0899474895ce4e1e7275062ed2d08475688f590",
-      "patched_sha256": "dfd267f89ed1aa924ae600f83200d55a7fb3150f5be7ede67eba22a51b749cbb"
-    },
-    "lib/assessment.ts": {
-      "source_sha256": "87c99f8bed5e775d3d4d44cc22d7f34408da773a53f8ff456426073f95b6facd",
-      "patched_sha256": "5512eb0f8581a533ca391995813578e78fcfb5144d2b9f9abf0a981709cb7ae2"
-    },
-    "lib/manualGrading.ts": {
-      "source_sha256": "936ba0b00e5df70f886e640e26d6efcdec47a6caeb2fbfed51f7ef9938b2f54c",
-      "patched_sha256": "f7b25681539f033015b1ea276928fac80320f9a22a6102f8baba8bebbda814e4"
-    },
-    "dist/lib/grading.js": {
-      "source_sha256": "f032b127cdc92f053cf24eb78533e3fce2977c73dccfacaecea42b546e8633e7",
-      "patched_sha256": "ef417bbcc70ebdcf786e7fd94c45fe2888352c236b16d51a20f45c4d90ae8c89"
-    },
-    "dist/lib/assessment-grading.js": {
-      "source_sha256": "b35c3291a9dcedfe69754ec032410eb4ba1000a36ad964809ad07960615843d0",
-      "patched_sha256": "984c2d2c0a85c13e119c5688dcec1da6d579a95cc8a85196ba5bcf1d24d720cf"
-    },
-    "dist/models/grading-job.js": {
-      "source_sha256": "df226ebcbab9d5993d4b1e08b3bbeece98cf02238ee975461b9e735901f22812",
-      "patched_sha256": "5959d75f6e6e97b43a92148dd734f7d28b51ff44cfba95eddd679702fe10f61d"
-    },
-    "dist/lib/assessment.js": {
-      "source_sha256": "7c89366426b68367b7d778fe290ac06bd66d0f3dd675600a365856cedaa13117",
-      "patched_sha256": "308654bde143d75dc4a38b99abccec1e02936e98366aede98223d13dcc79c3b6"
-    },
-    "dist/lib/manualGrading.js": {
-      "source_sha256": "be841938fd2004739f3ca24073161f239a6600a8341216eb948c705963424743",
-      "patched_sha256": "c387b93c4bb9f67a901e66e12519ed1e805abdf83270b7c56ac9ac83bd4f5a51"
-    }
-  },
-  "compiled_provenance": "Pinned private images.tar SHA588071f... config4e41; public compiled code only; NOTdirecttarget728freadback"
+  "files": [
+    "lib/grading.ts",
+    "lib/assessment-grading.ts",
+    "models/grading-job.ts",
+    "lib/assessment.ts",
+    "lib/manualGrading.ts",
+    "dist/lib/grading.js",
+    "dist/lib/assessment-grading.js",
+    "dist/models/grading-job.js",
+    "dist/lib/assessment.js",
+    "dist/lib/manualGrading.js"
+  ],
+  "compiled_provenance": "Публичный compiled code из частного images.tar; историческая identity OLD078/4e41; не прямой readback целевого 728f"
 }
