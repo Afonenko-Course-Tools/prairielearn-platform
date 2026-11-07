@@ -1,0 +1,5 @@
+---
+pl_url: http://127.0.0.1:19445
+course_id: 2
+site_archive: /absolute/controller/path/student-site.tar.gz
+site_directory: /absolute/prototype/path/site/releases/example
