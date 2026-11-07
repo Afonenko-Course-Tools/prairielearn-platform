@@ -1,5 +1,9 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Protocol, TypeAlias, runtime_checkable
 import base64
-from selected_job_fixture import native_manifest
+from selected_job_fixture import GradingJobs, fixture_list, fixture_record, fixture_run_job, fixture_set_up, fixture_text, native_manifest
 """Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
 
 import hashlib
@@ -14,7 +18,7 @@ from pathlib import Path
 import test_grading_job as fixtures
 
 grader = fixtures.grader
-POLICY = {
+POLICY: dict[str, object] = {
     "archive": "additional-sources.zip",
     "maxFiles": 128,
     "maxFileBytes": 1048576,
@@ -23,7 +27,22 @@ POLICY = {
 }
 
 
-def archive(entries, compression=zipfile.ZIP_DEFLATED):
+ZipEntry: TypeAlias = tuple[str | zipfile.ZipInfo, str | bytes]
+
+
+@runtime_checkable
+class _ConfigValidator(Protocol):
+    def __call__(self, config: object) -> None: ...
+
+
+def validate_config(value: object) -> None:
+    validate: object = getattr(grader, "validate_config", None)
+    if not isinstance(validate, _ConfigValidator):
+        raise AssertionError("Канонический config validator недоступен")
+    validate(value)
+
+
+def archive(entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED) -> bytes:
     out = io.BytesIO()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -34,19 +53,21 @@ def archive(entries, compression=zipfile.ZIP_DEFLATED):
 
 
 class AdditionalJavaSourcesTests(unittest.TestCase):
-    setUp = fixtures.JUnitJob.setUp
-    run_job = fixtures.JUnitJob.run_job
+    job: Path
+    cfg: dict[str, object]
+    setUp = fixture_set_up(fixtures.JUnitJob.setUp)
+    run_job = fixture_run_job(fixtures.JUnitJob.run_job)
 
-    def policy(self, **overrides):
+    def policy(self, **overrides: object) -> None:
         self.cfg["additionalJavaSources"] = {**POLICY, **overrides}
 
-    def zip(self, entries, compression=zipfile.ZIP_DEFLATED):
+    def zip(self, entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED) -> bytes:
         data = archive(entries, compression)
         (self.job / "student/additional-sources.zip").write_bytes(data)
         return data
 
-    def api(self):
-        self.cfg["testFiles"].append("ApiContract.java")
+    def api(self) -> None:
+        fixture_list(self.cfg["testFiles"]).append("ApiContract.java")
         self.cfg["apiPrecheck"] = {
             "files": ["ApiContract.java"],
             "entry": "ApiContract",
@@ -55,7 +76,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             'import org.prairielearn.api.PlatformApiPrecheck; public class ApiContract {public static void check(PlatformApiPrecheck.Api api)throws Exception {api.method("Student","answer",int.class,9,0);}}'
         )
 
-    def test_optional_primary_zip_only_arbitrary_namespace(self):
+    def test_optional_primary_zip_only_arbitrary_namespace(self) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Student.java").unlink()
         (self.job / "tests/AnswerTest.java").write_text(
@@ -73,7 +94,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["classification"], "success", r)
         self.assertEqual(r["score"], 1)
 
-    def test_optional_union_preserves_fixed_api_and_all_real_sources(self):
+    def test_optional_union_preserves_fixed_api_and_all_real_sources(self) -> None:
         self.policy(primaryRequired=False)
         self.api()
         (self.job / "student/Student.java").unlink()
@@ -124,7 +145,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.run_job()["classification"], "student-compilation-failure"
         )
 
-    def test_required_primary_is_satisfied_by_its_exact_archive_path(self):
+    def test_required_primary_is_satisfied_by_its_exact_archive_path(self) -> None:
         (self.job / "student/Student.java").unlink()
         for required in [None, True]:
             self.policy(**({} if required is None else {"primaryRequired": required}))
@@ -133,17 +154,18 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.assertEqual(r["classification"], "success", r)
             self.assertEqual(r["score"], 1)
 
-    def test_optional_direct_primary_needs_no_archive(self):
+    def test_optional_direct_primary_needs_no_archive(self) -> None:
         self.policy(primaryRequired=False)
         r = self.run_job()
         self.assertEqual(r["classification"], "success", r)
         self.assertEqual(r["score"], 1)
         self.assertNotIn("additionalSources", r)
 
-    def test_optional_empty_union_is_invalid_without_score(self):
+    def test_optional_empty_union_is_invalid_without_score(self) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Student.java").unlink()
-        for entries in [None, [], [("empty/", "")]]:
+        empty_archives: list[list[ZipEntry] | None] = [None, [], [("empty/", "")]]
+        for entries in empty_archives:
             if entries is not None:
                 self.zip(entries)
             r = self.run_job()
@@ -151,7 +173,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.assertNotIn("score", r)
             self.assertNotEqual(r["classification"], "success")
 
-    def test_optional_duplicate_present_primary_and_trusted_paths_are_refused(self):
+    def test_optional_duplicate_present_primary_and_trusted_paths_are_refused(self) -> None:
         self.policy(primaryRequired=False)
         for name in [
             "Student.java",
@@ -164,13 +186,13 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
 
     def test_optional_trusted_common_paths_and_generated_namespaces_stay_protected(
         self,
-    ):
+    ) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Student.java").unlink()
         common = self.job / "tests/common/Helper.java"
         common.parent.mkdir()
         common.write_text("package common; public class Helper {}")
-        self.cfg["testFiles"].append("common/Helper.java")
+        fixture_list(self.cfg["testFiles"]).append("common/Helper.java")
         self.zip([("common/Helper.java", "package common; public class Helper {}")])
         collision = self.run_job()
         self.assertEqual(collision["classification"], "unsafe-submission", collision)
@@ -188,12 +210,12 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["classification"], "unsafe-submission", r)
         self.assertNotIn("score", r)
 
-    def test_optional_caps_keep_existing_bounded_admission(self):
+    def test_optional_caps_keep_existing_bounded_admission(self) -> None:
         self.policy(primaryRequired=False, maxFiles=1)
         (self.job / "student/Student.java").unlink()
         self.rejected(archive([("A.java", "class A {}"), ("B.java", "class B {}")]))
 
-    def test_optional_missing_is_distinct_from_unsafe_primary(self):
+    def test_optional_missing_is_distinct_from_unsafe_primary(self) -> None:
         self.policy(primaryRequired=False)
         primary = self.job / "student/Student.java"
         primary.unlink()
@@ -228,17 +250,21 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertFalse(r["gradable"])
         self.assertNotIn("score", r)
 
-    def test_optional_boolean_is_typed_in_all_closed_schemas(self):
+    def test_optional_boolean_is_typed_in_all_closed_schemas(self) -> None:
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
             "optional_jobs", Path(__file__).parents[1] / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         jobs = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(jobs)
+        if not isinstance(jobs, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         for value in [False, True]:
             self.policy(primaryRequired=value)
-            grader.validate_config(self.cfg)
+            validate_config(self.cfg)
             jobs.validate("grading-descriptor", self.cfg)
             jobs.validate_profile(
                 {
@@ -258,20 +284,21 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
                     },
                 }
             )
-        for value in [0, 1, "false", None, []]:
+        invalid_values: list[object] = [0, 1, "false", None, []]
+        for value in invalid_values:
             self.policy(primaryRequired=value)
             with self.assertRaises(grader.GraderError):
-                grader.validate_config(self.cfg)
+                validate_config(self.cfg)
             with self.assertRaises(jobs.JobError):
                 jobs.validate("grading-descriptor", self.cfg)
 
-    def test_four_public_files_two_packages_feed_one_explicit_compile(self):
+    def test_four_public_files_two_packages_feed_one_explicit_compile(self) -> None:
         self.policy()
         self.api()
         (self.job / "student/Student.java").write_text(
             "public class Student extends base.Base {}"
         )
-        data = self.zip(
+        self.zip(
             [
                 (
                     "base/Base.java",
@@ -291,21 +318,21 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["classification"], "success", r)
         self.assertEqual(r["apiPrecheck"], "success")
         self.assertEqual(r["score"], 1)
-        evidence = r["additionalSources"]
+        evidence = fixture_record(r["additionalSources"])
         self.assertNotIn("archiveSha256", evidence)
-        self.assertEqual([x["bytes"] for x in evidence["files"]], [len(text.encode("utf-8")) for _, text in [
+        self.assertEqual([x["bytes"] for item in fixture_list(evidence["files"]) for x in [fixture_record(item)]], [len(text.encode("utf-8")) for _, text in [
             ("base/Base.java", "package base; public class Base {public static int answer(){return left.Helper.value()+right.Helper.value();}}"),
             ("left/Helper.java", "package left; public class Helper {public static int value(){return 17;}}"),
             ("right/Helper.java", "package right; public class Helper {public static int value(){return 25;}}"),
         ]])
         self.assertEqual(
-            [x["path"] for x in evidence["files"]],
+            [x["path"] for item in fixture_list(evidence["files"]) for x in [fixture_record(item)]],
             ["base/Base.java", "left/Helper.java", "right/Helper.java"],
         )
         self.assertFalse((self.job / "student/base").exists())
         self.assertFalse((self.job / "student/left").exists())
 
-    def test_default_package_base_and_safe_directories(self):
+    def test_default_package_base_and_safe_directories(self) -> None:
         self.policy()
         (self.job / "student/Student.java").write_text(
             "public class Student extends Base {}"
@@ -322,7 +349,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         )
         self.assertEqual(self.run_job()["score"], 1)
 
-    def test_safe_directory_can_share_parent_of_trusted_source(self):
+    def test_safe_directory_can_share_parent_of_trusted_source(self) -> None:
         self.policy()
         (self.job / "tests/pkg").mkdir()
         (self.job / "tests/AnswerTest.java").rename(
@@ -334,11 +361,11 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         )
         self.assertEqual(self.run_job()["classification"], "success")
 
-    def test_optional_absent_does_not_change_existing_job(self):
+    def test_optional_absent_does_not_change_existing_job(self) -> None:
         self.policy()
         self.assertEqual(self.run_job()["score"], 1)
 
-    def test_archive_with_no_policy_cannot_join_compile_list(self):
+    def test_archive_with_no_policy_cannot_join_compile_list(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student extends Base {}"
         )
@@ -354,7 +381,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.run_job()["classification"], "student-compilation-failure"
         )
 
-    def test_bad_java_and_missing_api_are_distinct_from_unsafe_zip(self):
+    def test_bad_java_and_missing_api_are_distinct_from_unsafe_zip(self) -> None:
         self.policy()
         self.api()
         self.zip([("Base.java", "not java")])
@@ -370,21 +397,21 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["studentCompilation"], "success")
         self.assertEqual(r["dependentExecution"], "not-run")
 
-    def rejected(self, data):
+    def rejected(self, data: bytes) -> None:
         (self.job / "student/additional-sources.zip").write_bytes(data)
         r = self.run_job()
         self.assertEqual(r["classification"], "unsafe-submission", r)
         self.assertFalse(r["gradable"])
         self.assertNotIn("score", r)
         self.assertEqual(r["trustedCompilation"], "not-run")
-        self.assertIn("ZIP", r["format_errors"])
-        self.assertIn("ручн", r["format_errors"])
+        self.assertIn("ZIP", fixture_text(r["format_errors"]))
+        self.assertIn("ручн", fixture_text(r["format_errors"]))
         self.assertNotIn("durations", r)
         self.assertFalse((self.job / "student/Good.java").exists())
 
     def test_unsafe_names_links_duplicates_overwrite_and_prefix_fail_before_any_stage(
         self,
-    ):
+    ) -> None:
         self.policy()
         link = zipfile.ZipInfo("Link.java")
         link.create_system = 3
@@ -418,7 +445,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             with self.subTest(entries=entries):
                 self.rejected(archive(entries))
 
-    def test_corruption_nul_and_bad_filename_encoding_are_structured(self):
+    def test_corruption_nul_and_bad_filename_encoding_are_structured(self) -> None:
         self.policy()
         nul = archive([("A.java", "class A {}")]).replace(b"A.java", b"A\x00java")
         badutf = bytearray(archive([("A.java", "class A {}")]))
@@ -440,7 +467,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             with self.subTest(sha=hashlib.sha256(data).hexdigest()):
                 self.rejected(data)
 
-    def test_encrypted_unsupported_crc_and_entry_limit_are_structured(self):
+    def test_encrypted_unsupported_crc_and_entry_limit_are_structured(self) -> None:
         self.policy()
         encrypted = bytearray(archive([("A.java", "class A {}")]))
         for signature, offset in [(b"PK\x03\x04", 6), (b"PK\x01\x02", 8)]:
@@ -459,18 +486,17 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             with self.subTest(sha=hashlib.sha256(data).hexdigest()):
                 self.rejected(data)
 
-    def test_staged_sources_keep_a_private_unix_directory_until_cleanup(self):
+    def test_staged_sources_keep_a_private_unix_directory_until_cleanup(self) -> None:
         import tempfile
         import threading
-        import time
 
         self.policy()
         self.zip([("PrivateProbe.java", "class PrivateProbe {}")])
-        seen = []
+        seen: list[tuple[Path, int]] = []
         stop = threading.Event()
         base = Path(tempfile.gettempdir())
 
-        def observe():
+        def observe() -> None:
             while not stop.is_set():
                 for directory in base.glob("java25-job-runtime-*/additional-sources"):
                     try:
@@ -501,7 +527,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             seen[0][0].exists(), "private source staging leaked after grading"
         )
 
-    def test_archive_itself_cannot_be_a_symlink(self):
+    def test_archive_itself_cannot_be_a_symlink(self) -> None:
         self.policy()
         outside = self.job / "outside.zip"
         outside.write_bytes(archive([("A.java", "class A {}")]))
@@ -511,8 +537,8 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertFalse(r["gradable"])
         self.assertNotIn("score", r)
 
-    def test_limits_actual_bytes_count_depth_and_encoding(self):
-        for limits, entries in [
+    def test_limits_actual_bytes_count_depth_and_encoding(self) -> None:
+        limit_cases: list[tuple[dict[str, object], list[ZipEntry]]] = [
             ({"maxFiles": 1}, [("A.java", "class A {}"), ("B.java", "class B {}")]),
             ({"maxFileBytes": 3}, [("A.java", "class A {}")]),
             (
@@ -522,7 +548,8 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             ({"maxArchiveBytes": 10}, [("A.java", "class A {}")]),
             ({}, [("/".join(["a"] * 32) + "/A.java", "class A {}")]),
             ({}, [("a" * 510 + ".java", "class A {}")]),
-        ]:
+        ]
+        for limits, entries in limit_cases:
             with self.subTest(limits=limits, entries=entries):
                 self.policy(**limits)
                 self.rejected(archive(entries))
@@ -533,14 +560,18 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertTrue(r["gradable"])
         self.assertEqual(r["score"], 0)
 
-    def test_public_schemas_accept_the_typed_policy_and_128_extras(self):
+    def test_public_schemas_accept_the_typed_policy_and_128_extras(self) -> None:
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
             "extra_jobs", Path(__file__).parents[1] / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         jobs = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(jobs)
+        if not isinstance(jobs, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         self.policy()
         jobs.validate("grading-descriptor", self.cfg)
         jobs.validate_profile(
@@ -563,17 +594,18 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.zip([(f"Extra{i}.java", f"class Extra{i} {{}}") for i in range(128)])
         r = self.run_job()
         self.assertEqual(r["score"], 1)
-        self.assertEqual(len(r["additionalSources"]["files"]), 128)
+        self.assertEqual(len(fixture_list(fixture_record(r["additionalSources"])["files"])), 128)
 
-    def test_closed_policy_rejects_bad_config_and_mutation(self):
-        for policy in [
+    def test_closed_policy_rejects_bad_config_and_mutation(self) -> None:
+        invalid_policies: list[dict[str, object]] = [
             {**POLICY, "commands": []},
             {**POLICY, "maxFiles": 129},
             {**POLICY, "maxFiles": True},
             {**POLICY, "archive": "../x.zip"},
             {**POLICY, "archive": "grading-job.json"},
             {k: v for k, v in POLICY.items() if k != "maxFiles"},
-        ]:
+        ]
+        for policy in invalid_policies:
             with self.subTest(policy=policy):
                 self.cfg["additionalJavaSources"] = policy
             with self.assertRaises(grader.GraderError):
@@ -586,15 +618,19 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
 
 
 class OptionalPreparationTests(unittest.TestCase):
-    def test_reference_and_contract_use_actual_union_and_match_native_hash(self):
+    def test_reference_and_contract_materialize_and_run_actual_sources(self) -> None:
         import importlib.util, shutil, tempfile
         from gradle_unit_fixtures import registry
 
         spec = importlib.util.spec_from_file_location(
             "optional_preparation", Path(__file__).parents[1] / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         jobs = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(jobs)
+        if not isinstance(jobs, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         with tempfile.TemporaryDirectory() as temporary:
             snapshot = Path(temporary)
             project = snapshot / "tasks/p"
@@ -634,12 +670,12 @@ class OptionalPreparationTests(unittest.TestCase):
             }
             (project / "tests/cases.json").write_text(json.dumps(cases))
 
-            def selected(name, out):
+            def selected(name: str, out: str) -> dict[str, str]:
                 return {
                     "name":out,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
-            check = {
+            check: dict[str, object] = {
                 "runtime": "java25-gradle-junit-v1",
                 "sourceProfile": {
                     "mode": "implementation",
@@ -662,7 +698,7 @@ class OptionalPreparationTests(unittest.TestCase):
                 "references": [{"name": "correct", "root": "reference"}],
                 "contract-cases": "tests/cases.json",
             }
-            fact = {
+            fact: dict[str, object] = {
                 "qualifiedId": "demo/exr-optional",
                 "projectRoot": "p",
                 "check": check,
@@ -688,7 +724,7 @@ class OptionalPreparationTests(unittest.TestCase):
                 job = jobs.prepare_job(
                     manifest,
                     snapshot,
-                    fact["qualifiedId"],
+                    fixture_text(fact["qualifiedId"]),
                     scenario,
                     registry=registry(),
                 )
@@ -697,10 +733,8 @@ class OptionalPreparationTests(unittest.TestCase):
                         (job.root / "student/Student.java").exists(),
                         "placeholder substituted from starter",
                     )
-                    extras, _ = grader._additional_inventory(job.root, job["grading"])
-                    self.assertEqual([n for n, _ in extras], ["other/Solution.java"])
-                    # Реальная javac/JUnit проверка тех же materialized bytes; это не Gradle/image proof.
-                    cfg = job["grading"]
+                    # Компиляция и JUnit выполняют реальные исходники подготовленного ответа.
+                    cfg = fixture_record(job["grading"])
                     cfg["runtime"] = "java25-junit-v1"
                     cfg.pop("javaBuild")
                     (job.root / "tests/grading-job.json").write_text(json.dumps(cfg))
@@ -708,12 +742,12 @@ class OptionalPreparationTests(unittest.TestCase):
                     self.assertEqual(result["classification"], "success", result)
                 finally:
                     shutil.rmtree(job.root)
-            check["additional-java-sources"]["primary-required"] = True
+            fixture_record(check["additional-java-sources"])["primary-required"] = True
             with self.assertRaisesRegex(jobs.JobError, "mapping"):
                 jobs.prepare_job(
                     manifest,
                     snapshot,
-                    fact["qualifiedId"],
+                    fixture_text(fact["qualifiedId"]),
                     "reference:correct",
                     registry=registry(),
                 )

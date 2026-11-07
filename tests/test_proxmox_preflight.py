@@ -1,11 +1,15 @@
 import importlib.util
 import pathlib
+import sys
 import unittest
 
 class ProxmoxPreflight(unittest.TestCase):
     def setUp(self):
         path=pathlib.Path(__file__).parents[1]/'tools/proxmox-preflight.py'
+        sys.path.insert(0,str(path.parent))
         spec=importlib.util.spec_from_file_location('preflight',path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         self.module=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.module)
         self.node={'maxmem':64*1024**3,'maxcpu':32,'cpu':0.05}
         self.guests=[{'vmid':710,'type':'qemu','status':'running','maxmem':43*1024**3,'mem':1*1024**3}]

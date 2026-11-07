@@ -1,0 +1,126 @@
+"""Одна приватная диагностика N0; только после peer и под штатным supervisor."""
+import json
+import os
+from pathlib import Path
+import sys
+import unittest
+from unittest.mock import patch
+
+SOURCE = Path("/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source")
+METHOD = "test_hostile_records_are_bounded_without_user_code"
+CALL_LIMIT = 10
+TEXT_LIMIT = 65536
+META_LIMIT = 32768
+SUMMARY_LIMIT = 16384
+
+if Path.cwd().resolve() != SOURCE.resolve() or len(sys.argv) != 3:
+    raise RuntimeError("Нужны exact immutable cwd и новый private capture path и instrumented RuntimeIdentity source")
+root = Path(sys.argv[1])
+if not root.is_absolute() or root.exists() or root.is_symlink():
+    raise RuntimeError("Capture path должен быть новым абсолютным private каталогом N0")
+root.mkdir(mode=0o700)
+
+instrumented = Path(sys.argv[2])
+if (not instrumented.is_absolute() or instrumented.is_symlink()
+        or not instrumented.is_file() or instrumented.name != "RuntimeIdentity.java"):
+    raise RuntimeError("Нужен regular private instrumented source N0")
+import hashlib
+if hashlib.sha256(instrumented.read_bytes()).hexdigest() != "2bdc0f4be72e8d3e56a8932d5025b9e12acb1dde51752dee0d735e2a5def8322":
+    raise RuntimeError("HOLD: instrumented source hash mismatch")
+ORIGINAL_RI = str(SOURCE / "runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java")
+source_swaps = 0
+ORIGINAL_MODULE = SOURCE / "runtime/java25-junit-v1/feedback/module"
+MODULE_SOURCE_PINS = {'module-info.java': '33df77f13818d2daf13e453ae1f083d1b4f7387a73b52c655fc7fd43de92ed93', 'org/prairielearn/feedback/Assertions.java': '99ef0b9d8674fcf5f14b8e5be4dc4bf67e012e5d839f03478ec0ebd81f7710f6', 'org/prairielearn/feedback/Gate.java': 'e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69', 'org/prairielearn/feedback/PlatformJUnitAdapter.java': 'cb4ccb52d68b7fed7ac9203f5fcf7193be9b1845462e0a96a1b32f0edd4ba7a8', 'org/prairielearn/feedback/ProjectionAccess.java': '4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a', 'org/prairielearn/feedback/internal/RuntimeIdentity.java': 'c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e', 'org/prairielearn/feedback/internal/Scope.java': '523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b', 'org/prairielearn/feedback/internal/State.java': '48f5c84486dba28540896c9bf938e290fe4d4eb2b1c52c8237da626b96044f39', 'org/prairielearn/feedback/internal/Timeouts.java': '00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516'}
+private_module = root.parent / "observer-module-source"
+private_module.mkdir(mode=0o700)
+for relative, expected in MODULE_SOURCE_PINS.items():
+    source = ORIGINAL_MODULE / relative
+    data = source.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected:
+        raise RuntimeError("HOLD: module source identity mismatch")
+    if relative == "org/prairielearn/feedback/internal/RuntimeIdentity.java":
+        data = instrumented.read_bytes()
+    target = private_module / relative
+    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(data)
+
+# Импорт/выполнение разрешены только исполнителю N0, не автору пакета.
+import test_feedback_state_guards as guards
+
+grader = guards.fixtures.grader
+original = getattr(grader, "_run_unchecked")
+calls = 0
+capture_errors = []
+
+
+def write_private(name, data):
+    descriptor = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(data)
+
+
+def capture(command, cwd, timeout, output_limit=65536, *, env=None):
+    global calls, source_swaps
+    # Это предел единственного private diagnostic assignment; не новый product guard.
+    if calls == CALL_LIMIT:
+        raise RuntimeError("HOLD: неожиданная invocation11 вне разрешённого one-shot")
+    calls += 1
+    index = calls
+    # Настоящий bounded supervisor, точные arguments, ровно один вызов.
+    actual_command = command
+    if ORIGINAL_RI in command:
+        if source_swaps != 0 or list(command).count(ORIGINAL_RI) != 1:
+            raise RuntimeError("HOLD: unexpected second RuntimeIdentity source swap")
+        actual_command = [
+            str(private_module / Path(arg).relative_to(ORIGINAL_MODULE))
+            if arg.startswith(str(ORIGINAL_MODULE) + os.sep) else
+            str(private_module) if arg == str(ORIGINAL_MODULE) else arg
+            for arg in command
+        ]
+        source_swaps += 1
+    result = original(actual_command, cwd, timeout, output_limit, env=env)
+    try:
+        code, text, reason = result
+        payload = text.encode("utf-8")
+        if len(payload) > TEXT_LIMIT:
+            capture_errors.append("unexpected returned text size at call " + str(index))
+        write_private(f"call-{index:02d}.merged.txt", payload[:TEXT_LIMIT])
+        metadata = {
+            "call": index, "argv": list(actual_command), "code": code,
+            "reason": reason, "timeout": timeout, "output_limit": output_limit,
+            "stream": "existing merged stdout+stderr; stderr=STDOUT unchanged",
+            "returned_utf8_bytes": len(payload),
+            "capture_truncated": len(payload) > TEXT_LIMIT,
+        }
+        data = json.dumps(metadata, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(data) > META_LIMIT:
+            metadata.pop("argv")
+            metadata["argv_omitted_due_to_capture_cap"] = True
+            capture_errors.append("argv metadata cap at call " + str(index))
+            data = json.dumps(metadata, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        write_private(f"call-{index:02d}.json", data[:META_LIMIT])
+    except Exception as error:
+        # Capture IO не заменяет исходный returned tuple/исключение теста.
+        capture_errors.append(type(error).__name__ + " at call " + str(index))
+    return result
+
+
+case = guards.FeedbackStateGuards(METHOD)
+suite = unittest.TestSuite([case])
+with patch.object(grader, "_run_unchecked", capture):
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+summary = {
+    "scope": "one existing normal method; no product change",
+    "testsRun": result.testsRun, "test_was_successful": result.wasSuccessful(),
+    "failures": len(result.failures), "errors": len(result.errors),
+    "skipped": len(result.skipped), "captured_calls": calls,
+    "capture_errors": capture_errors,
+    "ri_compiler_source_swaps": source_swaps,
+    "inner_stream_split": False, "report_or_tempdir_capture": False,
+    "diagnosis": "Direct cause requires reading private bounded inner output",
+}
+write_private("capture-summary.json", json.dumps(summary, ensure_ascii=False).encode("utf-8")[:SUMMARY_LIMIT])
+# Обычный результат единственного unittest сохраняется; capture status N0 читает отдельно.
+sys.exit(0 if result.wasSuccessful() else 1)

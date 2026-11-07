@@ -8,7 +8,7 @@ import EventEmitter from 'node:events';
 import {spawnSync} from 'node:child_process';
 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'grader-lifecycle-'));
-let source;
+/** @type {string} */let source;
 try {
   const input = path.join(scratch, 'externalGraderLocal.js');
   fs.copyFileSync(new URL('../fixtures/native-grader-upstream/externalGraderLocal.js', import.meta.url), input);
@@ -19,11 +19,14 @@ try {
     .replace('import.meta.url', JSON.stringify('file:///fixture/externalGraderLocal.js'));
 } finally { fs.rmSync(scratch, {recursive:true}); }
 let serial = 0;
+/** @overload @param {string} failure @param {string} [cleanup] @returns {Promise<import("../../types/test-contracts.d.ts").LifecycleResult>} */
+/** @overload @param {string} failure @param {string} cleanup @param {(env:import("../../types/test-contracts.d.ts").LifecycleExercise)=>Promise<void>} exercise @returns {Promise<void>} */
+/** @param {string} failure @param {string} [cleanup] @param {(env:import("../../types/test-contracts.d.ts").LifecycleExercise)=>Promise<void>} [exercise] */
 async function run(failure, cleanup='success', exercise) {
-  const {acquireLocalGrader} = await import(new URL(`../../bridge/grader-pool.mjs?test=${++serial}`, import.meta.url));
-  const events=[], timers=new Map();
-  let active=0, running=false, timerId=0, finishCleanup;
-  const cleanupResolvers=[];
+  const {acquireLocalGrader} = /** @type {typeof import('../../bridge/grader-pool.mjs')} */(await import(new URL(`../../bridge/grader-pool.mjs?test=${++serial}`, import.meta.url).href));
+  /** @type {string[]} */const events=[];/** @type {Map<number,()=>void>} */const timers=new Map();
+  let active=0, running=false, timerId=0;/** @type {(()=>void)|undefined} */let finishCleanup;
+  /** @type {Array<()=>void>} */const cleanupResolvers=[];
   const problem=new Error(`Docker ${failure}`);
   const container={
     async attach() { events.push('attach'); if(failure==='attach') throw problem; return {}; },
@@ -34,10 +37,11 @@ async function run(failure, cleanup='success', exercise) {
       if(cleanup==='unknown' || failure==='inspect'&&!events.includes('remove')) throw problem;
       return {State:{Running:running,ExitCode:failure==='student'?1:0}};
     },
+    /** @param {{force:boolean}} options @returns {Promise<void>} */
     async remove(options) {
       events.push('remove');
       if(cleanup==='hang') return new Promise(resolve=>{finishCleanup=()=>{running=false;resolve();};});
-      if(cleanup==='deferred') return new Promise(resolve=>cleanupResolvers.push(resolve));
+      if(cleanup==='deferred') return new Promise(resolve=>{cleanupResolvers.push(resolve);});
       if(cleanup==='404') {running=false;throw Object.assign(new Error('absent'),{statusCode:404});}
       if(cleanup==='stopped') {running=false;throw new Error('remove denied');}
       if(cleanup==='unknown') throw new Error('remove denied');
@@ -46,13 +50,13 @@ async function run(failure, cleanup='success', exercise) {
     async kill() {running=false;},
   };
   const context={EventEmitter,os,path,process,
-    setTimeout(fn,ms) {
+    setTimeout(/** @type {()=>void} */fn,/** @type {number} */ms) {
       if(ms===0) return setTimeout(fn,0);
       const id=++timerId;timers.set(id,fn);
       if(cleanup==='hang'&&ms===10_000) queueMicrotask(fn);
       return id;
     },
-    clearTimeout(id) {timers.delete(id);},
+    clearTimeout(/** @type {number} */id) {timers.delete(id);},
     acquireLocalGrader:async()=>{
       const release=await acquireLocalGrader();active++;events.push('acquire');
       return()=>{events.push('release');active--;release();};
@@ -62,12 +66,13 @@ async function run(failure, cleanup='success', exercise) {
     config:{externalGradingDefaultTimeout:30,externalGradingMaximumTimeout:600,externalGradingPullImagesFromDockerHub:false},
     sqldb:{loadSqlEquiv(){return{};},async execute(){}},
     buildDirectory:async()=>{},logger:{info(){},error(){}},
-    readFileWithinDirectory:async()=>'{"score":1}',makeGradingResult:(_id,result)=>result,
+    readFileWithinDirectory:async()=>'{"score":1}',makeGradingResult:/** @template T @param {unknown} _id @param {T} result */(_id,result)=>result,
   };
   vm.createContext(context);vm.runInContext(source,context);
+  /** @returns {Promise<import("../../types/test-contracts.d.ts").GradingResult>} */
   const submit=()=>new Promise(resolve=>{
-    new context.ExternalGraderLocal().handleGradingRequest({id:'1'},{},{},{external_grading_image:'fictional@sha256:000',external_grading_environment:{}},{})
-      .once('error',error=>resolve({error})).once('results',value=>resolve({value}));
+    new (/** @type {typeof context & {ExternalGraderLocal:new()=>{handleGradingRequest(...args:unknown[]):EventEmitter}}} */(context).ExternalGraderLocal)().handleGradingRequest({id:'1'},{},{},{external_grading_image:'fictional@sha256:000',external_grading_environment:{}},{})
+      .once('error',/** @param {Error} error */error=>resolve({error})).once('results',/** @param {{succeeded:boolean}} value */value=>resolve({value}));
   });
   if(exercise) return exercise({submit,events,cleanupResolvers,get active(){return active;}});
   const result=await submit();
@@ -92,7 +97,7 @@ for(const cleanup of ['404']) {
 }
 for(const cleanup of ['unknown','hang','stopped']) {
   test(`ошибка start, cleanup ${cleanup}: слот удерживается`,async()=>{
-    const o=await run('start',cleanup);assert.ok(o.result.error);assert.equal(o.result.error.errors[0].message,'Docker start');
+    const o=await run('start',cleanup);assert.ok(o.result.error);assert.ok(o.result.error.errors);assert.equal(o.result.error.errors[0].message,'Docker start');
     assert.equal(o.active,1,'unknown container must retain slot');
     assert.ok(!o.events.includes('release'));assert.equal(o.events.includes('inspect'),false,'no snapshot fallback after ambiguous start');assert.equal(o.timers.size,0);
   });
@@ -104,7 +109,7 @@ test('ожидающая задача не начинает работу до п
     await new Promise(setImmediate);
     assert.equal(env.events.filter(v=>v==='create').length,2);
     assert.equal(env.active,2);assert.equal(env.events.includes('release'),false);
-    env.cleanupResolvers.shift()();
+    const complete=env.cleanupResolvers.shift();assert.ok(complete);complete();
     await jobs[0];await new Promise(setImmediate);
     assert.equal(env.events.filter(v=>v==='create').length,3);
     assert.ok(env.events.indexOf('release')<env.events.lastIndexOf('create'));
@@ -114,17 +119,17 @@ test('ожидающая задача не начинает работу до п
 });
 test('поздняя очистка после timeout не освобождает удержанный слот',async()=>{
   const o=await run('start','hang');assert.equal(o.currentActive,1);
-  o.finishCleanup();await new Promise(setImmediate);
+  assert.ok(o.finishCleanup);o.finishCleanup();await new Promise(setImmediate);
   assert.equal(o.currentActive,1);assert.equal(o.events.includes('release'),false);
 });
 
 for(const failure of ['ping','create']) {
   test(`ошибка ${failure} до получения контейнера освобождает слот`,async()=>{
-    const o=await run(failure);assert.equal(o.result.error.message,`Docker ${failure}`);
+    const o=await run(failure);assert.ok(o.result.error);assert.equal(o.result.error.message,`Docker ${failure}`);
     assert.equal(o.active,0);assert.equal(o.events.includes('remove'),false);assert.equal(o.timers.size,0);
   });
 }
 test('неуспех студенческого процесса сохраняется обычным результатом',async()=>{
   const o=await run('student');assert.equal(o.result.error,undefined);
-  assert.equal(o.result.value.succeeded,false);assert.equal(o.active,0);assert.ok(o.events.includes('remove'));
+  assert.ok(o.result.value);assert.equal(o.result.value.succeeded,false);assert.equal(o.active,0);assert.ok(o.events.includes('remove'));
 });

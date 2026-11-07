@@ -1,22 +1,38 @@
 """Guard no-score и реальные compile/API стадии в root и nested outcomes."""
 
 from pathlib import Path
+from collections.abc import Iterable, Mapping
+from typing import Protocol, runtime_checkable
+from jsonschema.exceptions import ValidationError
+from selected_job_fixture import fixture_record
 import copy, json, os, unittest, jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = json.loads(
+SCHEMA = fixture_record(json.loads(
     Path(
         os.environ.get(
             "RESULT_ADMISSION_SCHEMA", ROOT / "schemas/check-result.schema.json"
         )
     ).read_text()
-)
+))
+
+
+@runtime_checkable
+class _Validator(Protocol):
+    def iter_errors(self, instance: object) -> Iterable[ValidationError]: ...
+
+
+def _validator(value: object) -> _Validator:
+    if not isinstance(value, _Validator):
+        raise AssertionError("Schema validator недоступен")
+    return value
 
 
 def outcome(
-    student="success", trusted="not-run", api=None, classification="unsafe-submission"
-):
-    value = {
+    student: str = "success", trusted: str = "not-run", api: str | None = None,
+    classification: str = "unsafe-submission"
+) -> dict[str, object]:
+    value: dict[str, object] = {
         "classification": classification,
         "infrastructure": "complete",
         "gradable": False,
@@ -34,17 +50,17 @@ def outcome(
             toolchain="actual JDK25",
         )
         if trusted == "success":
-            value["durations"]["trustedCompilation"] = 0.1
+            fixture_record(value["durations"])["trustedCompilation"] = 0.1
     if student == "success":
         value["dependentExecution"] = "not-run"
     if api is not None:
         value.update(apiPrecheck=api, dependentExecution="not-run")
         if api == "success":
-            value["durations"].update(apiCompilation=0.1, apiExecution=0.1)
+            fixture_record(value["durations"]).update(apiCompilation=0.1, apiExecution=0.1)
     return value
 
 
-def envelope(value, runtime="java25-junit-v1"):
+def envelope(value: Mapping[str, object], runtime: str = "java25-junit-v1") -> dict[str, object]:
     return dict(
         schemaVersion=1,
         scope="declared",
@@ -58,10 +74,10 @@ def envelope(value, runtime="java25-junit-v1"):
 
 
 class ResultAdmissionTests(unittest.TestCase):
-    def check_both(self, value, valid, runtime="java25-junit-v1"):
+    def check_both(self, value: dict[str, object], valid: bool, runtime: str = "java25-junit-v1") -> None:
         root = envelope(value, runtime)
         nested = copy.deepcopy(value)
-        validators = [
+        validators: list[tuple[str, object, dict[str, object]]] = [
             ("root", jsonschema.Draft202012Validator(SCHEMA), root),
             (
                 "nested",
@@ -71,7 +87,8 @@ class ResultAdmissionTests(unittest.TestCase):
                 nested,
             ),
         ]
-        for where, validator, subject in validators:
+        for where, candidate, subject in validators:
+            validator = _validator(candidate)
             with self.subTest(where=where, value=value):
                 errors = list(validator.iter_errors(subject))
                 self.assertEqual(
@@ -128,7 +145,7 @@ class ResultAdmissionTests(unittest.TestCase):
             value = outcome(
                 "failure", trusted, classification="student-compilation-failure"
             )
-            value.setdefault("durations", {})["execution"] = 0.1
+            fixture_record(value.setdefault("durations", {}))["execution"] = 0.1
             self.check_both(value, False, runtime)
 
     def test_student_compile_failure_optional_not_run_is_valid(self):
@@ -143,7 +160,7 @@ class ResultAdmissionTests(unittest.TestCase):
             self.check_both(value, True, runtime)
 
     def test_unsafe_can_never_claim_grade_or_behavior_execution(self):
-        mutations = [
+        mutations: list[dict[str, object]] = [
             {"score": 0},
             {"score": 1},
             {"maxPoints": 1},
@@ -157,7 +174,7 @@ class ResultAdmissionTests(unittest.TestCase):
                 value.update(change)
                 self.check_both(value, False)
             value = copy.deepcopy(initial)
-            value.setdefault("durations", {})["execution"] = 0.1
+            fixture_record(value.setdefault("durations", {}))["execution"] = 0.1
             self.check_both(value, False)
 
     def test_impossible_compile_or_api_stage_combinations_fail_closed(self):
@@ -188,7 +205,7 @@ class ResultAdmissionTests(unittest.TestCase):
         ]:
             for key in keys:
                 value = outcome(trusted=trusted, api=api)
-                value["durations"].pop(key)
+                fixture_record(value["durations"]).pop(key)
                 self.check_both(value, False)
         for key in ["durations", "diagnostics", "toolchain", "dependentExecution"]:
             value = outcome()
@@ -198,7 +215,7 @@ class ResultAdmissionTests(unittest.TestCase):
     def test_api_not_run_does_not_allow_hidden_api_execution(self):
         for student in ["failure", "success"]:
             value = outcome(student, api="not-run")
-            value.setdefault("durations", {})["apiExecution"] = 0.1
+            fixture_record(value.setdefault("durations", {}))["apiExecution"] = 0.1
             self.check_both(value, False)
 
     def test_mutation_compile_failure_cannot_claim_api_precheck(self):
@@ -209,9 +226,8 @@ class ResultAdmissionTests(unittest.TestCase):
         value = outcome(
             "failure", "success", classification="student-compilation-failure"
         )
-        errors = list(
-            jsonschema.Draft202012Validator(SCHEMA).iter_errors(envelope(value))
-        )
+        validator = _validator(jsonschema.Draft202012Validator(SCHEMA))
+        errors = list(validator.iter_errors(envelope(value)))
         self.assertTrue(errors)
 
 

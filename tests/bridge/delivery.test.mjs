@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {bridgeDeliverySchema} from '../../bridge/delivery.mjs';
 const q='demo/exr-a',slot='demo/lab/exr-a';
+/** @returns {import("../../types/test-contracts.d.ts").MutableDelivery} */
 const fixture=()=>({schemaVersion:5,courseId:'demo',bookRoot:'tasks',questions:[q],gradingPayloads:{[q]:{kind:'project',uuid:'37d79ee7-fd7d-44db-bd45-6587711862a5',grading:{method:'manual'},submission:{mode:'upload'},sourceRoot:'projects/a'}},works:[{id:'lab',slots:[{id:slot,selection:'fixed',candidates:[q],assignment:{requirement:'required',workMode:'individual'}}],policy:{},completion:{schemaVersion:2,mode:'required-slot-completion',source:'per-slot-results-v2',slotIds:[slot],requiredSlotIds:[slot],atLeast:1,fullyCompletedScore:1}}],instances:{fixture:{works:['lab'],selfEnrollment:false}},files:['infoCourse.json']});
 test('v3 reader requires explicit canonical grading/submission for exact question catalog',()=>{
  assert.equal(bridgeDeliverySchema.parse(fixture()).gradingPayloads[q].grading.method,'manual');
- for(const change of [d=>d.schemaVersion=2,d=>delete d.gradingPayloads[q].grading,d=>delete d.gradingPayloads[q].submission,d=>d.gradingPayloads[q].runtime='fake',d=>delete d.gradingPayloads[q],d=>d.gradingPayloads['demo/exr-extra']=d.gradingPayloads[q]]){
+ for(const change of /** @type {Array<(d:import("../../types/test-contracts.d.ts").MutableDelivery)=>unknown>} */([d=>d.schemaVersion=2,d=>delete d.gradingPayloads[q].grading,d=>delete d.gradingPayloads[q].submission,d=>d.gradingPayloads[q].runtime='fake',d=>delete d.gradingPayloads[q],d=>d.gradingPayloads['demo/exr-extra']=d.gradingPayloads[q]])){
   const d=fixture();change(d);assert.throws(()=>bridgeDeliverySchema.parse(d));
  }
 });

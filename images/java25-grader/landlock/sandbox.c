@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <errno.h>
+#include <limits.h>
 
 #define ACCESS_ALL                                                  \
   (LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR |     \
@@ -38,7 +39,7 @@
    LANDLOCK_ACCESS_FS_TRUNCATE | LANDLOCK_ACCESS_FS_REFER |         \
    LANDLOCK_ACCESS_FS_MAKE_SYM)
 
-void add_path_rule(int ruleset_fd, const char *path, __u64 access_mask) {
+static void add_path_rule(int ruleset_fd, const char *path, __u64 access_mask) {
   int fd = open(path, O_PATH | O_CLOEXEC);
   if (fd < 0) {
     fprintf(stderr, "Failed to open path %s\n", path);
@@ -126,7 +127,7 @@ int main(int argc, char *argv[]) {
   if (argc < 2) return 1;
 
   // Query the kernel's supported Landlock ABI version and adjust the mask.
-  int abi = syscall(SYS_landlock_create_ruleset, NULL, 0,
+  long abi = syscall(SYS_landlock_create_ruleset, NULL, 0,
                     LANDLOCK_CREATE_RULESET_VERSION);
   if (abi < 0) {
     perror("Landlock not supported by kernel");
@@ -143,11 +144,17 @@ int main(int argc, char *argv[]) {
 
   // Create a landlock ruleset that handles all filesystem access.
   struct landlock_ruleset_attr attr = {.handled_access_fs = access_mask};
-  int ruleset_fd = syscall(SYS_landlock_create_ruleset, &attr, sizeof(attr), 0);
-  if (ruleset_fd < 0) {
+  long ruleset_result = syscall(SYS_landlock_create_ruleset, &attr, sizeof(attr), 0);
+  if (ruleset_result < 0) {
     perror("Landlock init failed");
     return 1;
   }
+  if (ruleset_result > INT_MAX) {
+    errno = EOVERFLOW;
+    perror("Landlock ruleset descriptor out of range");
+    return 1;
+  }
+  int ruleset_fd = (int)ruleset_result;
 
   // Scan / and add everything EXCEPT proc, sys and dev.
   DIR *d = opendir("/");

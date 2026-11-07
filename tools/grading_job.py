@@ -16,6 +16,10 @@ import subprocess
 import tempfile
 import secrets
 import jsonschema
+from collections.abc import Collection, Mapping, Sequence
+from typing import Literal, Protocol, TypeGuard, TypedDict, runtime_checkable
+from json_boundary import JSONValue, is_object, is_list, json_object, json_value
+from grading_types import (ApiPrecheck, AdditionalSourcePolicy, BuildEvidence, BuildReceipt, BuildStageFacts, CheckResult, ContractCases, Discovery, Expectations, ExpectationResult, GradingJobPayload, JavaConfig, JavaBuild, JSONInteger, JobBindings, NativeChecks, NativeProject, Outcome, QuestionBinding, ResultCounts, RunLimits, Scenario, SelectedFile, UnavailableReference, VerificationReceipt)
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_VERSION = "2.1.0"
@@ -29,13 +33,33 @@ class ProjectDefect(JobError):
     pass
 
 
-class GradingJob(dict):
-    """Serialized contract remains portable; private scratch is not identity."""
+class GradingJob(dict[str, object]):
+    """Переносимые поля проверяются отдельно от приватного scratch."""
 
-    root = None
+    root: Path
+    _scratch: tuple[Path, int, int, int, int, str | None]
+    _containers_stopped: bool
+    containerName: str
+
+    def initialize_scratch(self, root: Path, image: str | None) -> None:
+        """Связать приватный scratch с его фактической файловой идентичностью."""
+        self.root = root
+        scratch = root.lstat()
+        self._scratch = (root, scratch.st_dev, scratch.st_ino, os.getuid(), os.getgid(), image)
+        self._containers_stopped = True
+
+    def mark_containers_stopped(self, stopped: bool) -> None:
+        """Состояние потомков не является частью переносимого payload."""
+        self._containers_stopped = stopped
+
+    def checked_payload(self) -> GradingJobPayload:
+        value: object = self
+        if not _job_payload(value):
+            raise JobError("Invalid prepared job payload")
+        return value
 
 
-def safe(root, name):
+def safe(root: str | Path, name: object) -> Path:
     if (
         not isinstance(name, str)
         or not name
@@ -56,21 +80,51 @@ def safe(root, name):
     return p
 
 
+@runtime_checkable
+class _OutcomeValidator(Protocol):
+    def __call__(self, value: object, *, student_tests: bool = False) -> None: ...
+
+
+@runtime_checkable
+class _UniqueObject(Protocol):
+    def __call__(self, pairs: Sequence[tuple[str, object]]) -> dict[str, object]: ...
+
+
+class _JUnitHelpers(TypedDict):
+    validate_outcome: _OutcomeValidator
+    unique_json_object: _UniqueObject
+
+
 @functools.cache
-def _junit_result_helpers():
+def _junit_result_helpers() -> _JUnitHelpers:
     import runpy
 
-    return runpy.run_path(str(ROOT / "runtime/junit_result.py"))
+    helpers: dict[str, object] = runpy.run_path(str(ROOT / "runtime/junit_result.py"))
+    validator, unique = helpers.get("validate_outcome"), helpers.get("unique_json_object")
+    if not isinstance(validator, _OutcomeValidator) or not isinstance(unique, _UniqueObject):
+        raise JobError("Канонический JUnit decoder недоступен")
+    return {"validate_outcome": validator, "unique_json_object": unique}
 
 
-def validate(name, value):
+@runtime_checkable
+class _SchemaValidator(Protocol):
+    def validate(self, instance: object) -> None: ...
+
+
+def _schema_validator(value: object) -> _SchemaValidator:
+    if not isinstance(value, _SchemaValidator):
+        raise JobError("Канонический JSON Schema validator недоступен")
+    return value
+
+
+def validate(name: str, value: object) -> None:
     if name == "grading-job":
         name = "grading-job-v3"
     try:
-        jsonschema.Draft202012Validator(
-            json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text())
-        ).validate(value)
-        if name == "check-result" and value.get("runtime") in (
+        schema = json_object(json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text()))
+        validator = _schema_validator(jsonschema.Draft202012Validator(schema))
+        validator.validate(json_value(value))
+        if name == "check-result" and is_object(value) and value.get("runtime") in (
             "java25-junit-v1",
             "java25-gradle-junit-v1",
             "java25-mutation-v1",
@@ -82,13 +136,52 @@ def validate(name, value):
         raise JobError(f"Invalid {name}: {error}") from error
 
 
-def validate_profile(check):
+def validate_profile(check: object) -> None:
     validate("project-check", check)
 
 
-def inventory(manifest):
-    validate("native-checks", manifest)
-    selected = {}
+def _native_checks(value: object) -> TypeGuard[NativeChecks]:
+    # Уточнение формы разрешено только после полной проверки этой схемой.
+    validate("native-checks", value)
+    return True
+
+
+def _contract_cases(value: object) -> TypeGuard[ContractCases]:
+    validate("contract-cases", value)
+    return True
+
+
+def _job_payload(value: object) -> TypeGuard[GradingJobPayload]:
+    validate("grading-job", value)
+    return True
+
+
+def _check_result(value: object) -> TypeGuard[CheckResult]:
+    validate("check-result", value)
+    return True
+
+
+def _runtime_profile(registry: object, runtime: str) -> dict[str, object]:
+    if not is_object(registry) or not is_object(registry.get("profiles")):
+        raise JobError("Invalid runtime profile registry")
+    profiles = registry["profiles"]
+    if not is_object(profiles):
+        raise JobError("Invalid runtime profile registry")
+    profile = profiles.get(runtime)
+    if not is_object(profile) or any(not isinstance(key, str) for key in profile):
+        raise JobError("Invalid runtime profile")
+    return {key: item for key, item in profile.items() if isinstance(key, str)}
+
+
+def _selected_file(value: object) -> TypeGuard[SelectedFile]:
+    return (is_object(value) and set(value) == {"name", "target", "data"}
+            and all(isinstance(item, str) for item in value.values()))
+
+
+def inventory(manifest: object) -> list[NativeProject]:
+    if not _native_checks(manifest):
+        raise JobError("Invalid native checks")
+    selected: dict[str, NativeProject] = {}
     for project in manifest["projects"]:
         q = project["qualifiedId"]
         if q in selected:
@@ -98,11 +191,11 @@ def inventory(manifest):
     return [selected[q] for q in sorted(selected)]
 
 
-def load_runtime_registry():
-    return json.loads((ROOT / "runtime-profiles.json").read_text())
+def load_runtime_registry() -> dict[str, JSONValue]:
+    return json_object(json.loads((ROOT / "runtime-profiles.json").read_text()))
 
 
-def selected_bytes(item):
+def selected_bytes(item: SelectedFile) -> bytes:
     try:
         data = base64.b64decode(item["data"], validate=True)
     except (ValueError, binascii.Error, KeyError, TypeError) as error:
@@ -112,12 +205,13 @@ def selected_bytes(item):
     return data
 
 
-def _selection(items):
-    if not isinstance(items, list) or len(items) > 4096:
+def _selection(items: object) -> list[SelectedFile]:
+    if not is_list(items) or len(items) > 4096:
         raise JobError("Selected file count limit")
-    names = set(); targets = set(); total = 0
+    names: set[str] = set(); targets: set[str] = set(); total = 0
+    selected: list[SelectedFile] = []
     for item in items:
-        if not isinstance(item, dict) or set(item) != {"name", "target", "data"}:
+        if not _selected_file(item):
             raise JobError("Closed selected file required")
         name = item["name"]; target = item["target"]
         safe(Path("/selected"), name); safe(Path("/selected"), target)
@@ -128,13 +222,14 @@ def _selection(items):
         total += len(selected_bytes(item))
         if total > 64 * 1024**2:
             raise JobError("Selected total size limit")
-    return [dict(item) for item in items]
+        selected.append(item.copy())
+    return selected
 
 
-def _fixture_selection(items):
-    if not isinstance(items,list) or len(items)>4096:
+def _fixture_selection(items: object) -> list[SelectedFile]:
+    if not is_list(items) or len(items)>4096:
         raise JobError("Selected fixture count limit")
-    selected={};total=0
+    selected: dict[tuple[str, str], SelectedFile]={};total=0
     for item in items:
         row=_selection([item])[0];key=(row["target"],row["name"])
         data=selected_bytes(row)
@@ -148,21 +243,22 @@ def _fixture_selection(items):
     return list(selected.values())
 
 
-def _cases(project):
+def _cases(project: NativeProject) -> ContractCases:
     record = project.get("contractCases")
     if not record:
         raise JobError("Missing selected contract cases")
     _selection([record])
-    try: cases = json.loads(selected_bytes(record))
+    try: cases: object = json.loads(selected_bytes(record))
     except (ValueError, UnicodeError) as error: raise JobError("Invalid contract cases JSON") from error
-    validate("contract-cases", cases)
+    if not _contract_cases(cases):
+        raise JobError("Invalid contract cases")
     if len({c["id"] for c in cases["cases"]}) != len(cases["cases"]):
         raise JobError("Duplicate contract case ID")
     return cases
 
 
-def scenario_inventory(manifest, snapshot=None, ids=None):
-    records = []
+def scenario_inventory(manifest: object, snapshot: Path | None = None, ids: Collection[str] | None = None) -> list[Scenario]:
+    records: list[Scenario] = []
     for project in inventory(manifest):
         q = project["qualifiedId"]
         if ids is not None and q not in ids: continue
@@ -176,8 +272,9 @@ def scenario_inventory(manifest, snapshot=None, ids=None):
 
 
 def prepare_job(
-    manifest, snapshot, id, scenario, scope="declared", delivery=None, registry=None
-):
+    manifest: object, snapshot: str | Path | None, id: str, scenario: str,
+    scope: str = "declared", delivery: object = None, registry: object = None,
+) -> GradingJob:
     projects = [p for p in inventory(manifest) if p["qualifiedId"] == id]
     if len(projects) != 1:
         raise JobError("ID is not in declared check inventory")
@@ -201,7 +298,8 @@ def prepare_job(
     )
     primary_names = {x["name"] for x in sources}
     generated_archive = None
-    reference_source_names = None
+    reference_source_names: list[str] | None = None
+    expected_case: Expectations | None = None
     if archive_name:
         reserved = [
             *primary_names,
@@ -276,7 +374,7 @@ def prepare_job(
         case = [c for c in cases["cases"] if c["id"] == scenario.split(":", 1)[1]]
         if len(case) != 1:
             raise JobError("Unknown contract case")
-        replacements = {}
+        replacements: dict[str, SelectedFile] = {}
         for x in case[0]["sources"]:
             if not x["fixture"].startswith("tests/fixtures/") or x[
                 "submission"
@@ -287,23 +385,24 @@ def prepare_job(
                 raise JobError("Selected contract fixture missing/ambiguous")
             if x["submission"] in replacements:
                 raise JobError("Duplicate fixture submission")
-            replacements[x["submission"]] = dict(bound[0])
+            replacements[x["submission"]] = bound[0].copy()
         selected = (
             list(replacements.values())
             if optional_primary
             else [replacements.get(x["name"], x) for x in sources]
         )
-        if not optional_primary and archive_name in replacements:
+        if not optional_primary and archive_name is not None and archive_name in replacements:
             selected.append(replacements[archive_name])
+        expected_case = case[0]["expected"]
     elif scenario != "starter":
         raise JobError("Unknown scenario")
-    java = {
+    java: JavaConfig = {
         "release": 25,
         "encoding": "UTF-8",
         "compiler-options": ["-proc:none", "-Xmaxerrs", "5"],
     }
     java.update(check.get("java", {}))
-    limits = {
+    limits: RunLimits = {
         "outer-seconds": 30,
         "compile-seconds": 15,
         "run-seconds": 10,
@@ -311,7 +410,9 @@ def prepare_job(
         "max-output-bytes": 65536,
     }
     limits.update(check.get("limits", {}))
-    grading = {
+    discovery: Discovery = {"min-executed": 1, "allow-skipped": False}
+    discovery.update(check.get("discovery", {}))
+    grading: dict[str, object] = {
         "schemaVersion": 1,
         "sourceFiles": [x["name"] for x in sources],
         "testFiles": [x["name"] for x in tests],
@@ -322,14 +423,10 @@ def prepare_job(
         "java": java,
         "limits": limits,
         "scoring": check.get("scoring", {"mode": "weighted"}),
-        "discovery": {
-            "min-executed": 1,
-            "allow-skipped": False,
-            **check.get("discovery", {}),
-        },
+        "discovery": discovery,
     }
 
-    def api_selection(field, selection):
+    def api_selection(field: Literal["apiPrecheck", "verificationApiPrecheck"], selection: Sequence[SelectedFile]) -> ApiPrecheck | None:
         value = p.get(field)
         if value is None:
             return None
@@ -339,11 +436,8 @@ def prepare_job(
             {},
         )
         if (
-            not isinstance(value, dict)
-            or set(value) != {"files", "entry"}
-            or not isinstance(value["files"], list)
+            set(value) != {"files", "entry"}
             or not value["files"]
-            or any(not isinstance(x, str) for x in value["files"])
             or len(set(value["files"])) != len(value["files"])
             or not set(value["files"]) < names
             or value["entry"] != declaration.get("entry")
@@ -351,7 +445,7 @@ def prepare_job(
             raise JobError(
                 "API precheck is not a proper subset of selected trusted sources"
             )
-        return dict(value, files=list(value["files"]))
+        return {"entry": value["entry"], "files": list(value["files"])}
 
     api = api_selection("apiPrecheck", tests)
     public_api = api_selection("verificationApiPrecheck", public)
@@ -366,39 +460,30 @@ def prepare_job(
     if api:
         grading["apiPrecheck"] = api
     if extra_policy:
-        grading["additionalJavaSources"] = {
-            **(
-                {"primaryRequired": extra_policy["primary-required"]}
-                if "primary-required" in extra_policy
-                else {}
-            ),
-            **({"allowAdditional": extra_policy["allow-additional"]} if "allow-additional" in extra_policy else {}),
-            "archive": archive_name,
-            **{
-                new: extra_policy[old]
-                for old, new in [
-                    ("max-files", "maxFiles"),
-                    ("max-file-bytes", "maxFileBytes"),
-                    ("max-total-bytes", "maxTotalBytes"),
-                    ("max-archive-bytes", "maxArchiveBytes"),
-                ]
-            },
+        translated: AdditionalSourcePolicy = {
+            "archive": extra_policy["archive"], "maxFiles": extra_policy["max-files"],
+            "maxFileBytes": extra_policy["max-file-bytes"], "maxTotalBytes": extra_policy["max-total-bytes"],
+            "maxArchiveBytes": extra_policy["max-archive-bytes"],
         }
+        if "primary-required" in extra_policy:
+            translated["primaryRequired"] = extra_policy["primary-required"]
+        if "allow-additional" in extra_policy:
+            translated["allowAdditional"] = extra_policy["allow-additional"]
+        grading["additionalJavaSources"] = translated
     if "java-build" in check:
         build = check["java-build"]
-        grading["javaBuild"] = {
-            "kind": build["kind"],
-            **({"mainClass": build["main-class"]} if "main-class" in build else {}),
-            "artifact": build["artifact"],
-        }
+        translated_build: JavaBuild = {"kind": build["kind"], "artifact": build["artifact"]}
+        if "main-class" in build:
+            translated_build["mainClass"] = build["main-class"]
+        grading["javaBuild"] = translated_build
     if "variants" in check:
         grading["variants"] = check["variants"]
-    runtime = (registry or load_runtime_registry())["profiles"][check["runtime"]]
+    runtime = _runtime_profile(registry or load_runtime_registry(), check["runtime"])
     if check["runtime"] == "fish-git-v1":
         grading.pop("java")
     expectations = (
-        case[0]["expected"]
-        if scenario.startswith("contract:")
+        expected_case
+        if expected_case is not None
         else check.get("verification-expectations", {}).get(
             "reference" if scenario.startswith("reference:") else "starter", {}
         )
@@ -419,12 +504,16 @@ def prepare_job(
     if scope == "delivery":
         from delivery4 import code_ids
         from delivery_verification import file_bytes
-        if not delivery or id not in code_ids({k:v for k,v in delivery.items() if k != "_root"}):
+        if not is_object(delivery) or id not in code_ids({k:v for k,v in delivery.items() if k != "_root"}):
             raise JobError("ID absent from automatic delivery")
-        native = Path(delivery.get("_root", ""))
+        delivery_root = delivery.get("_root", "")
+        if not isinstance(delivery_root, str):
+            raise JobError("Invalid delivery root")
+        native = Path(delivery_root)
         question = "questions/" + id + "/"
-        info = json.loads(file_bytes(native, question + "info.json"))
-        if info.get("externalGradingOptions", {}).get("image") != job["imageDigest"]:
+        info = json_object(json.loads(file_bytes(native, question + "info.json")))
+        external = info.get("externalGradingOptions", {})
+        if not isinstance(external, dict) or external.get("image") != job["imageDigest"]:
             raise JobError("Exported runtime image differs from selected image")
         if json.loads(file_bytes(native, question + "tests/grading-job.json")) != grading:
             raise JobError("Exported grading descriptor differs from selected check")
@@ -436,11 +525,10 @@ def prepare_job(
         # Exported student descriptor сравнен выше; это только private reference job.
         grading = dict(grading, sourceFiles=reference_source_names)
         job["grading"] = grading
-    validate("grading-job", job)
-    job.root = Path(tempfile.mkdtemp(prefix="grading-job-"))
-    scratch = job.root.lstat()
-    job._scratch = (job.root, scratch.st_dev, scratch.st_ino, os.getuid(), os.getgid(), job["imageDigest"])
-    job._containers_stopped = True
+    payload: object = job
+    if not _job_payload(payload):
+        raise JobError("Invalid prepared job payload")
+    job.initialize_scratch(Path(tempfile.mkdtemp(prefix="grading-job-")), payload["imageDigest"])
     for folder, selection in [("student", selected), ("tests", tests)]:
         (job.root / folder).mkdir(exist_ok=True)
         for x in selection:
@@ -453,7 +541,7 @@ def prepare_job(
             target = safe(job.root, folder + "/" + x["name"])
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(selected_bytes(x))
-    if generated_archive is not None:
+    if generated_archive is not None and archive_name is not None:
         safe(job.root, "student/" + archive_name).write_bytes(generated_archive)
     (job.root / "tests/grading-job.json").write_text(
         json.dumps(grading, sort_keys=True)
@@ -488,11 +576,29 @@ NATIVE_RUNTIME = "java25-gradle-junit-v1"
 
 
 
-def _validate_build_observation(
-    result, artifact=None
-):
+def _build_evidence(value: object) -> TypeGuard[BuildEvidence]:
+    if not is_object(value) or type(value.get("schemaVersion")) is not int or any(
+        not isinstance(value.get(key), str) for key in ("kind", "status")
+    ):
+        return False
+    if "reason" in value and not isinstance(value["reason"], str):
+        return False
+    if "durationSeconds" in value and (
+        isinstance(value["durationSeconds"], bool) or not isinstance(value["durationSeconds"], (int, float))
+    ):
+        return False
+    if "artifact" in value:
+        artifact = value["artifact"]
+        if not is_object(artifact) or not isinstance(artifact.get("path"), str) or type(artifact.get("bytes")) is not int:
+            return False
+    return True
+
+
+def _validate_build_observation(result: object, artifact: str | None = None) -> BuildEvidence:
+    if not is_object(result):
+        raise JobError("Native build outcome is missing")
     proof = result.get("buildEvidence")
-    if not isinstance(proof, dict):
+    if not _build_evidence(proof):
         raise JobError("Native build evidence is missing")
     classification = result.get("classification")
     student = result.get("studentCompilation")
@@ -566,50 +672,75 @@ def _validate_build_observation(
             raise JobError(
                 "Successful native build requires successful student compilation"
             )
-        if (
-            artifact is not None
-            and proof.get("artifact", {}).get("path") != "build/libs/" + artifact
-        ):
+        produced = proof.get("artifact")
+        if artifact is not None and (produced is None or produced["path"] != "build/libs/" + artifact):
             raise JobError("Build artifact differs from descriptor")
     return proof
 
 
-def run_job(job, backend="host", registry=None):
+@runtime_checkable
+class _HostGrader(Protocol):
+    def grade(self, job_dir: Path) -> object: ...
+
+
+@runtime_checkable
+class _RegistryHostGrader(Protocol):
+    def grade(self, job_dir: Path, registry: object = None) -> object: ...
+
+
+def _remove_container(name: str) -> None:
+    """Подтвердить удаление только собственного заранее выбранного контейнера."""
+    cleanup = subprocess.run(
+        ["docker", "rm", "--force", name],
+        capture_output=True, text=True, timeout=10,
+    )
+    if cleanup.returncode and "No such container" not in cleanup.stderr:
+        raise JobError(cleanup.stderr)
+
+
+def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> CheckResult:
     if getattr(job, "_containers_stopped", True) is False:
         raise JobError("Grading retry requires stopped containers")
-    validate("grading-job", job)
+    raw_payload: object = job
+    if not _job_payload(raw_payload):
+        raise JobError("Invalid prepared job payload")
+    payload = raw_payload
     if not getattr(job, "root", None):
         raise JobError("Prepared private job root required")
-    common = {
-        k: job[k]
-        for k in (
-            "scope",
-            "qualifiedId",
-            "scenario",
-            "runtime",
-            "imageDigest",
-        )
+    common: JobBindings = {
+        "scope": payload["scope"], "qualifiedId": payload["qualifiedId"],
+        "scenario": payload["scenario"], "runtime": payload["runtime"], "imageDigest": payload["imageDigest"],
     }
-    native = job["runtime"] == NATIVE_RUNTIME
+    native = payload["runtime"] == NATIVE_RUNTIME
+    result: dict[str, JSONValue]
     try:
         if backend == "host":
-            profile = (registry or load_runtime_registry())["profiles"][job["runtime"]]
+            profile = _runtime_profile(registry or load_runtime_registry(), payload["runtime"])
             spec = importlib.util.spec_from_file_location(
                 "platform_grader",
                 safe(ROOT, profile.get("runner", "images/java25-grader/grade.py")),
             )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Загрузчик локального Python-модуля недоступен")
             grader = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(grader)
+            error_class: object = getattr(grader, "GraderError", None)
+            caught_errors: tuple[type[Exception], ...] = ()
+            if isinstance(error_class, type) and issubclass(error_class, Exception):
+                caught_errors = (error_class,)
             try:
-                result = (
-                    grader.grade(job.root, registry=registry)
-                    if registry is not None and job["runtime"] != "fish-git-v1"
-                    else grader.grade(job.root)
-                )
-            except grader.GraderError as error:
+                if registry is not None and payload["runtime"] != "fish-git-v1":
+                    if not isinstance(grader, _RegistryHostGrader):
+                        raise JobError("Runtime registry consumer is unavailable")
+                    result = json_object(grader.grade(job.root, registry=registry))
+                else:
+                    if not isinstance(grader, _HostGrader):
+                        raise JobError("Runtime grader contract is unavailable")
+                    result = json_object(grader.grade(job.root))
+            except caught_errors as error:
                 raise JobError(str(error)) from error
         elif backend == "container":
-            if not job["imageDigest"]:
+            if not payload["imageDigest"]:
                 raise JobError("Runtime production image has not been built/published")
             job.containerName = "plcheck-" + secrets.token_hex(12)
             cmd = [
@@ -628,38 +759,40 @@ def run_job(job, backend="host", registry=None):
                 "128",
                 "--mount",
                 f"type=bind,src={job.root},dst=/grade",
-                job["imageDigest"],
+                payload["imageDigest"],
                 "--verification",
             ]
-            job._containers_stopped = False
+            job.mark_containers_stopped(False)
             try:
                 p = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=job["grading"]["limits"]["outer-seconds"],
+                    timeout=payload["grading"]["limits"]["outer-seconds"],
                 )
-            except subprocess.TimeoutExpired as error:
-                cleanup = subprocess.run(
-                    ["docker", "rm", "--force", job.containerName],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if cleanup.returncode and "No such container" not in cleanup.stderr:
+            except (KeyboardInterrupt, subprocess.TimeoutExpired) as error:
+                message = "Outer Docker timeout" if isinstance(error, subprocess.TimeoutExpired) else "Docker run interrupted"
+                try:
+                    _remove_container(job.containerName)
+                except (JobError, OSError, subprocess.TimeoutExpired, KeyboardInterrupt) as cleanup_error:
+                    if isinstance(error, KeyboardInterrupt):
+                        raise error from cleanup_error
+                    if isinstance(cleanup_error, KeyboardInterrupt):
+                        raise
                     raise JobError(
-                        "Outer Docker timeout; container cleanup failed: "
-                        + cleanup.stderr
-                    ) from error
-                job._containers_stopped = True
-                raise JobError("Outer Docker timeout; container removed") from error
+                        message + "; container cleanup failed: " + str(cleanup_error)
+                    ) from cleanup_error
+                job.mark_containers_stopped(True)
+                if isinstance(error, KeyboardInterrupt):
+                    raise
+                raise JobError(message + "; container removed") from error
             if p.returncode not in (0, 2):
                 raise JobError("Docker infrastructure failure: " + p.stderr)
-            job._containers_stopped = True
-            result = json.loads(
+            job.mark_containers_stopped(True)
+            result = json_object(json.loads(
                 (job.root / "results/results.json").read_text(),
                 object_pairs_hook=_junit_result_helpers()["unique_json_object"],
-            )
+            ))
         else:
             raise JobError("Unknown backend")
     except (JobError, OSError, ValueError, subprocess.TimeoutExpired) as error:
@@ -678,25 +811,25 @@ def run_job(job, backend="host", registry=None):
                 "status": "failure",
                 "reason": "configuration",
             }
-        _validate_build_observation(
-            result,
-            job["grading"]["javaBuild"]["artifact"],
-        )
+        build = payload["grading"].get("javaBuild")
+        if build is None:
+            raise JobError("Native Java build policy required")
+        _validate_build_observation(result, build["artifact"])
     if (job.root / "public-verification").is_dir() and result.get(
         "infrastructure"
     ) == "complete":
         publicjob = GradingJob(job)
         publicjob.root = job.root / "public-verification"
-        publicjob._containers_stopped = True
+        publicjob.mark_containers_stopped(True)
         primary_stopped = getattr(job, "_containers_stopped", True)
-        job._containers_stopped = False
+        job.mark_containers_stopped(False)
         try:
             publicresult = run_job(publicjob, backend, registry)
         finally:
-            job._containers_stopped = primary_stopped and getattr(publicjob, "_containers_stopped", False)
+            job.mark_containers_stopped(primary_stopped and getattr(publicjob, "_containers_stopped", False))
         result["publicResult"] = {
             k: v
-            for k, v in publicresult.items()
+            for k, v in json_object(publicresult).items()
             if k
             not in {
                 "schemaVersion",
@@ -734,40 +867,55 @@ def run_job(job, backend="host", registry=None):
             }
     if any(key in result and result[key] != value for key, value in common.items()):
         raise JobError("Runtime result attempted to replace trusted job bindings")
-    value = {"schemaVersion": 1, "backend": backend, **common, **result}
-    validate("check-result", value)
+    value: object = {"schemaVersion": 1, "backend": backend, **common, **result}
+    if not _check_result(value):
+        raise JobError("Invalid runtime result")
     return value
 
 
-def cleanup_job(job, backend):
+def _tuple(value: object) -> TypeGuard[tuple[object, ...]]:
+    return isinstance(value, tuple)
+
+
+def _scratch_record(value: object) -> TypeGuard[tuple[Path, int, int, int, int, str | None]]:
+    return (_tuple(value) and len(value) == 6 and isinstance(value[0], Path)
+            and all(type(item) is int for item in value[1:5])
+            and (value[5] is None or isinstance(value[5], str)))
+
+
+def cleanup_job(job: object, backend: str) -> None:
     """Удалить scratch; вернуть владельца только после остановки всех контейнеров."""
-    prepared = getattr(job, "_scratch", None)
-    if not prepared or not getattr(job, "_containers_stopped", False):
+    prepared: object = getattr(job, "_scratch", None)
+    if not _scratch_record(prepared) or not getattr(job, "_containers_stopped", False):
         raise JobError("Scratch cleanup requires prepared root and stopped containers")
     root, device, inode, uid, gid, image = prepared
-    def check_root():
-        current = job.root.lstat()
+    def check_root() -> None:
+        job_root: object = getattr(job, "root", None)
+        if not isinstance(job_root, Path):
+            raise JobError("Scratch cleanup identity changed")
+        current = job_root.lstat()
         if (
-            job.root != root or stat.S_ISLNK(current.st_mode)
-            or not stat.S_ISDIR(current.st_mode) or job.root.resolve() != root
+            job_root != root or stat.S_ISLNK(current.st_mode)
+            or not stat.S_ISDIR(current.st_mode) or job_root.resolve() != root
             or (current.st_dev, current.st_ino, current.st_uid) != (device, inode, uid)
             or (os.getuid(), os.getgid()) != (uid, gid)
         ):
             raise JobError("Scratch cleanup identity changed")
     check_root()
     try:
-        shutil.rmtree(job.root)
+        shutil.rmtree(root)
         return
     except PermissionError:
         if backend != "container":
             raise
     check_root()
     if (
-        not image or job.get("imageDigest") != image
+        not image or not is_object(job) or job.get("imageDigest") != image
         or any(c in str(root) for c in ",\"\r\n")
     ):
         raise JobError("Scratch cleanup identity changed")
     cleanup_name = "plcleanup-" + secrets.token_hex(12)
+    setattr(job, "_containers_stopped", False)
     try:
         result = subprocess.run(
             ["docker", "run", "--rm", "--name", cleanup_name, "--network", "none", "--read-only",
@@ -776,36 +924,40 @@ def cleanup_job(job, backend):
              image, "-Rh", f"{uid}:{gid}", "/grade"],
             capture_output=True, text=True, timeout=10,
         )
-    except subprocess.TimeoutExpired as error:
+    except (KeyboardInterrupt, subprocess.TimeoutExpired) as error:
+        message = "Scratch ownership cleanup timed out" if isinstance(error, subprocess.TimeoutExpired) else "Scratch ownership cleanup interrupted"
         try:
-            cleanup = subprocess.run(
-                ["docker", "rm", "--force", cleanup_name],
-                capture_output=True, text=True, timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired) as cleanup_error:
+            _remove_container(cleanup_name)
+        except (JobError, OSError, subprocess.TimeoutExpired, KeyboardInterrupt) as cleanup_error:
+            if isinstance(error, KeyboardInterrupt):
+                raise error from cleanup_error
+            if isinstance(cleanup_error, KeyboardInterrupt):
+                raise
             raise JobError(
-                "Scratch ownership cleanup timed out; container cleanup failed: "
-                + str(cleanup_error)
+                message + "; container cleanup failed: " + str(cleanup_error)
             ) from cleanup_error
-        if cleanup.returncode and "No such container" not in cleanup.stderr:
-            raise JobError(
-                "Scratch ownership cleanup timed out; container cleanup failed: "
-                + cleanup.stderr
-            ) from error
-        raise JobError("Scratch ownership cleanup timed out; container removed") from error
+        setattr(job, "_containers_stopped", True)
+        if isinstance(error, KeyboardInterrupt):
+            raise
+        raise JobError(message + "; container removed") from error
     if result.returncode:
         raise JobError("Scratch ownership cleanup failed: " + result.stderr)
+    setattr(job, "_containers_stopped", True)
     check_root()
-    shutil.rmtree(job.root)
+    shutil.rmtree(root)
 
 
-def preserve_build_logs(job, output):
+def preserve_build_logs(job: object, output: str | Path) -> Path | None:
     """Keep private operator logs/summarys before check-course removes scratch."""
-    if job.get("runtime") != NATIVE_RUNTIME:
+    if not is_object(job) or job.get("runtime") != NATIVE_RUNTIME:
         return None
+    job_root: object = getattr(job, "root", None)
+    qualified_id, scenario = job.get("qualifiedId"), job.get("scenario")
+    if not isinstance(job_root, Path) or not isinstance(qualified_id, str) or not isinstance(scenario, str):
+        raise JobError("Prepared native build job identity required")
     areas = [
-        ("", job.root / ".native-build-private"),
-        ("public-verification", job.root / "public-verification/.native-build-private"),
+        ("", job_root / ".native-build-private"),
+        ("public-verification", job_root / "public-verification/.native-build-private"),
     ]
     present = [
         (label, path) for label, path in areas if path.exists() or path.is_symlink()
@@ -819,10 +971,10 @@ def preserve_build_logs(job, output):
     if not base.is_dir() or base.stat().st_mode & 0o077:
         raise JobError("Private build evidence destination is not private")
     destination = safe(
-        base, job["qualifiedId"] + "/" + job["scenario"].replace(":", "-")
+        base, qualified_id + "/" + scenario.replace(":", "-")
     )
     destination.mkdir(mode=0o700, parents=True)
-    files = []
+    files: list[str] = []
     for label, source in present:
         if source.is_symlink() or not source.is_dir():
             raise JobError("Unsafe private build evidence directory")
@@ -852,82 +1004,77 @@ def preserve_build_logs(job, output):
     return destination
 
 
-def _matches(result, expected):
-    keys = {
-        "student-compilation": "studentCompilation",
-        "classification": "classification",
-    }
-    for key, field in keys.items():
-        if key in expected and result.get(field) != expected[key]:
-            return False, key
-    if (
-        "job" in expected
-        and ("complete" if result.get("infrastructure") == "complete" else "failure")
-        != expected["job"]
-    ):
+def _count(counts: ResultCounts | None, key: Literal["executed", "failed", "skipped", "aborted"]) -> JSONInteger:
+    return counts[key] if counts is not None else 0
+
+
+def _range_matches(actual: float | None, minimum: float | None, exactly: float | None, below: float | None = None) -> bool:
+    return (actual is not None and (minimum is None or actual >= minimum)
+            and (exactly is None or actual == exactly) and (below is None or actual < below))
+
+
+def _matches(result: Outcome[ResultCounts], expected: Expectations) -> tuple[bool, str]:
+    if "student-compilation" in expected and result.get("studentCompilation") != expected["student-compilation"]:
+        return False, "student-compilation"
+    if "classification" in expected and result["classification"] != expected["classification"]:
+        return False, "classification"
+    if "job" in expected and ("complete" if result["infrastructure"] == "complete" else "failure") != expected["job"]:
         return False, "job"
-    c = result.get("counts", {})
-    if expected.get("required-tests") == "all-pass" and result.get("publicResult"):
-        public = result["publicResult"].get("counts", {})
-        if (
-            public.get("executed", 0) < 1
-            or public.get("failed", 0)
-            or public.get("skipped", 0)
-            or public.get("aborted", 0)
-        ):
+    counts = result.get("counts")
+    public = result.get("publicResult")
+    if expected.get("required-tests") == "all-pass" and public:
+        public_counts = public.get("counts")
+        if (_count(public_counts, "executed") < 1 or _count(public_counts, "failed")
+            or _count(public_counts, "skipped") or _count(public_counts, "aborted")):
             return False, "public-required-tests"
-    if (
-        expected.get("required-tests") == "all-pass"
-        and result.get("variants")
-        and result.get("classification") != "success"
-    ):
+    if expected.get("required-tests") == "all-pass" and result.get("variants") and result["classification"] != "success":
         return False, "mutation-contracts"
-    if (
-        expected.get("required-tests") == "all-pass"
-        and not result.get("variants")
-        and (
-            c.get("executed", 0) < 1
-            or c.get("failed", 0)
-            or c.get("skipped", 0)
-            or c.get("aborted", 0)
-        )
+    if expected.get("required-tests") == "all-pass" and not result.get("variants") and (
+        _count(counts, "executed") < 1 or _count(counts, "failed")
+        or _count(counts, "skipped") or _count(counts, "aborted")
     ):
         return False, "required-tests"
-    for name, actual in [
-        ("failed-tests", c.get("failed", 0)),
-        ("executed-tests", c.get("executed", 0)),
-        ("score", result.get("score")),
-    ]:
-        if name in expected:
-            if actual is None:
-                return False, name
-            for op, want in expected[name].items():
-                if (
-                    (op == "at-least" and actual < want)
-                    or (op == "exactly" and actual != want)
-                    or (op == "less-than" and actual >= want)
-                ):
-                    return False, name
-    if "test-ids" in expected and not set(expected["test-ids"]).issubset(
-        c.get("outcomes", {})
-    ):
+    for name in ("failed-tests", "executed-tests"):
+        bound = expected.get("failed-tests") if name == "failed-tests" else expected.get("executed-tests")
+        actual = _count(counts, "failed" if name == "failed-tests" else "executed")
+        if bound is not None and not _range_matches(actual, bound.get("at-least"), bound.get("exactly")):
+            return False, name
+    score = expected.get("score")
+    if score is not None and not _range_matches(result.get("score"), score.get("at-least"), score.get("exactly"), score.get("less-than")):
+        return False, "score"
+    outcomes: dict[str, str] = counts["outcomes"] if counts is not None else {}
+    if "test-ids" in expected and not set(expected["test-ids"]).issubset(outcomes):
         return False, "test-ids"
     return True, ""
 
 
+def _student_compilation(result: CheckResult) -> str:
+    if "studentCompilation" not in result:
+        raise KeyError("studentCompilation")
+    return result["studentCompilation"]
+
+
 def verify_results(
-    results, expectations, required_scenarios=None, unavailable=None, registry=None, expected_jobs=None
-):
+    results: Sequence[object], expectations: Mapping[str, Expectations],
+    required_scenarios: Sequence[Scenario] | None = None,
+    unavailable: Sequence[UnavailableReference] | None = None,
+    registry: object = None,
+    expected_jobs: Mapping[tuple[str, str], Mapping[str, object]] | None = None,
+) -> VerificationReceipt:
     if not results:
         raise JobError("No grading results")
-    first = results[0]
+    checked: list[CheckResult] = []
+    for value in results:
+        if not _check_result(value):
+            raise JobError("Invalid grading result")
+        checked.append(value)
+    first = checked[0]
     status = 0
-    checks = []
-    bindings = {}
-    runtimes = {}
-    observed = set()
-    for r in results:
-        validate("check-result", r)
+    checks: list[ExpectationResult] = []
+    bindings: dict[str, QuestionBinding] = {}
+    runtimes: dict[str, str | None] = {}
+    observed: set[tuple[str, str]] = set()
+    for r in checked:
         for k in (
             "scope",
             "backend",
@@ -952,10 +1099,12 @@ def verify_results(
             primary_build = _validate_build_observation(r)
             if "publicResult" in r:
                 public_build = _validate_build_observation(r["publicResult"])
+                primary_artifact, public_artifact = primary_build.get("artifact"), public_build.get("artifact")
                 if (primary_build["status"] == "success" and public_build["status"] == "success"
-                    and public_build["artifact"]["path"] != primary_build["artifact"]["path"]):
+                    and primary_artifact is not None and public_artifact is not None
+                    and public_artifact["path"] != primary_artifact["path"]):
                     raise JobError("Public build artifact differs from primary descriptor")
-        binding = {
+        binding: QuestionBinding = {
             "qualifiedId": q,
             "runtime": rid,
             "imageDigest": image,
@@ -963,7 +1112,7 @@ def verify_results(
         if q in bindings and bindings[q] != binding:
             raise JobError("Mixed runtime/image for one question")
         bindings[q] = binding
-        e = (
+        e: Expectations = (
             {
                 "student-compilation": "success",
                 "job": "complete",
@@ -985,7 +1134,7 @@ def verify_results(
             matched = False
             reason = "infrastructure"
         elif not matched or (
-            r["studentCompilation"] != "success"
+            _student_compilation(r) != "success"
             and not (
                 r["scenario"].startswith("contract:")
                 and e.get("student-compilation") == "failure"
@@ -1011,7 +1160,7 @@ def verify_results(
     unavailable = sorted(
         unavailable or [], key=lambda r: (r["qualifiedId"], r["scenario"])
     )
-    absent = set()
+    absent: set[tuple[str,str]] = set()
     for entry in unavailable:
         key = (entry["qualifiedId"], entry["scenario"])
         if (
@@ -1026,7 +1175,7 @@ def verify_results(
     if required and observed - set(expected):
         raise JobError("Undeclared scenario result")
     complete = bool(required) and observed | absent == set(expected)
-    summary = {
+    summary: VerificationReceipt = {
         "schemaVersion": 1,
         "toolVersion": TOOL_VERSION,
         "backend": first["backend"],
@@ -1041,27 +1190,21 @@ def verify_results(
         "runtimes": runtimes,
         "expectations": checks,
     }
-    native_builds = [
-        {
-            "qualifiedId": r["qualifiedId"],
-            "scenario": r["scenario"],
-            **r["buildEvidence"],
-            "outcome": {
-                key: r[key]
-                for key in (
-                    "classification",
-                    "infrastructure",
-                    "studentCompilation",
-                    "trustedCompilation",
-                    "apiPrecheck",
-                    "dependentExecution",
-                )
-                if key in r
-            },
-        }
-        for r in results
-        if r["runtime"] == NATIVE_RUNTIME
-    ]
+    native_builds: list[BuildReceipt] = []
+    for result in checked:
+        if result["runtime"] != NATIVE_RUNTIME:
+            continue
+        proof = _validate_build_observation(result)
+        stages: BuildStageFacts = {"classification": result["classification"], "infrastructure": result["infrastructure"]}
+        if "studentCompilation" in result:
+            stages["studentCompilation"] = result["studentCompilation"]
+        if "trustedCompilation" in result:
+            stages["trustedCompilation"] = result["trustedCompilation"]
+        if "apiPrecheck" in result:
+            stages["apiPrecheck"] = result["apiPrecheck"]
+        if "dependentExecution" in result:
+            stages["dependentExecution"] = result["dependentExecution"]
+        native_builds.append({**proof, "qualifiedId": result["qualifiedId"], "scenario": result["scenario"], "outcome": stages})
     if native_builds:
         summary["buildEvidence"] = sorted(
             native_builds, key=lambda r: (r["qualifiedId"], r["scenario"])

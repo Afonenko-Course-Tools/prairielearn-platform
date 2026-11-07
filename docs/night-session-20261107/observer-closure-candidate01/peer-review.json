@@ -1,0 +1,82 @@
+{
+  "status": "SOURCE_ACCEPTED_CONTROL_CANDIDATE_LIVE_HOLD",
+  "spec_verdict": "SOURCE_ACCEPTED",
+  "quality_verdict": "SOURCE_ACCEPTED",
+  "findings": [],
+  "scope": "Only two isExported predicates in observerClosure; source cause limited to diagnostic opening.",
+  "before": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/before/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "sha256": "c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e",
+    "bytes": 35589,
+    "mode": 420
+  },
+  "candidate": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/candidate/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "sha256": "e6c55db0a5abb064945dfa9319029689d032809ca655c99d20eb717e7e8eeb95",
+    "bytes": 35674,
+    "mode": 420
+  },
+  "live_at_review": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/repos/prairielearn-platform/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "sha256": "c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e",
+    "bytes": 35589,
+    "mode": 420
+  },
+  "manifest": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/manifest.json",
+    "sha256": "4d2fb0c3db2a55f1901e9110080a4bd42ddd403c3feb2293b3a10c7e4457e435",
+    "bytes": 9486,
+    "mode": 420
+  },
+  "diff": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/fix.diff",
+    "sha256": "4323110e8dc26eeae2b964658cab3e0651cb2069a0a4364a6d86b4cc6545566b",
+    "bytes": 1439,
+    "mode": 420
+  },
+  "source_report": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/source-report.md",
+    "sha256": "e431b536d086a58fcfd4d7249851d1ec0c7d4c9be9edbad0ca60bac1c2d565ed",
+    "bytes": 8532,
+    "mode": 420
+  },
+  "proposal": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/affected-subset.proposal.json",
+    "sha256": "6f1031e86663983a16d8187214cdad445bd259c5aab29b391a872b239757d6ed",
+    "bytes": 3554,
+    "mode": 420
+  },
+  "official_primary": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/jdk25-module-effective-export-primary.json",
+    "sha256": "1468ad893a846a64538920cf5bba9928364ba500b663d009aee409403191b835",
+    "bytes": 1327,
+    "mode": 420
+  },
+  "input_records_all_sha_bytes_modes_match": true,
+  "exact_diff_verified": true,
+  "anchor_once_preserved": true,
+  "causal_evidence_ru": [
+    "Actual capture01call10 diagnostic add-opens/internal=ALL-UNNAMED plus flagquota; returned445B exact observerClosure260/bootstrap66/main445 refusal. Bootstrap closure executes before parameter read/State/leaf.",
+    "Official JDK25 primary receipt states open-to-module counts exported at runtime. Thus first unconditional export predicate refuses accepted diagnostic opens; second unconditional predicate would likewise refuse unnamed viewer.",
+    "Candidate requires effectiveexport == same expectedInternalOpen used by effectiveopen. Production E=false: x!=false equivalent to old x. Foreign V!=unnamed: x!=(E&&false) equivalent to old x. Diagnostic Etrue+Vunnamed both expected true.",
+    "Descriptor exports/open/uses/provides/layer/requires and public package openness/selfviewer exclusion unchanged; E remains literalfalse, no env/property bypass or new opens."
+  ],
+  "known_direct_affected_compiler_units": [
+    "N4-platform-java-named-production-bootstrap",
+    "N4-platform-java-named-production-observer-strict",
+    "N4-platform-java-named-current-02",
+    "N4-platform-java-named-current-10"
+  ],
+  "reuse_other_units": "Only after independent N0 exact dependency/ABI/source/tool/output binding; no automatic reusePASS.",
+  "normal_failures": "NOT_EXPLAINED; normal capture02 required before N0 coherent apply decision. Existing startupnegative PASS already rules out blanket production bootstrap closure failure.",
+  "actual_candidate": "NOT_RUN",
+  "execution_preconditions": [
+    "N0 normal raw readback and explicit coherent applyGO/newfullmap.",
+    "Exact beforeSHA preservesWIP; live remainsold.",
+    "Affected4strict plus existing quota first covering runtime require separate finitebinding/caps; other4diagnostic jobs remain pending, not automatic extraqueue.",
+    "No source/runtime/image/privacy/composite200PASS fromcandidate alone."
+  ],
+  "admission": "peer-admission.json",
+  "checks_imports_JVM_network_executed": [],
+  "product_edits": []
+}

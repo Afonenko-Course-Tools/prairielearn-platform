@@ -20,34 +20,46 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course-prairielearn
-          ref: 324056b1218b3b69f1eb9f5a09dde510a442ad4b
+          ref: 8c1f03fb6f137320f1f7c43cab4122a18a9fa052
           path: .ci-deps/exporter
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course
-          ref: c62e6c877f769f33a9ffd6fe713811df75c794c6
+          ref: 8aba3b47df161c98645f3fc268adefc2e96ef8d3
           path: .ci-deps/core
           persist-credentials: false
       - name: Проверить закреплённый Core
         run: |
           git -C .ci-deps/core rev-parse HEAD
-          test "$(git -C .ci-deps/core rev-parse HEAD)" = "c62e6c877f769f33a9ffd6fe713811df75c794c6"
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "8aba3b47df161c98645f3fc268adefc2e96ef8d3"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-reference-catalog
+          ref: 0b62c6501d716a634e0d1e3fcc3d21e41142b5a1
+          path: .ci-deps/qrc
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-project-download
+          ref: a621ec302a701d7409616f47675d2df0afb87aca
+          path: .ci-deps/download
+          persist-credentials: false
       - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
         with:
           version: '1.11.5'
       - name: Карта типов фактического Core для synthetic fixtures
-        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json")
+        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json" ../qrc ../download)
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.7.14
       - name: Создать настоящие synthetic delivery4 packages вне Git
         run: |
-          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = 324056b1218b3b69f1eb9f5a09dde510a442ad4b
+          test "$(git -C .ci-deps/exporter rev-parse HEAD)" = 8c1f03fb6f137320f1f7c43cab4122a18a9fa052
           export PL_DELIVERY4_FIXTURES="$RUNNER_TEMP/delivery4-fixtures"
           mkdir "$PL_DELIVERY4_FIXTURES"
           (cd .ci-deps/exporter && deno test --no-config --no-lock --import-map "$RUNNER_TEMP/pl-native-imports.json" -A tests/native-answer.test.ts tests/delivery4-workspace.test.ts)
-          printf '%s\n' 324056b1218b3b69f1eb9f5a09dde510a442ad4b > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
+          printf '%s\n' 8c1f03fb6f137320f1f7c43cab4122a18a9fa052 > "$PL_DELIVERY4_FIXTURES/exporter-commit.txt"
           echo "PL_DELIVERY4_FIXTURES=$PL_DELIVERY4_FIXTURES" >> "$GITHUB_ENV"
       - name: Установить fish для проверки текстового runtime
         run: |

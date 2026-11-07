@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import base64
-from selected_job_fixture import native_manifest
+from selected_job_fixture import GradingJobs, fixture_list, fixture_record, fixture_run_job, fixture_set_up, native_manifest
 """Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -7,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import unittest
-import hashlib
 import importlib.util
 import shutil
 import test_grading_job as fixtures
@@ -17,10 +18,12 @@ METHOD = 'api.method("Student","answer",int.class,java.lang.reflect.Modifier.PUB
 
 
 class ApiPrecheckTests(unittest.TestCase):
-    run_job = fixtures.JUnitJob.run_job
+    job: Path
+    cfg: dict[str, object]
+    run_job = fixture_run_job(fixtures.JUnitJob.run_job)
 
-    def setUp(self):
-        fixtures.JUnitJob.setUp(self)
+    def setUp(self) -> None:
+        fixture_set_up(fixtures.JUnitJob.setUp)(self)
         self.cfg["testFiles"] = ["ApiContract.java", "AnswerTest.java"]
         self.cfg["apiPrecheck"] = {
             "files": ["ApiContract.java"],
@@ -28,14 +31,14 @@ class ApiPrecheckTests(unittest.TestCase):
         }
         self.check(METHOD)
 
-    def check(self, body):
+    def check(self, body: str) -> None:
         (self.job / "tests/ApiContract.java").write_text(
             "import org.prairielearn.api.PlatformApiPrecheck; public class ApiContract {public static void check(PlatformApiPrecheck.Api api) throws Exception {"
             + body
             + "}}"
         )
 
-    def mismatch(self, source):
+    def mismatch(self, source: str) -> dict[str, object]:
         (self.job / "student/Student.java").write_text(source)
         r = self.run_job()
         self.assertEqual(r["classification"], "student-api-mismatch", r)
@@ -46,12 +49,12 @@ class ApiPrecheckTests(unittest.TestCase):
         self.assertEqual(r["infrastructure"], "complete")
         self.assertTrue(r["gradable"])
         self.assertEqual(r["score"], 0)
-        self.assertTrue(r["apiDiagnostic"]["expected"])
-        self.assertTrue(r["apiDiagnostic"]["observed"])
-        self.assertNotIn("trustedCompilation", r["durations"])
+        self.assertTrue(fixture_record(r["apiDiagnostic"])["expected"])
+        self.assertTrue(fixture_record(r["apiDiagnostic"])["observed"])
+        self.assertNotIn("trustedCompilation", fixture_record(r["durations"]))
         return r
 
-    def test_missing_class_method_access_static_and_return_stop_dependent_compile(self):
+    def test_missing_class_method_access_static_and_return_stop_dependent_compile(self) -> None:
         for source in [
             "class Other {}",
             "public class Student {}",
@@ -62,7 +65,7 @@ class ApiPrecheckTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.mismatch(source)
 
-    def test_correct_api_then_wrong_behavior_is_behavior_failure(self):
+    def test_correct_api_then_wrong_behavior_is_behavior_failure(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){return 0;}}"
         )
@@ -70,13 +73,13 @@ class ApiPrecheckTests(unittest.TestCase):
         self.assertEqual(r["classification"], "behavior-failure")
         self.assertEqual(r["apiPrecheck"], "success")
 
-    def test_correct_api_runs_original_junit(self):
+    def test_correct_api_runs_original_junit(self) -> None:
         r = self.run_job()
         self.assertEqual(r["score"], 1)
         self.assertEqual(r["apiPrecheck"], "success")
 
-    def test_inherited_public_method_is_valid_for_ordinary_client(self):
-        self.cfg["sourceFiles"].append("Base.java")
+    def test_inherited_public_method_is_valid_for_ordinary_client(self) -> None:
+        fixture_list(self.cfg["sourceFiles"]).append("Base.java")
         (self.job / "student/Base.java").write_text(
             "public class Base {public static int answer(){return 42;}}"
         )
@@ -87,8 +90,8 @@ class ApiPrecheckTests(unittest.TestCase):
         self.assertEqual(r["classification"], "success")
         self.assertEqual(r["apiPrecheck"], "success")
 
-    def test_declared_here_is_a_separate_explicit_contract_check(self):
-        self.cfg["sourceFiles"].append("Base.java")
+    def test_declared_here_is_a_separate_explicit_contract_check(self) -> None:
+        fixture_list(self.cfg["sourceFiles"]).append("Base.java")
         (self.job / "student/Base.java").write_text(
             "public class Base {public static int answer(){return 42;}}"
         )
@@ -98,23 +101,23 @@ class ApiPrecheckTests(unittest.TestCase):
             + 'api.expect(method.getDeclaringClass()==api.type("Student"),"объявление в Student",method.getDeclaringClass().getName());'
         )
         r = self.mismatch("public class Student extends Base {}")
-        self.assertEqual(r["apiDiagnostic"]["expected"], "объявление в Student")
+        self.assertEqual(fixture_record(r["apiDiagnostic"])["expected"], "объявление в Student")
 
-    def test_malformed_student_never_compiles_precheck(self):
+    def test_malformed_student_never_compiles_precheck(self) -> None:
         (self.job / "student/Student.java").write_text("not Java")
         (self.job / "tests/ApiContract.java").write_text("also not Java")
         r = self.run_job()
         self.assertEqual(r["classification"], "student-compilation-failure")
         self.assertEqual(r["apiPrecheck"], "not-run")
 
-    def test_trusted_precheck_cannot_statically_reference_student(self):
+    def test_trusted_precheck_cannot_statically_reference_student(self) -> None:
         self.check("Student.answer();")
         with self.assertRaisesRegex(
             grader.GraderError, "API precheck compilation failed"
         ):
             self.run_job()
 
-    def test_trusted_test_defect_after_precheck_stays_infrastructure(self):
+    def test_trusted_test_defect_after_precheck_stays_infrastructure(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("broken trusted Java")
         result = self.run_job()
         self.assertEqual(result["classification"], "infrastructure-failure")
@@ -129,9 +132,9 @@ class ApiPrecheckTests(unittest.TestCase):
             ),
             ("success", "failure", "not-run"),
         )
-        self.assertIn("apiExecution", result["durations"])
+        self.assertIn("apiExecution", fixture_record(result["durations"]))
 
-    def test_metadata_does_not_initialize_student(self):
+    def test_metadata_does_not_initialize_student(self) -> None:
         self.check(
             METHOD
             + 'api.expect(System.getProperty("api.probe.initialized")==null,"без инициализации","инициализирован");'
@@ -141,7 +144,7 @@ class ApiPrecheckTests(unittest.TestCase):
         )
         self.assertEqual(self.run_job()["score"], 1)
 
-    def test_typed_positive_client_rejects_extra_checked_throws(self):
+    def test_typed_positive_client_rejects_extra_checked_throws(self) -> None:
         self.check(
             METHOD
             + 'api.compiles("Client","class Client {int call(){return Student.answer();}}",true);'
@@ -150,7 +153,7 @@ class ApiPrecheckTests(unittest.TestCase):
             "public class Student {public static int answer() throws java.io.IOException {return 42;}}"
         )
 
-    def test_typed_generic_client_detects_erased_return_mismatch(self):
+    def test_typed_generic_client_detects_erased_return_mismatch(self) -> None:
         self.check(
             'api.method("Student","names",java.util.List.class,9,0);api.compiles("Client","class Client {java.util.List<String> values=Student.names();}",true);'
         )
@@ -158,26 +161,26 @@ class ApiPrecheckTests(unittest.TestCase):
             "public class Student {public static java.util.List<Object> names(){return java.util.List.of();}}"
         )
 
-    def test_positive_and_negative_clients_before_behavior(self):
+    def test_positive_and_negative_clients_before_behavior(self) -> None:
         self.check(
             METHOD
             + 'api.compiles("Good","class Good {int value=Student.answer();}",true);api.compiles("Bad","class Bad {String value=Student.answer();}",false);'
         )
         self.assertEqual(self.run_job()["score"], 1)
 
-    def test_precheck_timeout_is_infrastructure(self):
-        self.cfg["limits"]["run-seconds"] = 0.5
+    def test_precheck_timeout_is_infrastructure(self) -> None:
+        fixture_record(self.cfg["limits"])["run-seconds"] = 0.5
         self.check("while(true){}")
         with self.assertRaisesRegex(grader.GraderError, "API precheck.*timeout"):
             self.run_job()
 
-    def test_precheck_output_overflow_is_infrastructure(self):
-        self.cfg["limits"]["max-output-bytes"] = 1024
+    def test_precheck_output_overflow_is_infrastructure(self) -> None:
+        fixture_record(self.cfg["limits"])["max-output-bytes"] = 1024
         self.check('while(true){System.out.println("x".repeat(1024));}')
         with self.assertRaisesRegex(grader.GraderError, "API precheck.*output_limit"):
             self.run_job()
 
-    def test_invalid_precheck_subset_and_paths_fail_closed(self):
+    def test_invalid_precheck_subset_and_paths_fail_closed(self) -> None:
         for config in [
             {"files": ["Missing.java"], "entry": "ApiContract"},
             {"files": ["../ApiContract.java"], "entry": "ApiContract"},
@@ -195,7 +198,7 @@ class ApiPrecheckTests(unittest.TestCase):
     "Set PL_API_TEST_IMAGE to the local API candidate",
 )
 class ApiContainerTests(ApiPrecheckTests):
-    def run_job(self):
+    def run_job(self) -> dict[str, object]:
         import subprocess
 
         (self.job / "tests/grading-job.json").write_text(json.dumps(self.cfg))
@@ -221,7 +224,7 @@ class ApiContainerTests(ApiPrecheckTests):
             text=True,
             timeout=45,
         )
-        r = json.loads((self.job / "results/results.json").read_text())
+        r = fixture_record(json.loads((self.job / "results/results.json").read_text()))
         if r.get("infrastructure") == "failure":
             self.assertEqual(p.returncode, 2, p.stderr)
             if (
@@ -237,7 +240,7 @@ class ApiContainerTests(ApiPrecheckTests):
         self.assertEqual(p.returncode, 0, p.stderr)
         return r
 
-    def test_precheck_official_sandbox_cannot_read_proc_or_write_trusted(self):
+    def test_precheck_official_sandbox_cannot_read_proc_or_write_trusted(self) -> None:
         self.check(
             METHOD
             + """try{java.nio.file.Files.readString(java.nio.file.Path.of("/proc/self/maps"));throw new AssertionError("proc readable");}catch(java.nio.file.AccessDeniedException expected){}
@@ -249,13 +252,17 @@ class ApiContainerTests(ApiPrecheckTests):
 
 
 class ApiDeliveryTests(unittest.TestCase):
-    def test_api_precheck_cannot_be_declared_on_fish(self):
+    def test_api_precheck_cannot_be_declared_on_fish(self) -> None:
         root = Path(__file__).parents[1]
         spec = importlib.util.spec_from_file_location(
             "api_jobs", root / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
+        if not isinstance(m, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         with self.assertRaises(m.JobError):
             m.validate_profile(
                 {
@@ -264,21 +271,25 @@ class ApiDeliveryTests(unittest.TestCase):
                 }
             )
 
-    def test_result_cannot_claim_success_with_failed_api_stage(self):
+    def test_result_cannot_claim_success_with_failed_api_stage(self) -> None:
         import test_review_receipts as review
 
         root = Path(__file__).parents[1]
         spec = importlib.util.spec_from_file_location(
             "api_jobs", root / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
+        if not isinstance(m, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         value = review.result()
         value["apiPrecheck"] = "failure"
         with self.assertRaises(m.JobError):
             m.validate("check-result", value)
 
-    def test_prepare_maps_private_public_prechecks_and_validates_mismatch_result(self):
+    def test_prepare_maps_private_public_prechecks_and_validates_mismatch_result(self) -> None:
         import tempfile
         import sys
         from unittest.mock import patch
@@ -287,8 +298,12 @@ class ApiDeliveryTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location(
             "api_jobs", root / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
+        if not isinstance(m, GradingJobs):
+            raise AssertionError("Контракт grading_job недоступен")
         # Загруженный по пути tool получает тот же sibling search path, что и CLI.
         with patch.object(sys, "path", [str(root / "tools"), *sys.path]), tempfile.TemporaryDirectory() as directory:
             snapshot = Path(directory)
@@ -305,12 +320,12 @@ class ApiDeliveryTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(source)
 
-            def s(name, target):
+            def s(name: str, target: str) -> dict[str, str]:
                 return {
                     "name":target,"target":name,"data":base64.b64encode((p/name).read_bytes()).decode(),
                 }
 
-            fact = {
+            fact: dict[str, object] = {
                 "qualifiedId": "demo/exr-api",
                 "projectRoot": "p",
                 "check": {
@@ -345,20 +360,20 @@ class ApiDeliveryTests(unittest.TestCase):
             )
             try:
                 self.assertEqual(
-                    job["grading"]["apiPrecheck"],
+                    fixture_record(job["grading"])["apiPrecheck"],
                     {"files": ["ApiContract.java"], "entry": "ApiContract"},
                 )
-                public = json.loads(
+                public = fixture_record(json.loads(
                     (
                         job.root / "public-verification/tests/grading-job.json"
                     ).read_text()
-                )
+                ))
                 self.assertEqual(
                     public["apiPrecheck"],
                     {"files": ["public/PublicApi.java"], "entry": "PublicApi"},
                 )
                 saved_public = fact.pop("verificationApiPrecheck")
-                saved_declaration = fact["check"].pop("verification-api-precheck")
+                saved_declaration = fixture_record(fact["check"]).pop("verification-api-precheck")
                 try:
                     with self.assertRaises(m.JobError):
                         omitted = m.prepare_job(
@@ -371,12 +386,12 @@ class ApiDeliveryTests(unittest.TestCase):
                         shutil.rmtree(omitted.root)
                 finally:
                     fact["verificationApiPrecheck"] = saved_public
-                    fact["check"]["verification-api-precheck"] = saved_declaration
-                result = m.run_job(job, "host", registry=unit_registry())
+                    fixture_record(fact["check"])["verification-api-precheck"] = saved_declaration
+                result = fixture_record(m.run_job(job, "host", registry=unit_registry()))
                 self.assertEqual(result["classification"], "student-api-mismatch")
                 m.validate("check-result", result)
                 self.assertEqual(
-                    result["publicResult"]["classification"], "student-api-mismatch"
+                    fixture_record(result["publicResult"])["classification"], "student-api-mismatch"
                 )
                 wrong = {**result, "score": 1}
                 with self.assertRaises(m.JobError):
@@ -407,8 +422,8 @@ class ApiDeliveryTests(unittest.TestCase):
                             "submission": {"mode": "upload"},
                             "sourceRoot": fact["projectRoot"],
                             "projectCheck": "unit-api",
-                            "runtime": fact["check"]["runtime"],
-                            "sources": [{"projectRelativePath":r["target"],"submissionRelativePath":r["name"]} for r in fact["sources"]],
+                            "runtime": fixture_record(fact["check"])["runtime"],
+                            "sources": [{"projectRelativePath":r["target"],"submissionRelativePath":r["name"]} for row in fixture_list(fact["sources"]) for r in [fixture_record(row)]],
                         }
                     },
                     "questions": ["demo/exr-api"],
@@ -426,14 +441,14 @@ class ApiDeliveryTests(unittest.TestCase):
                 )
                 try:
                     self.assertEqual(
-                        delivered["grading"]["apiPrecheck"],
+                        fixture_record(delivered["grading"])["apiPrecheck"],
                         {"files": ["ApiContract.java"], "entry": "ApiContract"},
                     )
                 finally:
                     shutil.rmtree(delivered.root)
                 cfg = question / "tests/grading-job.json"
-                bad = json.loads(cfg.read_text())
-                bad["apiPrecheck"]["entry"] = "Wrong"
+                bad = fixture_record(json.loads(cfg.read_text()))
+                fixture_record(bad["apiPrecheck"])["entry"] = "Wrong"
                 cfg.write_text(json.dumps(bad))
                 with self.assertRaises(m.JobError):
                     m.prepare_job(
@@ -447,7 +462,7 @@ class ApiDeliveryTests(unittest.TestCase):
                     )
             finally:
                 shutil.rmtree(job.root)
-            fact["apiPrecheck"]["files"] = ["public/PublicApi.java"]
+            fixture_record(fact["apiPrecheck"])["files"] = ["public/PublicApi.java"]
             with self.assertRaises(m.JobError):
                 m.prepare_job(
                     manifest,
@@ -456,7 +471,7 @@ class ApiDeliveryTests(unittest.TestCase):
                     "starter",
                     registry=unit_registry(),
                 )
-            fact["apiPrecheck"]["files"] = ["ApiContract.java"]
+            fixture_record(fact["apiPrecheck"])["files"] = ["ApiContract.java"]
             (p / "tests/ApiContract.java").write_text("tampered")
             retained=m.prepare_job(manifest,snapshot,"demo/exr-api","starter",registry=unit_registry())
             try:self.assertNotEqual((retained.root/"tests/ApiContract.java").read_text(),"tampered")

@@ -15,15 +15,15 @@ ENV = {**os.environ, 'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null
        'GIT_AUTHOR_EMAIL': 'fixture@example.invalid', 'GIT_COMMITTER_NAME': 'Fixture',
        'GIT_COMMITTER_EMAIL': 'fixture@example.invalid'}
 
-def git(root, *args):
+def git(root: Path, *args: str) -> str:
     return subprocess.check_output(['git', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', *args], cwd=root, env=ENV, text=True).strip()
 
-def inventory(root):
+def inventory(root: Path) -> dict[str, str]:
     return {str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in root.rglob('*') if p.is_file()}
 
 class Lifecycle(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix='sp-workspace-')
         self.root = Path(self.temp.name)
         self.home = self.root/'home'
@@ -40,14 +40,14 @@ class Lifecycle(unittest.TestCase):
         self.a = git(self.work, 'rev-parse', 'HEAD')
         self.package()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def package(self):
+    def package(self) -> None:
         seed = self.home/'.pl-seed'
         seed.mkdir(exist_ok=True)
         archive = seed/'starter.zip'
-        files = []
+        files: list[str] = []
         with zipfile.ZipFile(archive, 'w') as z:
             for p in sorted(self.student.rglob('*')):
                 if p.is_file():
@@ -56,15 +56,15 @@ class Lifecycle(unittest.TestCase):
                     files.append(name)
         (seed/'manifest.json').write_text(json.dumps({'schema':'pl-git-workspace-seed-v1','files':files}))
 
-    def boot(self):
+    def boot(self) -> subprocess.CompletedProcess[str]:
         return subprocess.run(['bash',str(ENTRYPOINT),'true'],cwd=self.home,env=ENV,text=True,capture_output=True)
 
-    def ready(self):
+    def ready(self) -> Path:
         result = self.boot()
         self.assertEqual(result.returncode,0,result.stderr)
         return self.home/'work'
 
-    def test_seed_contains_only_A_and_restart_preserves_split_index(self):
+    def test_seed_contains_only_A_and_restart_preserves_split_index(self) -> None:
         # Без bootstrap нет seed; без guard restart теряет staged/unstaged расклад.
         work = self.ready()
         self.assertEqual(git(work,'rev-parse','HEAD'),self.a)
@@ -97,7 +97,7 @@ class Lifecycle(unittest.TestCase):
         identity = json.loads((self.home/'.pl-seed/identity.json').read_text())
         self.assertEqual(identity['seedCommit'],self.a)
 
-    def test_existing_unidentified_work_is_never_overwritten(self):
+    def test_existing_unidentified_work_is_never_overwritten(self) -> None:
         work=self.home/'work'
         work.mkdir()
         (work/'notes.txt').write_text('уже существующая работа\n')
@@ -105,7 +105,7 @@ class Lifecycle(unittest.TestCase):
         self.assertNotEqual(self.boot().returncode,0)
         self.assertEqual(inventory(self.home),before)
 
-    def test_changed_seed_does_not_fence_resume_or_change_answer(self):
+    def test_changed_seed_does_not_fence_resume_or_change_answer(self) -> None:
         work=self.ready()
         (work/'notes.txt').write_text('не терять\n')
         (self.work/'notes.txt').write_text('другая заготовка\n')
@@ -114,7 +114,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.boot().returncode,0)
         self.assertEqual(inventory(self.home),before)
 
-    def test_identity_without_work_never_reseeds(self):
+    def test_identity_without_work_never_reseeds(self) -> None:
         self.ready()
         shutil.rmtree(self.home/'work')
         before=inventory(self.home)
@@ -122,7 +122,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(inventory(self.home),before)
         self.assertFalse((self.home/'work').exists())
 
-    def test_invalid_archive_cannot_write_outside_home(self):
+    def test_invalid_archive_cannot_write_outside_home(self) -> None:
         archive=self.home/'.pl-seed/starter.zip'
         with zipfile.ZipFile(archive,'a') as z:
             z.writestr('../escape','не извлекать')
@@ -132,7 +132,7 @@ class Lifecycle(unittest.TestCase):
         self.assertFalse((self.root/'escape').exists())
         self.assertFalse((self.home/'work').exists())
 
-    def test_unreachable_solution_commit_is_not_a_seed(self):
+    def test_unreachable_solution_commit_is_not_a_seed(self) -> None:
         (self.work/'README.md').write_text('Название: проект измерений.\n')
         git(self.work,'add','README.md')
         git(self.work,'commit','-m','B, отсутствующий в refs')
@@ -145,7 +145,7 @@ class Lifecycle(unittest.TestCase):
         self.assertNotEqual(self.boot().returncode,0)
         self.assertFalse((self.home/'work').exists())
 
-    def test_unreachable_answer_blob_is_not_a_seed(self):
+    def test_unreachable_answer_blob_is_not_a_seed(self) -> None:
         answer=self.root/'answer.txt'
         answer.write_text('Название: проект измерений.\n')
         hidden_blob=git(self.work,'hash-object','-w',str(answer))
@@ -155,7 +155,7 @@ class Lifecycle(unittest.TestCase):
         self.assertNotEqual(self.boot().returncode,0)
         self.assertFalse((self.home/'work').exists())
 
-    def test_packed_unreachable_answer_blob_is_not_a_seed(self):
+    def test_packed_unreachable_answer_blob_is_not_a_seed(self) -> None:
         answer=self.root/'answer.txt'
         answer.write_text('Название: проект измерений.\n')
         hidden_blob=git(self.work,'hash-object','-w',str(answer))
@@ -169,7 +169,7 @@ class Lifecycle(unittest.TestCase):
         self.assertNotEqual(self.boot().returncode,0)
         self.assertFalse((self.home/'work').exists())
 
-    def test_restart_preserves_unreachable_student_objects(self):
+    def test_restart_preserves_unreachable_student_objects(self) -> None:
         work=self.ready()
         answer=self.root/'answer.txt'
         answer.write_text('Личная промежуточная запись студента.\n')
@@ -179,7 +179,7 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(inventory(self.home),before)
         self.assertEqual(git(work,'cat-file','blob',object_id),'Личная промежуточная запись студента.')
 
-    def test_solution_history_is_not_a_seed(self):
+    def test_solution_history_is_not_a_seed(self) -> None:
         (self.work/'README.md').write_text('Название: проект измерений.\n')
         git(self.work,'add','README.md')
         git(self.work,'commit','-m','B уже готов')

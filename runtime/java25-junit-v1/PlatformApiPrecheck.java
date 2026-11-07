@@ -7,11 +7,13 @@ import java.nio.file.*;
 import java.util.*;
 import javax.tools.*;
 import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import org.json.simple.parser.JSONParser;
 
 /** Узкая граница опубликованного Java API; условия и клиенты задаёт курс. */
 public final class PlatformApiPrecheck {
     public static final class Mismatch extends Exception {
+        private static final long serialVersionUID = 1L;
         public final String expected, observed;
         Mismatch(String expected, String observed) {
             super("Ожидалось: " + expected + ". Обнаружено: " + observed);
@@ -101,16 +103,15 @@ public final class PlatformApiPrecheck {
                 expect(actual == expected, "клиент " + name + (expected ? " компилируется" : " отклоняется компилятором"), observed);
             }
         }
-        @Override public void close() throws Exception { loader.close(); }
+        @Override public void close() throws java.io.IOException { loader.close(); }
     }
 
-    @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         Path parameters = Path.of(args[0]);
         JSONObject cfg;
         try (Reader reader = Files.newBufferedReader(parameters)) { cfg = (JSONObject)new JSONParser().parse(reader); }
         Files.delete(parameters);
-        JSONObject result = new JSONObject(); result.put("signature", cfg.get("signature"));
+        Map<String, Object> result = new HashMap<>();
         try (Api api = new Api(Path.of((String)cfg.get("classes")), Path.of((String)cfg.get("scratch")))) {
             Method entry = Class.forName((String)cfg.get("entry")).getMethod("check", Api.class);
             if (!Modifier.isStatic(entry.getModifiers()) || entry.getReturnType() != void.class) throw new IllegalStateException("Precheck requires public static void check(Api)");
@@ -122,6 +123,6 @@ public final class PlatformApiPrecheck {
         } catch (Throwable e) {
             result.put("status", "infrastructure"); result.put("message", e.toString());
         }
-        Files.writeString(Path.of((String)cfg.get("result_file")), result.toJSONString());
+        Files.writeString(Path.of((String)cfg.get("result_file")), JSONValue.toJSONString(result));
     }
 }

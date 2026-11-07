@@ -1,7 +1,6 @@
 """Exercise exact Git transport and checkout over a temporary verified HTTPS server."""
 from gradle_unit_fixtures import registry as unit_registry
 import functools
-import hashlib
 import http.server
 import importlib.util
 import json
@@ -19,13 +18,15 @@ SCRIPT=Path(__file__).resolve().parents[1]/'tools/stage_courses.py'
 class CourseStorageTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue(SCRIPT.is_file(),'Course storage is not implemented')
-        spec=importlib.util.spec_from_file_location('storage',SCRIPT);self.module=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.module)
+        spec=importlib.util.spec_from_file_location('storage',SCRIPT)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
+        self.module=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.module)
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.repo=self.root/'native.git';self.repo.mkdir()
-        def git(*args):return subprocess.run(['git',*args],cwd=self.repo,check=True,capture_output=True,text=True).stdout.strip()
+        def git(*args: str) -> str:return subprocess.run(['git',*args],cwd=self.repo,check=True,capture_output=True,text=True).stdout.strip()
         self.git=git;git('init','-q');git('config','user.name','Synthetic');git('config','user.email','synthetic@example.test')
         (self.repo/'infoCourse.json').write_text(json.dumps({'uuid':'4174cd08-ddff-4006-81cc-d7a6b67d3ee0','name':'SYN','title':'Synthetic','timezone':'Europe/Minsk','topics':[{'name':'fixture','color':'gray1','description':'Synthetic'}]}))
-        from grading_job import load_runtime_registry
         self.registry=unit_registry()
         for profile in self.registry['profiles'].values():profile['image']='synthetic@sha256:'+'a'*64
         self.update_provenance()
@@ -33,7 +34,7 @@ class CourseStorageTests(unittest.TestCase):
         cert=self.root/'cert.pem';key=self.root/'key.pem'
         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1','-keyout',str(key),'-out',str(cert),'-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1'],check=True,capture_output=True)
         class Quiet(http.server.SimpleHTTPRequestHandler):
-            def log_message(self,*args):pass
+            def log_message(self,format: str,*args: object) -> None:pass
         self.server=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(Quiet,directory=str(self.root)))
         ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);ctx.load_cert_chain(cert,key);self.server.socket=ctx.wrap_socket(self.server.socket,server_side=True)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start();self.addCleanup(self.stop)
@@ -49,7 +50,7 @@ class CourseStorageTests(unittest.TestCase):
             (self.repo/'infoCourse.json').write_bytes(info)
             (self.repo/'delivery.json').write_text(json.dumps(helper.d))
         finally:helper.doCleanups()
-    def rename_course(self,name):
+    def rename_course(self,name: str) -> None:
         p=self.repo/'infoCourse.json';value=json.loads(p.read_text());value['name']=name;p.write_text(json.dumps(value))
     def stop(self):self.server.shutdown();self.server.server_close();self.thread.join()
     def stage(self):return self.module.stage_course(self.course,self.storage)

@@ -1,0 +1,13 @@
+{
+  "include": ["tools", "runtime", "images", "tests", "experiments"],
+  "exclude": ["tests/fixtures", "runtime/java25-junit-v1/upstream"],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["tools", "tests", "tests/sp-git-workspace", "runtime"]
+    }
+  ]
+}

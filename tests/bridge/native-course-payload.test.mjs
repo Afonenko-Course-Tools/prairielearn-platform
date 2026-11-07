@@ -7,7 +7,8 @@ import {join} from 'node:path';
 const modulePath=new URL('../../tools/native-course-payload.mjs',import.meta.url);
 test('verified native payload reader exists',()=>assert.ok(existsSync(modulePath),'Bootstrap payload validation is missing'));
 if(existsSync(modulePath)) {
- const {readNativeCoursePayload}=await import(modulePath.href);
+ const {readNativeCoursePayload}=await import('../../tools/native-course-payload.mjs');
+ /** @param {(path:string,root:string)=>Promise<void>} run @param {boolean} [candidate] @param {Record<string,unknown>} [submission] */
  async function fixture(run,candidate=false,submission={mode:'upload'}) {
   const root=await mkdtemp(join(tmpdir(),'native-bootstrap-'));
   const info='{"name":"SYN","title":"Synthetic","timezone":"Europe/Minsk"}';
@@ -19,15 +20,16 @@ if(existsSync(modulePath)) {
   try{await run(path,root);}finally{await rm(root,{recursive:true,force:true});}
  }
  test('native payload reader loads current metadata',()=>fixture(async path=>{
-  const result=await readNativeCoursePayload(path);assert.equal(result.info.name,'SYN');assert.equal(result.delivery.schemaVersion,5);
+  const result=await readNativeCoursePayload(path);assert.equal(/** @type {Record<string,unknown>} */(result.info).name,'SYN');assert.equal(result.delivery.schemaVersion,5);
  }));
  test('читатель принимает проект с ручной проверкой из редактора',()=>fixture(async path=>{
   const result=await readNativeCoursePayload(path);
-  assert.deepEqual(result.delivery.gradingPayloads['demo/exr-a'].submission,{mode:'editor',aceMode:'ace/mode/java'});
+  const binding=result.delivery.gradingPayloads['demo/exr-a'];assert.ok('submission' in binding);
+  assert.deepEqual(binding.submission,{mode:'editor',aceMode:'ace/mode/java'});
   assert.equal(result.delivery.gradingPayloads['demo/exr-a'].grading.method,'manual');
  },false,{mode:'editor',aceMode:'ace/mode/java'}));
  test('reader observes changed native metadata bytes',()=>fixture(async path=>{
-  await writeFile(join(path,'infoCourse.json'),'{"name":"UPDATED"}');assert.equal((await readNativeCoursePayload(path)).info.name,'UPDATED');
+  await writeFile(join(path,'infoCourse.json'),'{"name":"UPDATED"}');assert.equal(/** @type {Record<string,unknown>} */((await readNativeCoursePayload(path)).info).name,'UPDATED');
  }));
  test('symlinked metadata and root reject before bootstrap',()=>fixture(async(path,root)=>{
   await rm(join(path,'infoCourse.json'));await writeFile(join(root,'foreign.json'),'{}');await symlink(join(root,'foreign.json'),join(path,'infoCourse.json'));

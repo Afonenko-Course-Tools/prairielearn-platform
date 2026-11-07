@@ -1,17 +1,22 @@
 """Один допустимый состав из отдельных файлов или ZIP, без расширения fixed API."""
 import unittest
+from collections.abc import Iterable
+from pathlib import Path
+from selected_job_fixture import fixture_record, fixture_run_job, fixture_set_up
 import test_additional_java_sources as helpers
 import test_grading_job as fixtures
 
 
 class UploadedJavaSources(unittest.TestCase):
-    setUp = fixtures.JUnitJob.setUp
-    run_job = fixtures.JUnitJob.run_job
+    job: Path
+    cfg: dict[str, object]
+    setUp = fixture_set_up(fixtures.JUnitJob.setUp)
+    run_job = fixture_run_job(fixtures.JUnitJob.run_job)
 
-    def policy(self, **changes):
+    def policy(self, **changes: object) -> None:
         self.cfg['additionalJavaSources'] = {**helpers.POLICY, **changes}
 
-    def zip(self, entries):
+    def zip(self, entries: Iterable[helpers.ZipEntry]) -> None:
         (self.job/'student/additional-sources.zip').write_bytes(helpers.archive(entries))
 
     def test_free_primary_accepts_arbitrary_flat_java_filename(self):
@@ -71,13 +76,13 @@ class UploadedJavaSources(unittest.TestCase):
                 self.assertEqual(value['classification'], 'success', value)
                 self.assertEqual(value['score'], 1)
 
-    def test_declared_zip_members_do_not_expand_the_extra_evidence_bound(self):
+    def test_declared_zip_member_runs_with_no_additional_file_count(self):
         self.policy(primaryRequired=True, allowAdditional=False, maxFiles=1)
         (self.job/'student/Student.java').unlink()
         self.zip([('Student.java', 'public class Student {public static int answer(){return 42;}}')])
-        members, evidence = fixtures.grader._additional_inventory(self.job, self.cfg)
-        self.assertEqual([name for name, _ in members], ['Student.java'])
-        self.assertEqual(evidence['files'], [])
+        result = self.run_job()
+        self.assertEqual(result['score'], 1)
+        self.assertEqual(fixture_record(result['additionalSources'])['files'], [])
 
     def test_flat_and_archive_duplicate_is_rejected_before_execution(self):
         self.policy(primaryRequired=False)

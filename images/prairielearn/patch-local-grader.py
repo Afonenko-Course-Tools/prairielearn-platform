@@ -4,7 +4,7 @@ import re
 import sys
 
 
-def patch(source):
+def patch(source: str) -> str:
     markers = [
         '(async () => {', '})()',
         'Memory: (1 << 30) * 2', 'MemorySwap: (1 << 30) * 2',

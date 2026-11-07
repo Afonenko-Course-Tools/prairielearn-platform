@@ -1,4 +1,7 @@
 """Проверка ресурсов настоящей страницы через внешний HTTPS reverse proxy."""
+from __future__ import annotations
+
+from email.message import Message
 import os
 import ssl
 import unittest
@@ -9,21 +12,21 @@ from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 
 class AssetLinks(HTMLParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.paths = set()
+        self.paths: set[str] = set()
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         for name in ('href', 'src'):
             path = values.get(name, '')
-            if path.startswith('/assets/'):
+            if path is not None and path.startswith('/assets/'):
                 self.paths.add(path)
 
 @unittest.skipUnless(os.environ.get('PL_BROWSER_TEST_URL') and os.environ.get('PL_BROWSER_TEST_CA'),
                      'Нужны HTTPS стенд и доверенный CA для браузерной проверки')
 class BrowserAssetsIntegration(unittest.TestCase):
-    def request(self, path):
+    def request(self, path: str) -> tuple[int | None, str, bytes, Message[str, str]]:
         context = ssl.create_default_context(cafile=os.environ['PL_BROWSER_TEST_CA'])
         url = os.environ['PL_BROWSER_TEST_URL'].rstrip('/') + path
         try:
@@ -33,7 +36,7 @@ class BrowserAssetsIntegration(unittest.TestCase):
         with response:
             return response.status, response.headers.get_content_type(), response.read(), response.headers
 
-    def test_native_page_styles_and_scripts_reach_browser(self):
+    def test_native_page_styles_and_scripts_reach_browser(self) -> None:
         status, content_type, body, _ = self.request('/pl/login')
         self.assertEqual(status, 200)
         self.assertEqual(content_type, 'text/html')
@@ -51,7 +54,7 @@ class BrowserAssetsIntegration(unittest.TestCase):
                 elif suffix.endswith('.js'):
                     self.assertIn(content_type, ('application/javascript', 'text/javascript'))
 
-    def test_native_https_session_cookies_are_browser_compatible(self):
+    def test_native_https_session_cookies_are_browser_compatible(self) -> None:
         status, _, _, headers = self.request('/pl/login')
         self.assertEqual(status, 200)
         cookies = SimpleCookie()
@@ -63,13 +66,13 @@ class BrowserAssetsIntegration(unittest.TestCase):
                 self.assertTrue(cookies[name]['secure'], name + ' требует Secure через HTTPS')
                 self.assertTrue(cookies[name]['httponly'])
 
-    def test_native_favicon_reaches_browser(self):
+    def test_native_favicon_reaches_browser(self) -> None:
         status, content_type, body, _ = self.request('/favicon.ico')
         self.assertEqual(status, 200)
         self.assertIn(content_type, ('image/x-icon', 'image/vnd.microsoft.icon'))
         self.assertTrue(body)
 
-    def test_logo_and_gateway_root_open_native_platform(self):
+    def test_logo_and_gateway_root_open_native_platform(self) -> None:
         for path in ('/', '/gateway', '/gateway/'):
             with self.subTest(path=path):
                 status, content_type, body, _ = self.request(path)

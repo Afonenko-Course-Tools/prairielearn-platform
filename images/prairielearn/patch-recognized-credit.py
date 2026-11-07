@@ -2,10 +2,10 @@
 from pathlib import Path
 import sys
 IMPORT="import { applyRecognizedCredit } from '../../bridge/recognized-credit-native.mjs';\n"
-def once(source,old,new):
+def once(source: str, old: str, new: str) -> str:
     if source.count(old)!=1:raise ValueError('Pinned Community boundary differs: '+old[:80])
     return source.replace(old,new,1)
-def patch(source,kind):
+def patch(source: str, kind: str) -> str:
     if 'recognized-credit-native.mjs' in source:raise ValueError('Already patched; no duplicate hooks')
     if kind=='manualGrading':
         if source.count('export async function updateInstanceQuestionScore(')!=1:raise ValueError('Pinned native manual grading entrypoint differs')
@@ -35,7 +35,7 @@ def patch(source,kind):
 if __name__=='__main__':
     if len(sys.argv)==3 and sys.argv[1]=='--stdin':sys.stdout.write(patch(sys.stdin.read(),sys.argv[2]))
     elif len(sys.argv)==2:
-        root=Path(sys.argv[1]);outputs={}
+        root=Path(sys.argv[1]);outputs: dict[Path, str]={}
         for subtree in('src','dist'):
             for kind,folder in [('grading','lib'),('assessment-grading','lib'),('grading-job','models'),('assessment','lib'),('manualGrading','lib')]:
                 p=root/subtree/folder/(kind+('.ts' if subtree=='src'else'.js'));outputs[p]=patch(p.read_text(),kind)

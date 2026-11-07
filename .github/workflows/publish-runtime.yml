@@ -15,13 +15,14 @@ on:
         required: false
         type: string
       components:
-        description: Полный набор runtime либо только Community без изменения grader/Workspace/registry
+        description: Полный набор runtime, только Community или только Java
         required: true
         type: choice
         default: all
         options:
           - all
           - community
+          - java
 permissions:
   contents: read
   packages: write
@@ -30,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: ${{ inputs.components != 'community' }}
+    if: ${{ inputs.components == 'all' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -55,12 +56,14 @@ jobs:
           [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
           [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
-          echo "RUNTIME_IMAGE=$IMAGE" >> "$GITHUB_ENV"
-          echo "FISH_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fish-git-grader:${VERSION}" >> "$GITHUB_ENV"
-          echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}" >> "$GITHUB_ENV"
-          echo "WORKSPACE_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sp-git-workspace:${VERSION}" >> "$GITHUB_ENV"
+          {
+            echo "VERSION=$VERSION"
+            IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}"
+            echo "RUNTIME_IMAGE=$IMAGE"
+            echo "FISH_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fish-git-grader:${VERSION}"
+            echo "COMMUNITY_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/prairielearn-community-gateway:${VERSION}"
+            echo "WORKSPACE_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/sp-git-workspace:${VERSION}"
+          } >> "$GITHUB_ENV"
       - name: Authenticate with scoped package token
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,18 +85,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: Afonenko-Course-Tools/quarto-course
-          ref: c62e6c877f769f33a9ffd6fe713811df75c794c6
+          ref: 8aba3b47df161c98645f3fc268adefc2e96ef8d3
           path: .ci-deps/core
           persist-credentials: false
       - name: Проверить закреплённый Core
         run: |
           git -C .ci-deps/core rev-parse HEAD
-          test "$(git -C .ci-deps/core rev-parse HEAD)" = "c62e6c877f769f33a9ffd6fe713811df75c794c6"
+          test "$(git -C .ci-deps/core rev-parse HEAD)" = "8aba3b47df161c98645f3fc268adefc2e96ef8d3"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-reference-catalog
+          ref: 0b62c6501d716a634e0d1e3fcc3d21e41142b5a1
+          path: .ci-deps/qrc
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-project-download
+          ref: a621ec302a701d7409616f47675d2df0afb87aca
+          path: .ci-deps/download
+          persist-credentials: false
       - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
         with:
           version: 1.11.5
       - name: Карта типов фактического Core для synthetic fixtures
-        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json")
+        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json" ../qrc ../download)
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.7.14
@@ -155,10 +170,11 @@ jobs:
         run: docker push "$WORKSPACE_IMAGE"
       - name: Проверить загрузку digest и сохранить receipt v3
         run: |
-          export JAVA_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
-          export COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
-          export FISH_DIGEST="$(docker image inspect "$FISH_IMAGE" --format '{{index .RepoDigests 0}}')"
-          export WORKSPACE_DIGEST="$(docker image inspect "$WORKSPACE_IMAGE" --format '{{index .RepoDigests 0}}')"
+          export JAVA_DIGEST COMMUNITY_DIGEST FISH_DIGEST WORKSPACE_DIGEST
+          JAVA_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
+          COMMUNITY_DIGEST="$(docker image inspect "$COMMUNITY_IMAGE" --format '{{index .RepoDigests 0}}')"
+          FISH_DIGEST="$(docker image inspect "$FISH_IMAGE" --format '{{index .RepoDigests 0}}')"
+          WORKSPACE_DIGEST="$(docker image inspect "$WORKSPACE_IMAGE" --format '{{index .RepoDigests 0}}')"
           for IMAGE in "$JAVA_DIGEST" "$COMMUNITY_DIGEST" "$FISH_DIGEST" "$WORKSPACE_DIGEST"; do docker pull "$IMAGE"; done
           python3 tools/publish-receipt.py
           cat runtime-image.json >> "$GITHUB_STEP_SUMMARY"
@@ -175,6 +191,55 @@ jobs:
           path: |
             ${{ runner.temp }}/delivery4-fixtures/
             ${{ runner.temp }}/workspace-smoke.json
+          if-no-files-found: error
+
+  java:
+    if: ${{ inputs.components == 'java' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Зафиксировать reviewed Java source
+        env:
+          VERSION: ${{ inputs.version }}
+          REVIEWED_COMMIT: ${{ inputs.reviewed_commit }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          [[ "$REVIEWED_COMMIT" =~ ^[a-f0-9]{40}$ ]] || exit 1
+          [[ "$GITHUB_REF" == refs/heads/main ]] || exit 1
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
+          [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
+          echo "RUNTIME_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}" >> "$GITHUB_ENV"
+      - name: Авторизоваться в registry для Java
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Подтвердить отсутствие Java tag
+        run: bash tools/require-absent-image.sh "$RUNTIME_IMAGE"
+      - name: Собрать и проверить Java
+        run: |
+          docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
+          TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
+          PL_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -p test_plain_image.py -v
+      - name: Опубликовать Java
+        run: docker push "$RUNTIME_IMAGE"
+      - name: Сохранить Java digest и image config ID
+        run: |
+          JAVA_DIGEST="$(docker image inspect "$RUNTIME_IMAGE" --format '{{index .RepoDigests 0}}')"
+          IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
+          PREFIX="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader@sha256:"
+          [[ "$JAVA_DIGEST" == "$PREFIX"* ]] || exit 1
+          HEX="${JAVA_DIGEST#"$PREFIX"}"
+          [[ "$HEX" =~ ^[a-f0-9]{64}$ && "$IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          export JAVA_DIGEST IMAGE_ID
+          python3 -c 'import json, os; print(json.dumps({"version": os.environ["RUNTIME_IMAGE"].rsplit(":", 1)[1], "source_commit": os.environ["GITHUB_SHA"], "repo_digest": os.environ["JAVA_DIGEST"], "image_config_id": os.environ["IMAGE_ID"]}, indent=2))' > java-image.json
+          cat java-image.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-java-digest-${{ inputs.version }}
+          path: java-image.json
           if-no-files-found: error
 
   community:

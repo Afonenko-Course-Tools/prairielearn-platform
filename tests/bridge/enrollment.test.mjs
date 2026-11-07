@@ -21,6 +21,7 @@ const request = { userUid: 'student@fixture.invalid', instance: 'fall', courseKe
 const loginRequest = { ...request, role: 'student', email: null };
 const token = 'fixture-service-token-with-at-least-32-characters';
 
+/** @param {import("node:test").TestContext} t @param {import("../../types/test-contracts.d.ts").EnrollmentOptions} [options] */
 async function fixture(t, options = {}) {
   const path = await mkdtemp(join(tmpdir(), 'bridge-auth-only-'));
   t.after(() => rm(path, { recursive: true, force: true }));
@@ -32,20 +33,23 @@ async function fixture(t, options = {}) {
   settings.tokenFile = join(path, 'token');
   await writeFile(join(path, 'config.json'), JSON.stringify(settings));
   const ci = { id: '73', course_id: '7', uuid, short_name: 'fall', deleted_at: null, modern_publishing: true, ...options.ci };
+  /** @type {import("../../types/test-contracts.d.ts").BridgeState} */
   const state = { migrations: 0, enrollmentWrites: [], locks: [], nativeReads: 0, bodyReads: 0, queries: 0,
     courseGrants: [], instanceGrants: [], administrators: new Set(), courseRole: options.courseRole ?? null, instanceRole: options.instanceRole ?? null, accessChecks: [], reservationLookups: 0, contextModes: [] };
+  /** @type {import("../../types/test-contracts.d.ts").BridgeHandler | undefined} */
   let handler;
   const args = {
     z, readFile, ...policy, Buffer, URL, timingSafeEqual,
     process: { env: { PL_GATEWAY_CONFIG: join(path, 'config.json'), NODE_ENV: options.environment ?? 'production' }, exitCode: 0 },
     root: '/native', config: { devMode: false, hasShib: true, ...options.config }, loadConfig: async () => {},
-    native: async name => { assert.equal(name, 'sprocs/index'); return { init: async () => {} }; },
+    native: async (/** @type {string} */ name) => { assert.equal(name, 'sprocs/index'); return { init: async () => {} }; },
     db: {
       initAsync: async () => {}, setRandomSearchSchemaAsync: async () => {},
       loadSqlEquiv: () => ({ migrate: 'migrate', lock: 'lock', grant_administrator: 'administrator' }),
-      execute: async (sql, params) => { if (sql === 'migrate') state.migrations++; else { assert.equal(sql, 'lock'); state.locks.push(params); } },
+      execute: async (/** @type {string} */ sql, /** @type {Record<string,unknown>} */ params) => { if (sql === 'migrate') state.migrations++; else { assert.equal(sql, 'lock'); state.locks.push(params); } },
+      /** @template T @param {()=>Promise<T>} fn */
       runInTransactionAsync: async fn => fn(),
-      queryRow: async (sql, params) => {
+      queryRow: async (/** @type {string} */ sql, /** @type {{uid:string,user_id:string}} */ params) => {
         state.queries++; assert.equal(sql, 'administrator');
         assert.ok(['teacher@fixture.invalid', 'student@fixture.invalid'].includes(params.uid));
         assert.equal(params.user_id, params.uid.startsWith('teacher') ? '22' : '21');
@@ -54,11 +58,11 @@ async function fixture(t, options = {}) {
       },
       queryOptionalRow: async () => { state.queries++; throw Error('Неожиданный native query'); },
     },
-    dangerousFullSystemAuthz: () => ({ fixture: true }),
-    instances: { selectCourseInstanceById: async id => { state.nativeReads++; assert.equal(id, '73'); if (options.nativeError) throw Error('private-db-password ' + token); return ci; } },
-    users: { selectOptionalUserByUid: async uid => { state.nativeReads++; return options.missingUser ? null : { id: uid.startsWith('teacher') ? '22' : '21', uid }; } },
+    dangerousFullSystemAuthz: () => ({authn_user:{id:null},user:{id:null}}),
+    instances: { selectCourseInstanceById: async (/** @type {string} */ id) => { state.nativeReads++; assert.equal(id, '73'); if (options.nativeError) throw Error('private-db-password ' + token); return ci; } },
+    users: { selectOptionalUserByUid: async (/** @type {string} */ uid) => { state.nativeReads++; return options.missingUser ? null : { id: uid.startsWith('teacher') ? '22' : '21', uid }; } },
     coursePermissions: {
-      insertCoursePermissionsByUserUid: async value => {
+      insertCoursePermissionsByUserUid: async (/** @type {import("../../types/native-contracts.d.ts").CoursePermissionArgs} */ value) => {
         assert.equal(value.course_id, '7');
         assert.ok(['teacher@fixture.invalid', 'student@fixture.invalid'].includes(value.uid));
         const userId = value.uid.startsWith('teacher') ? '22' : '21';
@@ -66,21 +70,21 @@ async function fixture(t, options = {}) {
         state.courseGrants.push(value); state.courseRole = options.courseRole ?? 'Editor';
         return { id: options.changedUser ? '99' : userId, uid: value.uid };
       },
-      insertCourseInstancePermissions: async value => {
+      insertCourseInstancePermissions: async (/** @type {import("../../types/native-contracts.d.ts").InstancePermissionArgs} */ value) => {
         assert.equal(value.course_id, '7'); assert.equal(value.course_instance_id, '73');
         assert.ok(['21', '22'].includes(value.user_id)); assert.equal(value.course_instance_role, 'Student Data Editor');
         assert.equal(value.authn_user_id, value.user_id); state.instanceGrants.push(value);
         if (!options.permissionFailure) state.instanceRole = 'Student Data Editor';
       },
-      selectCoursePermissionForUser: async value => { assert.equal(value.course_id, '7'); assert.ok(['21', '22'].includes(value.user_id)); return state.courseRole; },
-      selectCourseInstancePermissionForUser: async value => { assert.equal(value.course_instance_id, '73'); assert.ok(['21', '22'].includes(value.user_id)); return state.instanceRole; },
+      selectCoursePermissionForUser: async (/** @type {{course_id:string,user_id:string}} */ value) => { assert.equal(value.course_id, '7'); assert.ok(['21', '22'].includes(value.user_id)); return state.courseRole; },
+      selectCourseInstancePermissionForUser: async (/** @type {{course_instance_id:string,user_id:string}} */ value) => { assert.equal(value.course_instance_id, '73'); assert.ok(['21', '22'].includes(value.user_id)); return state.instanceRole; },
     },
     enrollments: {
       selectOptionalEnrollmentByUserId: async () => options.prior ?? null,
-      ensureUncheckedEnrollment: async value => { state.enrollmentWrites.push(value); return options.unavailable ? null : { id: '11', status: 'joined' }; },
+      ensureUncheckedEnrollment: async (/** @type {import("../../types/native-contracts.d.ts").EnrollmentArgs} */ value) => { state.enrollmentWrites.push(value); return options.unavailable ? null : { id: '11', status: 'joined' }; },
     },
     studentAccess: {
-      constructCourseOrInstanceContext: async value => {
+      constructCourseOrInstanceContext: async (/** @type {Parameters<import("../../types/native-contracts.d.ts").NativeModules["lib/authz-data"]["constructCourseOrInstanceContext"]>[0]} */ value) => {
         assert.equal(value.course_id, '7'); assert.equal(value.course_instance_id, '73');
         assert.equal(value.user.id, value.user.uid.startsWith('teacher') ? '22' : '21');
         assert.equal(value.is_administrator, false); assert.equal(value.ip, null);
@@ -99,37 +103,41 @@ async function fixture(t, options = {}) {
         return {authzData: options.nullContext ? null : {
           user: value.user, mode, is_institution_administrator: false,
           course_role: courseRole, course_instance_role: instanceRole,
-          has_course_permission_preview: ['Previewer', 'Viewer', 'Editor', 'Owner'].includes(courseRole),
-          has_course_permission_view: ['Viewer', 'Editor', 'Owner'].includes(courseRole),
-          has_course_permission_edit: ['Editor', 'Owner'].includes(courseRole),
+          has_course_permission_preview: ['Previewer', 'Viewer', 'Editor', 'Owner'].includes(courseRole??'None'),
+          has_course_permission_view: ['Viewer', 'Editor', 'Owner'].includes(courseRole??'None'),
+          has_course_permission_edit: ['Editor', 'Owner'].includes(courseRole??'None'),
           has_course_permission_own: courseRole === 'Owner',
-          has_course_instance_permission_view: ['Student Data Viewer', 'Student Data Editor'].includes(instanceRole),
+          has_course_instance_permission_view: ['Student Data Viewer', 'Student Data Editor'].includes(instanceRole??'None'),
           has_course_instance_permission_edit: instanceRole === 'Student Data Editor',
           has_student_access: !options.denied,
           has_student_access_with_enrollment: !options.denied,
         }};
       },
     },
-    createServer: fn => { handler = fn; return {}; },
+    createServer: (/** @type {import("../../types/test-contracts.d.ts").BridgeHandler} */ fn) => { handler = fn; return {}; },
   };
-  const parsed = await new AsyncFunction(...Object.keys(args), core + ';return {settings, bindings};')(...Object.values(args));
-  return { ...parsed, state, async send(options = {}) {
+  const parsed = /** @type {{settings:import("../../types/test-contracts.d.ts").EnrollmentSettings,bindings:unknown[]}} */(await new AsyncFunction(...Object.keys(args), core + ';return {settings, bindings};')(...Object.values(args)));
+  return { ...parsed, state,
+  /** @param {import("../../types/test-contracts.d.ts").SendOptions} [options] @returns {Promise<import("../../types/test-contracts.d.ts").BridgeResponse>} */
+  async send(options = {}) {
     const body = options.body ?? loginRequest;
-    const req = Readable.from([typeof body === 'string' ? body : JSON.stringify(body)]);
+    const req = /** @type {import("../../types/test-contracts.d.ts").RequestStream} */(Readable.from([typeof body === 'string' ? body : JSON.stringify(body)]));
     const iterate = req[Symbol.asyncIterator].bind(req);
     req[Symbol.asyncIterator] = () => { state.bodyReads++; return iterate(); };
     req.method = options.method ?? 'PUT';
     req.url = options.url ?? '/internal/gateway/enrollment';
     req.headers = { authorization: options.authorization ?? `Bearer ${token}` };
-    let status, headers, answer;
-    await handler(req, { writeHead(code, values) { status = code; headers = values; return this; }, end(value) { answer = JSON.parse(value); } });
-    return { status, headers, body: answer };
+    /** @type {{status?:number,headers?:Record<string,string>,body?:Record<string,unknown>}} */
+    const response = {};
+    assert.ok(handler);
+    await handler(req, { writeHead(code, values) { response.status = code; response.headers = values; return this; }, end(value) { response.body = JSON.parse(value); } });
+    assert.ok(response.status !== undefined && response.headers && response.body);
+    return {status: response.status, headers: response.headers, body: response.body};
   } };
 }
 
 test('auth-only запускается без delivery и сохраняет прежние UID без assignment DDL', async t => {
-  let f;
-  await assert.doesNotReject(async () => { f = await fixture(t); });
+  const f = await fixture(t);
   assert.equal(f.state.migrations, 0);
   for (const userUid of ['student@fixture.invalid', 'teacher@fixture.invalid']) {
     for (let i = 0; i < 2; i++) {
@@ -177,13 +185,13 @@ test('auth-only сохраняет bearer, query и strict enrollment body guard
     assert.equal((await f.send({ body: { ...loginRequest, ...extra } })).status, 400);
   }
   for (const name of Object.keys(loginRequest)) {
-    const body = { ...loginRequest }; delete body[name];
+    const body = /** @type {Record<string,unknown>} */({ ...loginRequest }); delete body[name];
     assert.equal((await f.send({ body })).status, 400);
   }
   assert.equal(f.state.nativeReads, 0);
 });
 
-for (const [name, options, body, status] of [
+for (const [name, options, body, status] of /** @type {Array<[string,import("../../types/test-contracts.d.ts").EnrollmentOptions,Record<string,unknown>,number]>} */([
   ['неизвестный courseKey', {}, { ...request, courseKey: 'other' }, 403],
   ['неизвестный instance', {}, { ...request, instance: 'other' }, 403],
   ['native CIID', { ci: { id: '74' } }, request, 403],
@@ -196,7 +204,7 @@ for (const [name, options, body, status] of [
   ['недоступное зачисление', { unavailable: true }, request, 403],
   ['native student access', { denied: true }, request, 403],
   ['старый publishing mode', { ci: { modern_publishing: false } }, request, 403],
-]) test(`auth-only отклоняет: ${name}`, async t => {
+])) test(`auth-only отклоняет: ${name}`, async t => {
   const f = await fixture(t, options);
   const result = await f.send({ body: { ...loginRequest, ...body } });
   assert.equal(result.status, status);
@@ -344,10 +352,10 @@ test('settings example не допускает прежние delivery и login-
 
 
 test('закрытый Student доступ не блокирует первый Teacher и owner-Learner вход', async t => {
-  for (const [body, userId, administrators] of [
+  for (const [body, userId, administrators] of /** @type {Array<[Record<string,unknown>,string,string[]]>} */([
     [{...loginRequest, userUid: 'teacher@fixture.invalid', role: 'teacher'}, '22', []],
     [{...loginRequest, email: 'owner@fixture.invalid'}, '21', ['21']],
-  ]) {
+  ])) {
     const f = await fixture(t, {denied: true, settings: {
       listenHost: '127.0.0.1', listenPort: 3001, administratorEmail: 'owner@fixture.invalid', bindings: [binding],
     }});

@@ -6,6 +6,7 @@ import * as db from '@prairielearn/postgres';
 import { z } from 'zod';
 import { BridgeError, assertProductionRuntime, isCanonicalEmail } from './policy.mjs';
 const root = process.env.PL_ROOT ?? '/PrairieLearn';
+/** @template {keyof import("../types/native-contracts.d.ts").NativeModules} K @param {K} path @returns {Promise<import("../types/native-contracts.d.ts").NativeModules[K]>} */
 const native = (path) => import(pathToFileURL(`${root}/apps/prairielearn/dist/${path}.js`).href);
 const [
   { config, loadConfig },
@@ -37,7 +38,7 @@ const settingsSchema = z.strictObject({
     'Неоднозначная регистрация native курса и экземпляра'),
 });
 const settings = settingsSchema.parse(
-  JSON.parse(await readFile(process.env.PL_GATEWAY_CONFIG, 'utf8')),
+  /** @type {unknown} */(JSON.parse(await readFile(/** @type {string} */(process.env.PL_GATEWAY_CONFIG), 'utf8'))),
 );
 const token = (await readFile(settings.tokenFile, 'utf8')).trim();
 if (token.length < 32) throw new Error('Service token needs at least 32 characters');
@@ -60,6 +61,7 @@ await db.setRandomSearchSchemaAsync('gateway-bridge');
 await (await native('sprocs/index')).init();
 const sql = db.loadSqlEquiv(new URL('./native.mjs', import.meta.url).href);
 const system = dangerousFullSystemAuthz();
+/** @param {z.infer<typeof enrollmentQuerySchema>} request */
 async function context(request) {
   const binding = bindings.find(b => b.courseKey === request.courseKey && b.instance === request.instance);
   if (!binding) throw new BridgeError(403, 'Неизвестный native курс или экземпляр');
@@ -79,6 +81,7 @@ const enrollmentQuerySchema = z.strictObject({
   role: z.enum(['student', 'teacher']),
   email: z.string().refine(isCanonicalEmail).nullable(),
 });
+/** @param {z.infer<typeof enrollmentQuerySchema>} request @param {import("../types/native-contracts.d.ts").BridgeCourseInstance} ci @param {import("../types/native-contracts.d.ts").NativeUser} user */
 async function grantTrustedLoginRole(request, ci, user) {
   const administrator = settings.administratorEmail !== null && request.email === settings.administratorEmail;
   if (administrator) {
@@ -98,9 +101,10 @@ async function grantTrustedLoginRole(request, ci, user) {
   });
   const courseRole = await coursePermissions.selectCoursePermissionForUser({ course_id: ci.course_id, user_id: user.id });
   const instanceRole = await coursePermissions.selectCourseInstancePermissionForUser({ course_instance_id: ci.id, user_id: user.id });
-  if (!['Editor', 'Owner'].includes(courseRole) || instanceRole !== 'Student Data Editor')
+  if (!['Editor', 'Owner'].some(role=>role===courseRole) || instanceRole !== 'Student Data Editor')
     throw new BridgeError(409, 'Native преподавательские права не подтверждены');
 }
+/** @param {z.infer<typeof enrollmentQuerySchema>} request */
 async function enrollBasic(request) {
   const { ci, user } = await context(request);
   if (typeof ci.id !== 'string' || !/^[1-9][0-9]*$/.test(ci.id))
@@ -149,13 +153,14 @@ async function enrollBasic(request) {
     };
   });
 }
+/** @template T @param {import("node:http").IncomingMessage} req @param {z.ZodType<T>} schema @returns {Promise<T>} */
 async function readBody(req, schema) {
   let body = '';
   for await (const chunk of req) {
     body += chunk;
     if (Buffer.byteLength(body) > 8192) throw new BridgeError(413, 'Body too large');
   }
-  return schema.parse(JSON.parse(body));
+  return schema.parse(/** @type {unknown} */(JSON.parse(body)));
 }
 const server = createServer(async (req, res) => {
   try {
@@ -163,10 +168,10 @@ const server = createServer(async (req, res) => {
     const expected = Buffer.from(`Bearer ${token}`);
     if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected))
       throw new BridgeError(401, 'Service authentication required');
-    const url = new URL(req.url, 'http://bridge');
+    const url = new URL(/** @type {string} */(req.url), 'http://bridge');
     if (!(req.method === 'PUT' && url.pathname === '/internal/gateway/enrollment'))
       throw new BridgeError(404, 'Unknown route');
-    if (req.url.includes('?'))
+    if (/** @type {string} */(req.url).includes('?'))
       throw new BridgeError(400, 'Unexpected enrollment query');
     const answer = await enrollBasic(await readBody(req, enrollmentQuerySchema));
     res
@@ -182,7 +187,7 @@ const server = createServer(async (req, res) => {
     // Native ошибки не раскрывают приватные данные или учётные данные.
     res
       .writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-      .end(JSON.stringify({ error: status === 500 ? 'Bridge operation failed' : error.message }));
+      .end(JSON.stringify({ error: status === 500 ? 'Bridge operation failed' : /** @type {Error} */(error).message }));
   }
 });
 server.listen(settings.listenPort, settings.listenHost, () =>

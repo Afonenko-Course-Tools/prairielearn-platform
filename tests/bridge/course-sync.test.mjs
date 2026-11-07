@@ -10,13 +10,15 @@ test('sync binds normalized path to exact source ID and native UUID without Gate
 });
 test('operator requires exact existing native UID and administrator membership',async()=>{
  const actor={id:'9',uid:'operator@example.test'};
- const native={selectOptionalUserByUid:async uid=>uid===actor.uid?actor:null,isAdministrator:async id=>id==='9'};
+ const native={selectOptionalUserByUid:async(/** @type {string} */uid)=>uid===actor.uid?actor:null,isAdministrator:async(/** @type {string} */id)=>id==='9'};
  assert.deepEqual(await policy.verifyNativeAdministrator(actor.uid,native),actor);
  for(const uid of ['', 'other@example.test',' operator@example.test'])await assert.rejects(policy.verifyNativeAdministrator(uid,native));
  await assert.rejects(policy.verifyNativeAdministrator(actor.uid,{...native,isAdministrator:async()=>false}));
  await assert.rejects(policy.verifyNativeAdministrator(actor.uid,{...native,selectOptionalUserByUid:async()=>({...actor,uid:'wrong'})}));
 });
-const declared=[{uuid,short_name:'Autumn'}],row={id:'73',course_id:'7',uuid,short_name:'Autumn',deleted_at:null};
+const declared=[{uuid,short_name:'Autumn'}];
+/** @type {import('../../types/native-contracts.d.ts').NativeInstance} */
+const row={id:'73',course_id:'7',uuid,short_name:'Autumn',deleted_at:null};
 test('pre-sync rejects conflicting, deleted and ambiguous native identities before writes',()=>{
  assert.doesNotThrow(()=>policy.validateNativeInstances('7',declared,[]));
  assert.doesNotThrow(()=>policy.validateNativeInstances('7',declared,[row]));

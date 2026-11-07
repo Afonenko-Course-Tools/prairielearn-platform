@@ -1,7 +1,7 @@
 """Apply a narrow, fail-closed patch to the exact pinned Community guard."""
 import pathlib,re,sys
 
-def patch(source):
+def patch(source: str) -> str:
     first="if (!config.cookieDomain) {"
     second="if (!config.cookieDomain.startsWith('.')) {"
     if source.count(first)!=1 or source.count(second)!=1 or source.count('cookieDomain must be set in production environments')!=1:

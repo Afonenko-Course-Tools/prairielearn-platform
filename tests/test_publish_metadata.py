@@ -6,6 +6,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Mapping
+
+from selected_job_fixture import fixture_record
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGES = {
@@ -15,7 +18,7 @@ IMAGES = {
 }
 
 class PublishedMetadata(unittest.TestCase):
-    def produce(self, changes=None):
+    def produce(self, changes: Mapping[str, str] | None = None) -> tuple[subprocess.CompletedProcess[bytes], dict[str, dict[str, object]]]:
         env = dict(os.environ, GITHUB_SHA=subprocess.check_output(
             ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip(),
             VERSION=(ROOT/'VERSION').read_text().strip(),
@@ -24,16 +27,17 @@ class PublishedMetadata(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='publisher-public-') as output:
             result = subprocess.run([sys.executable, '-B', str(ROOT/'tools/publish-receipt.py')],
                 cwd=output, env=env, capture_output=True, timeout=10)
-            files = {p.name: json.loads(p.read_bytes()) for p in Path(output).iterdir()}
+            files = {p.name: fixture_record(json.loads(p.read_bytes())) for p in Path(output).iterdir()}
         return result, files
 
     def test_publishes_runtime_profiles_without_preparation_or_file_inventories(self):
         result, files = self.produce()
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(set(files), {'runtime-image.json', 'published-runtime-profiles.json'})
-        profiles = files['published-runtime-profiles.json']['profiles']
+        profiles = fixture_record(files['published-runtime-profiles.json']['profiles'])
         self.assertEqual(set(profiles), {'java25-junit-v1','java25-mutation-v1','java25-gradle-junit-v1','fish-git-v1'})
-        for name, profile in profiles.items():
+        for name, raw_profile in profiles.items():
+            profile = fixture_record(raw_profile)
             self.assertEqual(profile['image'], IMAGES['fish' if name=='fish-git-v1' else 'java'])
             self.assertTrue({'runnerSha256','files','sharedFiles','dependencies'}.isdisjoint(profile))
         receipt=files['runtime-image.json']
@@ -46,7 +50,7 @@ class PublishedMetadata(unittest.TestCase):
         result, files = self.produce({'WORKSPACE_DIGEST':workspace})
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(files['published-runtime-profiles.json']['workspaceImages'], {'sp-git-workspace-v1':{'image':workspace}})
-        self.assertEqual(files['runtime-image.json']['images']['workspace'], workspace)
+        self.assertEqual(fixture_record(files['runtime-image.json']['images'])['workspace'], workspace)
 
     def test_rejects_image_from_other_role_before_writing(self):
         for changes in ({'JAVA_DIGEST':IMAGES['fish']},{'JAVA_DIGEST':'sha256:'+'1'*64},{'WORKSPACE_DIGEST':IMAGES['java']}):

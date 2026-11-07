@@ -23,7 +23,7 @@ NEW_NAME_READ = '''    const verifiedNameHeaders = req.rawHeaders.filter((_, ind
     const name = decodeGatewayVerifiedName(req.get('x-trust-auth-name-utf8-b64'));'''
 
 
-def patch(source, kind):
+def patch(source: str, kind: str) -> str:
     if kind not in ('src', 'dist'):
         raise ValueError('Unknown authCallbackShib source kind')
     marker = 'const router = Router();'
@@ -33,7 +33,7 @@ def patch(source, kind):
     return source.replace(marker, decoder + '\n' + marker, 1).replace(NAME_READ, NEW_NAME_READ, 1)
 
 
-def patch_files(source_path, dist_path):
+def patch_files(source_path: str | pathlib.Path, dist_path: str | pathlib.Path) -> None:
     # Оба inputs проверяются до первой записи: несовпавший dist не оставляет half-patch.
     files = [(pathlib.Path(source_path), 'src'), (pathlib.Path(dist_path), 'dist')]
     changed = [(path, patch(path.read_text(), kind)) for path, kind in files]
@@ -44,4 +44,4 @@ def patch_files(source_path, dist_path):
 if __name__ == '__main__':
     if len(sys.argv) != 3:
         raise SystemExit('Нужны pinned src TS и dist JS callback')
-    patch_files(*sys.argv[1:])
+    patch_files(sys.argv[1], sys.argv[2])

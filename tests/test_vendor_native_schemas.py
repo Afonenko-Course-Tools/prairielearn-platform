@@ -9,8 +9,8 @@ class VendorSchemas(unittest.TestCase):
   for name in NAMES:shutil.copyfile(ROOT/'schemas/native-upstream'/name,self.base/name)
   self.git('init','-q');self.git('remote','add','origin','https://example.invalid/fixture.git');self.git('add','.');self.git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-qm','Fixture schemas')
   script=self.root/'platform/tools/vendor-native-schemas.py';script.parent.mkdir(parents=True);shutil.copyfile(ROOT/'tools/vendor-native-schemas.py',script);self.script=script;self.target=script.parents[1]/'schemas/native-upstream'
- def git(self,*args):return subprocess.run(['git',*args],cwd=self.provider,capture_output=True,check=True,timeout=10)
- def vendor(self,*args):return subprocess.run([sys.executable,'-B',str(self.script),'--exporter',str(self.provider),*args],capture_output=True,timeout=10)
+ def git(self,*args: str) -> subprocess.CompletedProcess[bytes]:return subprocess.run(['git',*args],cwd=self.provider,capture_output=True,check=True,timeout=10)
+ def vendor(self,*args: str) -> subprocess.CompletedProcess[bytes]:return subprocess.run([sys.executable,'-B',str(self.script),'--exporter',str(self.provider),*args],capture_output=True,timeout=10)
  def test_copy_and_check_use_actual_schema_files_without_manifest(self):
   result=self.vendor();self.assertEqual(result.returncode,0,result.stderr)
   self.assertEqual(sorted(p.name for p in self.target.iterdir()),sorted(NAMES))
