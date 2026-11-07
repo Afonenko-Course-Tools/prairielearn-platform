@@ -91,11 +91,23 @@ jobs:
         run: |
           git -C .ci-deps/core rev-parse HEAD
           test "$(git -C .ci-deps/core rev-parse HEAD)" = "8aba3b47df161c98645f3fc268adefc2e96ef8d3"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-reference-catalog
+          ref: 0b62c6501d716a634e0d1e3fcc3d21e41142b5a1
+          path: .ci-deps/qrc
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Afonenko-Course-Tools/quarto-project-download
+          ref: a621ec302a701d7409616f47675d2df0afb87aca
+          path: .ci-deps/download
+          persist-credentials: false
       - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b
         with:
           version: 1.11.5
       - name: Карта типов фактического Core для synthetic fixtures
-        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json")
+        run: (cd .ci-deps/exporter && quarto run tools/native-core-import-map.ts ../core "$RUNNER_TEMP/pl-native-imports.json" ../qrc ../download)
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.7.14
