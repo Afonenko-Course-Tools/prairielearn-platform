@@ -34,10 +34,20 @@ class CompleteJUnitResult(unittest.TestCase):
         self.assertNotIn('teacherTrace', native['feedback']['cases'][0])
 
     def test_student_initializer_failure_is_runtime_failure(self):
-        (self.job/'student/Student.java').write_text('public class Student { static int value=init(); static int init(){throw new IllegalStateException("initializer");} public static int answer(){return value;}}')
+        (self.job/'student/Student.java').write_text('''public class Student {
+    static int value = init();
+    static int init() { throw new IllegalStateException("initializer"); }
+    public static int answer() { return value; }
+}''')
         result = self.run_job()
         self.assertEqual(result['classification'], 'student-runtime-failure')
         self.assertIn('initializer', result['counts']['cases'][0]['teacherTrace'])
+        native = runpy.run_path(str(ROOT/'runtime/student_feedback.py'))['student_result'](result, self.config)
+        case = native['feedback']['cases'][0]
+        self.assertIn('initializer', case['message'])
+        self.assertIn('java.lang.IllegalStateException', case['message'])
+        self.assertIn('Student.init(Student.java:3)', case['stackTrace'])
+        self.assertNotIn('teacherTrace', case)
 
     def test_successful_assertions_are_not_traced(self):
         self.source('@Test void success(){ assertEquals(42,Student.answer()); assertTrue(true); }')

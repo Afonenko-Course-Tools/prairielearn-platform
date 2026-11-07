@@ -119,15 +119,29 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     private static Map<String, String> diagnostic(Throwable failure) {
         StringWriter trace = new StringWriter();
         failure.printStackTrace(new PrintWriter(trace));
+        StringBuilder message = new StringBuilder(bounded(failure.getMessage(), 8192));
         StringBuilder relevant = new StringBuilder();
-        for (StackTraceElement frame : failure.getStackTrace()) {
-            String name = frame.getClassName();
-            if (!name.startsWith("org.junit.") && !name.startsWith("org.opentest4j.")
-                    && !name.startsWith("java.") && !name.startsWith("jdk.")
-                    && !name.equals(PlatformJUnitAdapter.class.getName()))
-                relevant.append("at ").append(frame).append('\n');
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        Throwable cause = failure;
+        for (int depth = 0; cause != null && depth < 16 && seen.add(cause); depth++, cause = cause.getCause()) {
+            if (depth > 0) {
+                String label = "Причина: " + cause.getClass().getName() + ": " + bounded(cause.getMessage(), 8192);
+                if (message.length() < 8192) {
+                    if (!message.isEmpty()) message.append('\n');
+                    message.append(label);
+                }
+                if (relevant.length() < 8192) relevant.append(label).append('\n');
+            }
+            for (StackTraceElement frame : cause.getStackTrace()) {
+                if (relevant.length() >= 8192) break;
+                String name = frame.getClassName();
+                if (!name.startsWith("org.junit.") && !name.startsWith("org.opentest4j.")
+                        && !name.startsWith("java.") && !name.startsWith("jdk.")
+                        && !name.equals(PlatformJUnitAdapter.class.getName()))
+                    relevant.append("at ").append(frame).append('\n');
+            }
         }
-        return Map.of("message", bounded(failure.getMessage(), 8192),
+        return Map.of("message", bounded(message.toString(), 8192),
             "exceptionType", failure.getClass().getName(),
             "stackTrace", bounded(relevant.toString(), 8192),
             "teacherTrace", bounded(trace.toString(), 32768));
