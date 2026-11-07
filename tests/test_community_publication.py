@@ -29,7 +29,7 @@ def block(name: str) -> str:
 class CommunityPublication(unittest.TestCase):
     def test_exclusive_component_jobs_and_no_other_runtime_rebuild(self):
         text=WORKFLOW.read_text()
-        self.assertIn("if: ${{ inputs.components != 'community' }}",text)
+        self.assertIn("if: ${{ inputs.components == 'all' }}",text)
         c=community();self.assertIn("if: ${{ inputs.components == 'community' }}",c)
         for forbidden in ['images/java25-grader','images/fish-git-grader','images/sp-git-workspace',
                           'tools/publish-receipt.py','tools/prepare_native_toolchain.py','quarto','exporter_commit',
