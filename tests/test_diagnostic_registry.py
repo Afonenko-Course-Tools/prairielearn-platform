@@ -37,17 +37,15 @@ class DiagnosticRegistry(unittest.TestCase):
  def test_builder_forwards_explicit_candidate_flag(self) -> None:
   import inspect
   self.assertIn('candidate_image',inspect.signature(builds.builder.build_course).parameters)
-  with patch.object(builds.builder,'git',return_value=''):
-   with tempfile.TemporaryDirectory() as d:
-    root=Path(d);source=root/'source';entry=source/'tasks/_extensions/course-prairielearn/entrypoints/export-course.ts';entry.parent.mkdir(parents=True);entry.write_text('// owner')
-    def git(path: Path,*args: str) -> str:return 'https://example.test/source.git' if args==('remote','get-url','origin') else 'abc' if args==('rev-parse','HEAD') else ''
-    with patch.object(builds.builder,'git',side_effect=git),patch.object(builds.builder.subprocess,'run',side_effect=OSError('stop after capture')) as run:
-     with self.assertRaises(builds.builder.BuildError):builds.builder.build_course(source,'tasks','pilot',root/'out',root/'registry.json','sha256:'+'d'*64)
-    run.assert_called_once()
-    command=run.call_args.args[0]
-    self.assertEqual(command[:3],['quarto','run',str(entry)])
-    self.assertEqual(run.call_args.kwargs['cwd'],source/'tasks')
-    self.assertEqual(command[command.index('--candidate-image')+1],'sha256:'+'d'*64)
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);source=root/'source';entry=source/'tasks/_extensions/course-prairielearn/entrypoints/export-course.ts';entry.parent.mkdir(parents=True);entry.write_text('// owner')
+   with patch.object(builds.builder.subprocess,'run',side_effect=OSError('stop after capture')) as run:
+    with self.assertRaises(builds.builder.BuildError):builds.builder.build_course(source,'tasks','pilot',root/'out',root/'registry.json','sha256:'+'d'*64)
+   run.assert_called_once()
+   command=run.call_args.args[0]
+   self.assertEqual(command[:3],['quarto','run',str(entry)])
+   self.assertEqual(run.call_args.kwargs['cwd'],source/'tasks')
+   self.assertEqual(command[command.index('--candidate-image')+1],'sha256:'+'d'*64)
  def test_check_cli_threads_one_explicit_registry_through_prepare_execute_and_receipt(self) -> None:
   import sys
   sys.path.insert(0,str(ROOT/'tools'))
