@@ -111,7 +111,7 @@ public final class PlatformApiPrecheck {
         JSONObject cfg;
         try (Reader reader = Files.newBufferedReader(parameters)) { cfg = (JSONObject)new JSONParser().parse(reader); }
         Files.delete(parameters);
-        Map<String, Object> result = new HashMap<>(); result.put("signature", cfg.get("signature"));
+        Map<String, Object> result = new HashMap<>();
         try (Api api = new Api(Path.of((String)cfg.get("classes")), Path.of((String)cfg.get("scratch")))) {
             Method entry = Class.forName((String)cfg.get("entry")).getMethod("check", Api.class);
             if (!Modifier.isStatic(entry.getModifiers()) || entry.getReturnType() != void.class) throw new IllegalStateException("Precheck requires public static void check(Api)");

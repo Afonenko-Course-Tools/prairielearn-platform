@@ -189,55 +189,23 @@ def student_result(result: object, descriptor: object) -> StudentResult:
         public_tests: list[PublicTest] = []
         feedback["cases"] = public_cases
         native["tests"] = public_tests
-        complete = True
         for original in counts["cases"]:
             case: PublicCase = {"name": original["name"], "status": original["status"]}
-            if "expected" in original:
-                case["expected"] = original["expected"]
-            if "actual" in original:
-                case["actual"] = original["actual"]
-            public_cases.append(case)
             lines: list[str] = []
-            if counts.get("feedbackProtocolVersion") == 2:
-                checks = [check.copy() for check in original.get("checks", [])]
-                case["checks"] = checks
-                if "expected" in case or "actual" in case:
-                    reporter = {"origin": "trusted-TestReporter"}
-                    if "expected" in case:
-                        reporter["expected"] = case["expected"]
-                    if "actual" in case:
-                        reporter["actual"] = case["actual"]
-                    case["reporter"] = reporter
-                    lines.append("Наблюдение TestReporter:")
-                    lines.extend(label + ": " + value for label, value in (
-                        ("Ожидается", case.get("expected", "не установлено")),
-                        ("Получено", case.get("actual", "не установлено"))))
-                if not checks and case["status"] != "passed":
-                    complete = False
-                    if not case.get("reporter"):
-                        lines.append(_prose("Подробности сравнения не получены: проверка завершилась до поддержанного наблюдения."))
-                for check in checks:
-                    complete &= check["availability"] == "complete"
-                    lines.extend(["Проверка: " + check["property"], "Источник: " + check["site"],
-                                  "Ожидается: " + check["expected"], "Получено: " + check["actual"]])
-                    if check["availability"] != "complete":
-                        lines.append("Полнота: " + check["availability"])
-                    for value, label in ((check.get("delta"), "Допуск"), (check.get("differenceIndex"), "Первое различие"),
-                                         (check.get("differenceLine"), "Строка"), (check.get("differenceColumn"), "Столбец"),
-                                         (check.get("differenceExpected"), "Ожидаемый фрагмент"),
-                                         (check.get("differenceActual"), "Полученный фрагмент")):
-                        if value is not None:
-                            lines.append(label + ": " + value)
-            else:
-                lines.extend(label + ": " + value for label, value in (
-                    ("Ожидается", case.get("expected", "не установлено")),
-                    ("Получено", case.get("actual", "не установлено"))))
+            for key, label in (("message", "Сообщение"), ("expected", "Ожидается"),
+                               ("actual", "Получено"), ("exceptionType", "Исключение"),
+                               ("stackTrace", "Трассировка")):
+                if key in original:
+                    case[key] = original[key]
+                    lines.append(label + ": " + original[key])
+            public_cases.append(case)
             summary = "Проверка пройдена." if case["status"] == "passed" else "Проверка не пройдена."
             public_tests.append({"name": case["name"], "description": summary,
                                  "message": "\n".join([summary, *lines]),
                                  "points": int(case["status"] == "passed"), "max_points": 1})
-        if counts.get("feedbackProtocolVersion") == 2:
-            feedback["feedbackCompleteness"] = "complete" if complete else "incomplete"
+    output = result.get("output")
+    if isinstance(output, str) and output and (counts is not None or str(descriptor.get("runtime", "")).startswith("java")):
+        native["output"] = output[:65536]
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
         text = (
@@ -306,7 +274,7 @@ def student_result(result: object, descriptor: object) -> StudentResult:
                 elif "is public, should be declared in a file named" in detail:
                     reason = "Имя файла не соответствует открытому типу."
                 errors.append(
-                    {"file": filename, "line": int(match[2]), "reason": reason}
+                    {"file": filename, "line": int(match[2]), "reason": reason, "message": detail}
                 )
                 if len(errors) == 5:
                     break

@@ -152,7 +152,7 @@ class _NativeFailureStages(TypedDict, total=False):
 
 class _NativeContext(TypedDict, total=False):
     build: Callable[[Path, dict[str, float], dict[str, str]], tuple[BuildEvidence, int, None]]
-    proof: BuildEvidence
+    build_result: BuildEvidence
     studentCompiled: bool
     durations: dict[str, float]
     diagnostics: dict[str, str]
@@ -702,13 +702,13 @@ class _CountsValidator(Protocol):
 
 
 @runtime_checkable
-class _XmlReader(Protocol):
-    def __call__(self, directory: str | Path, feedback_file: str | Path, *, report_key: str | None = None) -> tuple[RawResult, JUnitCounts]: ...
+class _ReportReader(Protocol):
+    def __call__(self, feedback_file: str | Path) -> tuple[RawResult, JUnitCounts]: ...
 
 
 class _JUnitHelpers(TypedDict):
     validate_counts: _CountsValidator
-    read_junit_xml: _XmlReader
+    read_junit_report: _ReportReader
 
 
 @functools.cache
@@ -716,10 +716,10 @@ def _junit_result_helpers() -> _JUnitHelpers:
     import runpy
 
     values: dict[str, object] = runpy.run_path(str(PLATFORM / "runtime/junit_result.py"))
-    validator, reader = values.get("validate_counts"), values.get("read_junit_xml")
-    if not isinstance(validator, _CountsValidator) or not isinstance(reader, _XmlReader):
+    validator, reader = values.get("validate_counts"), values.get("read_junit_report")
+    if not isinstance(validator, _CountsValidator) or not isinstance(reader, _ReportReader):
         raise GraderError("Канонический JUnit decoder недоступен")
-    return {"validate_counts": validator, "read_junit_xml": reader}
+    return {"validate_counts": validator, "read_junit_report": reader}
 
 
 def _validate_junit_counts(counts: object, require_cases: bool = True) -> None:
@@ -970,10 +970,8 @@ def _validated_config(config: object) -> TypeGuard[_ExecutionConfig]:
     return True
 
 
-# These affect only the compiler JVM, not Java source semantics or allowed author options.
-COMPILER_JVM = ["java", "-XX:TieredStopAtLevel=1", "-XX:ActiveProcessorCount=2"]
+# Обычная компиляция javac без запуска обработчиков аннотаций.
 COMPILER = [
-    "com.sun.tools.javac.Main",
     "--release",
     "25",
     "-encoding",
@@ -986,172 +984,7 @@ COMPILER = [
 ]
 
 
-# Закреплённые binary receipts selected10; публичный compile CP остаётся прежним.
-_NAMED_JUNIT: tuple[tuple[str, str, str, str, dict[str, object]], ...] = (('junit-jupiter-api-5.14.1.jar',
-  'org.junit.jupiter.api',
-  '5.14.1',
-  '16f16f0c3c1ef97adb830484194669ed9683b434ce6f38fe3a01bd2906ae6c59',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']},
-                {'module': 'org.junit.platform.commons', 'modifiers': ['transitive']},
-                {'module': 'org.opentest4j', 'modifiers': ['transitive']}],
-   'exports': ['org.junit.jupiter.api',
-               'org.junit.jupiter.api.condition',
-               'org.junit.jupiter.api.extension',
-               'org.junit.jupiter.api.extension.support',
-               'org.junit.jupiter.api.function',
-               'org.junit.jupiter.api.io',
-               'org.junit.jupiter.api.parallel'],
-   'opens': ['org.junit.jupiter.api.condition to org.junit.platform.commons'],
-   'uses': [],
-   'provides': []}),
- ('junit-jupiter-engine-5.14.1.jar',
-  'org.junit.jupiter.engine',
-  '5.14.1',
-  'df44aa18d05ced13fa6836ca214c224caf3fffde4df20e9ce7ddfafb5c9d02f8',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static']},
-                {'module': 'org.junit.jupiter.api', 'modifiers': []},
-                {'module': 'org.junit.platform.commons', 'modifiers': []},
-                {'module': 'org.junit.platform.engine', 'modifiers': []},
-                {'module': 'org.opentest4j', 'modifiers': []}],
-   'exports': [],
-   'opens': ['org.junit.jupiter.engine.extension to org.junit.platform.commons'],
-   'uses': ['org.junit.jupiter.api.extension.Extension'],
-   'provides': ['org.junit.platform.engine.TestEngine with '
-                'org.junit.jupiter.engine.JupiterTestEngine']}),
- ('junit-jupiter-params-5.14.1.jar',
-  'org.junit.jupiter.params',
-  '5.14.1',
-  'c076e3208dbc231d1eb7e2d969578c314c1658fa1a29cc8f0447c804f29327fa',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']},
-                {'module': 'org.junit.jupiter.api', 'modifiers': ['transitive']},
-                {'module': 'org.junit.platform.commons', 'modifiers': ['transitive']}],
-   'exports': ['org.junit.jupiter.params',
-               'org.junit.jupiter.params.aggregator',
-               'org.junit.jupiter.params.converter',
-               'org.junit.jupiter.params.provider',
-               'org.junit.jupiter.params.support'],
-   'opens': ['org.junit.jupiter.params to org.junit.platform.commons',
-             'org.junit.jupiter.params.converter to org.junit.platform.commons',
-             'org.junit.jupiter.params.provider to org.junit.platform.commons'],
-   'uses': [],
-   'provides': []}),
- ('junit-platform-commons-1.14.1.jar',
-  'org.junit.platform.commons',
-  '1.14.1',
-  '39a1f247aba3346be0b4e46dbb3c09031c0cfcad111d7d9904795b917e8c1c7a',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'java.logging', 'modifiers': []},
-                {'module': 'java.management', 'modifiers': []},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']}],
-   'exports': ['org.junit.platform.commons',
-               'org.junit.platform.commons.annotation',
-               'org.junit.platform.commons.function',
-               'org.junit.platform.commons.io',
-               'org.junit.platform.commons.support',
-               'org.junit.platform.commons.support.conversion',
-               'org.junit.platform.commons.support.scanning',
-               'org.junit.platform.commons.logging to '
-               'org.junit.jupiter.api,org.junit.jupiter.engine,org.junit.jupiter.migrationsupport,org.junit.jupiter.params,org.junit.platform.console,org.junit.platform.engine,org.junit.platform.launcher,org.junit.platform.reporting,org.junit.platform.runner,org.junit.platform.suite.api,org.junit.platform.suite.engine,org.junit.platform.testkit,org.junit.vintage.engine',
-               'org.junit.platform.commons.util to '
-               'org.junit.jupiter.api,org.junit.jupiter.engine,org.junit.jupiter.migrationsupport,org.junit.jupiter.params,org.junit.platform.console,org.junit.platform.engine,org.junit.platform.jfr,org.junit.platform.launcher,org.junit.platform.reporting,org.junit.platform.runner,org.junit.platform.suite.api,org.junit.platform.suite.commons,org.junit.platform.suite.engine,org.junit.platform.testkit,org.junit.vintage.engine'],
-   'opens': [],
-   'uses': ['org.junit.platform.commons.support.scanning.ClasspathScanner'],
-   'provides': []}),
- ('junit-platform-engine-1.14.1.jar',
-  'org.junit.platform.engine',
-  '1.14.1',
-  'a89310dd69dd9ac7031db9997dcab9a1481512fa546077e4219cefa2e287ebc7',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']},
-                {'module': 'org.junit.platform.commons', 'modifiers': ['transitive']},
-                {'module': 'org.opentest4j', 'modifiers': ['transitive']}],
-   'exports': ['org.junit.platform.engine',
-               'org.junit.platform.engine.discovery',
-               'org.junit.platform.engine.reporting',
-               'org.junit.platform.engine.support.config',
-               'org.junit.platform.engine.support.descriptor',
-               'org.junit.platform.engine.support.discovery',
-               'org.junit.platform.engine.support.filter',
-               'org.junit.platform.engine.support.hierarchical',
-               'org.junit.platform.engine.support.store'],
-   'opens': [],
-   'uses': ['org.junit.platform.engine.discovery.DiscoverySelectorIdentifierParser'],
-   'provides': ['org.junit.platform.engine.discovery.DiscoverySelectorIdentifierParser with '
-                'org.junit.platform.engine.discovery.ClassSelector$IdentifierParser,org.junit.platform.engine.discovery.ClasspathResourceSelector$IdentifierParser,org.junit.platform.engine.discovery.ClasspathRootSelector$IdentifierParser,org.junit.platform.engine.discovery.DirectorySelector$IdentifierParser,org.junit.platform.engine.discovery.FileSelector$IdentifierParser,org.junit.platform.engine.discovery.IterationSelector$IdentifierParser,org.junit.platform.engine.discovery.MethodSelector$IdentifierParser,org.junit.platform.engine.discovery.ModuleSelector$IdentifierParser,org.junit.platform.engine.discovery.NestedClassSelector$IdentifierParser,org.junit.platform.engine.discovery.NestedMethodSelector$IdentifierParser,org.junit.platform.engine.discovery.PackageSelector$IdentifierParser,org.junit.platform.engine.discovery.UniqueIdSelector$IdentifierParser,org.junit.platform.engine.discovery.UriSelector$IdentifierParser']}),
- ('junit-platform-launcher-1.14.1.jar',
-  'org.junit.platform.launcher',
-  '1.14.1',
-  'c3a2fd899a6c1996467885450f8a390bf5ca99a2461b558917e3a38d71ea07b7',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'java.logging', 'modifiers': ['transitive']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']},
-                {'module': 'org.junit.platform.commons', 'modifiers': ['transitive']},
-                {'module': 'org.junit.platform.engine', 'modifiers': ['transitive']}],
-   'exports': ['org.junit.platform.launcher',
-               'org.junit.platform.launcher.core',
-               'org.junit.platform.launcher.listeners',
-               'org.junit.platform.launcher.listeners.discovery'],
-   'opens': [],
-   'uses': ['org.junit.platform.engine.TestEngine',
-            'org.junit.platform.launcher.LauncherDiscoveryListener',
-            'org.junit.platform.launcher.LauncherInterceptor',
-            'org.junit.platform.launcher.LauncherSessionListener',
-            'org.junit.platform.launcher.PostDiscoveryFilter',
-            'org.junit.platform.launcher.TestExecutionListener'],
-   'provides': ['org.junit.platform.launcher.TestExecutionListener with '
-                'org.junit.platform.launcher.listeners.UniqueIdTrackingListener']}),
- ('junit-platform-reporting-1.14.1.jar',
-  'org.junit.platform.reporting',
-  '1.14.1',
-  'cbd79a3ae82088f38d360fb5a171aa8e0e386f5f99a16630b032bd89101caa09',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'java.xml', 'modifiers': []},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static', 'transitive']},
-                {'module': 'org.junit.platform.commons', 'modifiers': []},
-                {'module': 'org.junit.platform.engine', 'modifiers': ['transitive']},
-                {'module': 'org.junit.platform.launcher', 'modifiers': ['transitive']},
-                {'module': 'org.opentest4j.reporting.tooling.spi', 'modifiers': []}],
-   'exports': ['org.junit.platform.reporting.legacy',
-               'org.junit.platform.reporting.legacy.xml',
-               'org.junit.platform.reporting.open.xml'],
-   'opens': [],
-   'uses': [],
-   'provides': ['org.junit.platform.launcher.TestExecutionListener with '
-                'org.junit.platform.reporting.open.xml.OpenTestReportGeneratingListener',
-                'org.opentest4j.reporting.tooling.spi.htmlreport.Contributor with '
-                'org.junit.platform.reporting.open.xml.JUnitContributor']}),
- ('opentest4j-1.3.0.jar',
-  'org.opentest4j',
-  '1.3.0',
-  '48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']}],
-   'exports': ['org.opentest4j'],
-   'opens': [],
-   'uses': [],
-   'provides': []}),
- ('apiguardian-api-1.1.2.jar',
-  'org.apiguardian.api',
-  '1.1.2',
-  'b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']}],
-   'exports': ['org.apiguardian.api'],
-   'opens': [],
-   'uses': [],
-   'provides': []}),
- ('open-test-reporting-tooling-spi-0.2.3.jar',
-  'org.opentest4j.reporting.tooling.spi',
-  '0.2.3',
-  'f0d54b46fb9e503b22abc65c45a48025aad16051903aaed11f6d974129f74252',
-  {'requires': [{'module': 'java.base', 'modifiers': ['mandated']},
-                {'module': 'java.xml', 'modifiers': ['transitive']},
-                {'module': 'org.apiguardian.api', 'modifiers': ['static']}],
-   'exports': ['org.opentest4j.reporting.tooling.spi.htmlreport'],
-   'opens': [],
-   'uses': [],
-   'provides': []}))
+# Закреплённые версии библиотек публичного JUnit.
 _PUBLIC_LIBRARIES: tuple[tuple[str, str], ...] = (
     ("json-simple-1.1.1.jar", "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1"),
     ("junit-platform-console-standalone-1.14.1.jar", "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072"),
@@ -1168,25 +1001,8 @@ class _JobRuntime:
         self.adapter.mkdir()
         self.library_dir.mkdir()
         self.compiled = False
-        self.observer = root / "observer"
-        self.transformer = root / "transformer"
-        self.junit = self.library_dir / "junit-platform-console-standalone-1.14.1.jar"
-        self.compiler_archive = root / "compiler.jsa"
-        self.named_dir = root / "junit-modules"
-        self.empty_dir = root / "empty-libs"
-        self.named_dir.mkdir()
-        self.empty_dir.mkdir()
-        self.named_jars: list[Path] = []
-        self.named_bindings: list[dict[str, object]] = []
         for filename, expected in _PUBLIC_LIBRARIES:
             self._copy_bound(bundle / filename, self.library_dir / filename, expected)
-        for filename, module, version, expected, descriptor in _NAMED_JUNIT:
-            destination = self.named_dir / filename
-            self._copy_bound(bundle / "junit-modules" / filename, destination, expected)
-            self.named_jars.append(destination)
-            self.named_bindings.append({"module": module, "version": version,
-                                        "path": str(destination.resolve()), "sha256": expected,
-                                        "descriptor": descriptor})
         self.libs = os.pathsep.join(str(self.library_dir / name) for name, _ in _PUBLIC_LIBRARIES)
 
     @staticmethod
@@ -1202,43 +1018,9 @@ class _JobRuntime:
             raise GraderError("Qualified runtime library digest mismatch: " + source.name)
         destination.chmod(0o644)
 
-    def named_module_path(self, module: Path | None = None) -> str:
-        paths = [*([module] if module is not None else []), *self.named_jars,
-                 self.library_dir / "json-simple-1.1.1.jar"]
-        return os.pathsep.join(str(path.resolve()) for path in paths)
-
     def compiler(self) -> list[str]:
-        # Only JDK javac classes are loaded: submitted code is parsed, never
-        # executed (-proc:none). Generate cold within this job, never import an
-        # author archive or reuse it across jobs/Java versions.
-        option = (
-            "SharedArchiveFile"
-            if self.compiler_archive.is_file()
-            else "ArchiveClassesAtExit"
-        )
-        return [
-            _grading_java(),
-            *COMPILER_JVM[1:],
-            "-XX:" + option + "=" + str(self.compiler_archive),
-            *COMPILER,
-        ]
-
-    def protect_archive(self) -> None:
-        if self.compiler_archive.is_file():
-            self.compiler_archive.chmod(0o600)
-
-    def module_flags(self, module: Path | None = None) -> list[str]:
-        return [
-            "--module-path",
-            self.named_module_path(module or self.observer),
-            "--add-modules",
-            "org.prairielearn.feedback,org.junit.jupiter.engine,org.junit.jupiter.params,org.apiguardian.api",
-            "--add-reads",
-            "org.prairielearn.feedback=ALL-UNNAMED",
-        ]
-
-    def runtime_libs(self) -> str:
-        return str(self.empty_dir)
+        executable = str(HARDENED_JDK / "bin/javac") if os.environ.get("PL_CONTAINMENT") == "official" else "javac"
+        return [executable, "-J-XX:TieredStopAtLevel=1", "-J-XX:ActiveProcessorCount=2", *COMPILER]
 
     @staticmethod
     def private_classpath(outputs: Sequence[Path]) -> str:
@@ -1255,57 +1037,17 @@ class _JobRuntime:
         if self.compiled:
             durations["runnerCompilation"] = 0.0
             return
-        self.observer.mkdir()
-        self.transformer.mkdir()
-        feedback = self.bundle / "feedback"
-        for name, files, output, options in (
-            (
-                "observerCompilation",
-                sorted((feedback / "module").rglob("*.java")),
-                self.observer,
-                [
-                    "--module-path",
-                    self.named_module_path(),
-                    "-cp",
-                    str(self.empty_dir),
-                    "-sourcepath",
-                    str(feedback / "module"),
-                ],
-            ),
-            (
-                "transformerCompilation",
-                [feedback / "Transform.java"],
-                self.transformer,
-                ["-cp", str(self.empty_dir)],
-            ),
-        ):
-            start = time.monotonic()
-            code, text, reason = _run(
-                [*self.compiler(), *options, "-d", str(output), *map(str, files)],
-                job,
-                limits.get("compile-seconds", 15),
-                _output_limit(limits),
-            )
-            self.protect_archive()
-            durations[name] = time.monotonic() - start
-            diagnostics[name] = text.replace(str(job), "/grade").replace(
-                str(self.root), "/runtime"
-            )
-            if code or reason:
-                raise GraderError(
-                    "Trusted assertion runtime compilation failed: " + diagnostics[name]
-                )
         files = [
             str(self.bundle / "PlatformApiPrecheck.java"),
-            *map(str, (self.bundle / "upstream").rglob("*.java")),
+            str(self.bundle / "PlatformJUnitAdapter.java"),
+            str(self.bundle / "upstream/org/prairielearn/autograder/AutograderInfo.java"),
         ]
         start = time.monotonic()
         code, text, reason = _run(
             [
                 *self.compiler(),
-                *self.module_flags(),
                 "-cp",
-                self.runtime_libs(),
+                self.libs,
                 "-d",
                 str(self.adapter),
                 *files,
@@ -1314,7 +1056,6 @@ class _JobRuntime:
             limits.get("compile-seconds", 15),
             _output_limit(limits),
         )
-        self.protect_archive()
         durations["runnerCompilation"] = time.monotonic() - start
         diagnostics["runnerCompilation"] = text.replace(str(job), "/grade").replace(
             str(self.root), "/runtime"
@@ -1330,113 +1071,10 @@ class _JobRuntime:
             for directory in (
                 self.adapter,
                 self.library_dir,
-                self.named_dir,
-                self.empty_dir,
-                self.observer,
-                self.transformer,
             ):
                 directory.chmod(0o755)
                 for file in directory.rglob("*"):
                     file.chmod(0o755 if file.is_dir() else 0o644)
-
-    def prepare_observer(
-        self,
-        job: Path,
-        config: _ExecutionConfig,
-        stage: Path,
-        trusted: Path,
-        student: Path,
-        tests: list[str],
-        limits: _ExecutionLimits,
-        durations: dict[str, float],
-        diagnostics: dict[str, str],
-    ) -> Path:
-        """Sealed policy from fresh trusted compiler output; no student-written result."""
-        module = stage / "observer"
-        shutil.copytree(self.observer, module)
-        cp = (
-            os.pathsep.join(
-                map(
-                    str,
-                    (
-                        self.transformer,
-                        self.junit,
-                        self.adapter,
-                        trusted,
-                        student,
-                        self.observer,
-                    ),
-                )
-            )
-            + os.pathsep
-            + str(self.library_dir / "json-simple-1.1.1.jar")
-        )
-        start = time.monotonic()
-
-        def transform(*args: str | Path) -> None:
-            code, text, reason = _run(
-                [
-                    _grading_java(),
-                    "-Xmx128m",
-                    "-XX:TieredStopAtLevel=1",
-                    "-XX:ActiveProcessorCount=2",
-                    "-cp",
-                    cp,
-                    "Transform",
-                    *map(str, args),
-                ],
-                job,
-                limits.get("compile-seconds", 15),
-                _output_limit(limits),
-            )
-            if code or reason:
-                raise GraderError(
-                    "Trusted assertion admission failed: "
-                    + text.replace(str(stage), "/scratch")
-                )
-
-        facade = module / "org/prairielearn/feedback/Assertions.class"
-        transform(
-            trusted,
-            facade,
-            stage / "assertion-sites.properties",
-        )
-        transform(module, facade, stage / "adapter-sites.properties", "adapter")
-        transform(
-            "reader",
-            module / "org/prairielearn/feedback/internal/State.class",
-            stage / "reader-site.properties",
-        )
-        policy = "\n".join(
-            (stage / name).read_text()
-            for name in (
-                "assertion-sites.properties",
-                "adapter-sites.properties",
-                "reader-site.properties",
-            )
-        )
-
-        # Java Properties escaping is deliberately explicit for private absolute roots.
-        def value(path: Path) -> str:
-            return (
-                str(path).replace("\\", "\\\\").replace(":", "\\:").replace("=", "\\=")
-            )
-
-        policy += (
-            "\nadapterRoot="
-            + value(module.resolve())
-            + "\ntrustedRoot="
-            + value(trusted.resolve())
-        )
-        policy += "\nsnapshotBytes=32768\n"
-        (module / "org/prairielearn/feedback/internal/policy.properties").write_text(
-            policy
-        )
-        durations["trustedTransformation"] = time.monotonic() - start
-        diagnostics["trustedTransformation"] = (
-            "Trusted assertion feedback prepared"
-        )
-        return module
 
 
 def _api_precheck(
@@ -1461,7 +1099,6 @@ def _api_precheck(
         limits.get("compile-seconds", 15),
         _output_limit(limits),
     )
-    runtime.protect_archive()
     durations["apiCompilation"] = time.monotonic() - start
     diagnostics["apiCompilation"] = text.replace(str(job), "/grade").replace(
         str(stage), "/scratch"
@@ -1486,7 +1123,6 @@ def _api_precheck(
     scratch.mkdir()
     params = stage / "api-params"
     params.mkdir()
-    signature = secrets.token_hex(32)
     result_file = output / (secrets.token_hex(32) + ".json")
     parameter_file = params / "params.json"
     parameter_file.write_text(
@@ -1495,7 +1131,6 @@ def _api_precheck(
                 "classes": str(student),
                 "scratch": str(scratch),
                 "entry": config["entry"],
-                "signature": signature,
                 "result_file": str(result_file),
             }
         )
@@ -1511,8 +1146,7 @@ def _api_precheck(
             raise GraderError("Official API precheck containment prerequisites missing")
         _protect_input_identity(job)
         stage.chmod(0o711)
-        for directory in (student, compiled, runtime.adapter, runtime.library_dir,
-                          runtime.named_dir, runtime.empty_dir):
+        for directory in (student, compiled, runtime.adapter, runtime.library_dir):
             directory.chmod(0o755)
             for file in directory.rglob("*"):
                 file.chmod(0o755 if file.is_dir() else 0o644)
@@ -1537,7 +1171,6 @@ def _api_precheck(
         [
             *prefix,
             _grading_java(),
-            "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED",
             "-Xmx128m",
             "-XX:TieredStopAtLevel=1",
             "-XX:ActiveProcessorCount=2",
@@ -1560,7 +1193,7 @@ def _api_precheck(
         raise GraderError("API precheck execution failed: " + (reason or str(code)))
     try:
         value: object = json.loads(result_file.read_text())
-        if not _object(value) or value.pop("signature") != signature or value.get("status") not in (
+        if not _object(value) or value.get("status") not in (
             "success",
             "mismatch",
             "infrastructure",
@@ -1617,7 +1250,6 @@ def _execute(
                 limits.get("compile-seconds", 15),
                 _output_limit(limits),
             )
-            runtime.protect_archive()
             durations[name] = time.monotonic() - start
             diagnostics[name] = text.replace(str(job), "/grade").replace(
                 str(stage), "/scratch"
@@ -1676,8 +1308,8 @@ def _execute(
                 builder = native_context.get("build")
                 if builder is None:
                     raise GraderError("Native build executor required")
-                proof, code, reason = builder(stage, durations, diagnostics)
-                native_context.update(proof=proof)
+                build_result, code, reason = builder(stage, durations, diagnostics)
+                native_context.update(build_result=build_result)
             else:
                 code, reason = compile_phase("studentCompilation", sources, student, production_classpath)
         if reason:
@@ -1792,49 +1424,20 @@ def _execute(
             return unsafe("Submitted classes collide with trusted classes")
         if api_classes is None:
             runtime.ensure_adapter(job, limits, durations, diagnostics)
-        observer = (
-            runtime.prepare_observer(
-                job,
-                config,
-                stage,
-                trusted,
-                student,
-                tests,
-                limits,
-                durations,
-                diagnostics,
-            )
-            if not student_tests
-            else runtime.observer
-        )
         reports = stage / "results"
         reports.mkdir()
         params = stage / "params"
         params.mkdir()
         feedbackfile = reports / "feedback.json"
-        report_key = secrets.token_hex(32)
         parameter_file = params / "params.json"
         parameter_file.write_text(
             json.dumps(
                 {
                     "feedback_file": str(feedbackfile),
-                    "report_key": report_key,
-                    "reports_dir": str(reports),
                     "test_classes": _source_classes(
                         sources if student_tests else tests
                     ),
-                    "student_classes": sorted(_compiled_class_names(student)),
-                    "student_classes_root": str(student.resolve()),
-                    "submission_mode": config["mode"],
-                    "observe_assertions": not student_tests,
-                    "runtime_modules": runtime.named_bindings,
-                    "trusted_classes": sorted(_compiled_class_names(trusted)),
-                    "trusted_classes_root": str(trusted.resolve()),
-                    **(
-                        {"trusted_console_support_root": str(trusted.resolve())}
-                        if "coursesupport.JavaProcess" in trusted_names
-                        else {}
-                    ),
+                    "student_classes": _source_classes(sources),
                 }
             )
         )
@@ -1857,8 +1460,7 @@ def _execute(
             runtime.root.chmod(0o711)
             reports.chmod(0o777)
             params.chmod(0o777)
-            for directory in (student, trusted, adapter, library_dir, runtime.named_dir,
-                              runtime.empty_dir, observer):
+            for directory in (student, trusted, adapter, library_dir):
                 directory.chmod(0o755)
                 for file in directory.rglob("*"):
                     file.chmod(0o755 if file.is_dir() else 0o644)
@@ -1883,7 +1485,7 @@ def _execute(
             junit_properties = ["-Djava.security.egd=" + junit_seed.as_uri()]
             containment = "official-landlock-sbuser"
         classpath = runtime.private_classpath(
-            [adapter, runtime.empty_dir, trusted, *([api_classes] if api_classes else []), student]
+            [adapter, trusted, *([api_classes] if api_classes else []), student]
         )
         command = [
             *prefix,
@@ -1896,11 +1498,9 @@ def _execute(
             "--illegal-native-access=deny",
             "--sun-misc-unsafe-memory-access=deny",
             *junit_properties,
-            *runtime.module_flags(observer),
-            "-Djunit.jupiter.extensions.autodetection.enabled="
-            + str(not student_tests).lower(),
+            "-Djunit.jupiter.extensions.autodetection.enabled=false",
             "-cp",
-            classpath,
+            os.pathsep.join([runtime.libs, classpath]),
             "org.prairielearn.feedback.PlatformJUnitAdapter",
             str(parameter_file),
         ]
@@ -1947,23 +1547,18 @@ def _execute(
         if code != 0 or not feedbackfile.is_file():
             raise GraderError("JUnit execution did not produce complete reports")
         try:
-            raw, counts = _junit_result_helpers()["read_junit_xml"](reports, feedbackfile, report_key=report_key)
+            raw, counts = _junit_result_helpers()["read_junit_report"](feedbackfile)
         except (ValueError, OSError) as error:
-            raise GraderError("Invalid JUnit XML report: " + str(error)) from error
+            raise GraderError("Invalid JUnit listener report: " + str(error)) from error
         _validate_junit_counts(counts, require_cases=not student_tests)
-        if counts.get("feedbackProtocolVersion") != (1 if student_tests else 2):
-            raise GraderError(
-                "Assertion feedback protocol differs from private execution mode"
-            )
         # Internal observations remain available to private verification; main()
         # applies the student boundary before writing native RESULTS.
         if "infrastructure" in counts.get("failureKinds", {}).values():
-            raise GraderError(
-                "Trusted check raised an unexpected exception outside student code"
-            )
+            traces = "\n".join(case.get("teacherTrace", "") for case in counts["cases"])
+            raise GraderError("Trusted check raised an unexpected exception:\n" + traces)
         base.update(
             rawResult=raw,
-            reportFormat="junit-xml",
+            reportFormat="junit-listener",
             counts=counts,
             maxPoints=counts["executed"],
             tests=(
@@ -1992,7 +1587,8 @@ def _execute(
         )
         if incomplete or not raw.get("gradable"):
             if not student_tests:
-                raise GraderError("Trusted JUnit discovery/execution is incomplete")
+                traces = "\n".join(item.get("teacherTrace", "") for item in counts.get("containerDiagnostics", []))
+                raise GraderError("Trusted JUnit discovery/execution is incomplete\n" + traces)
             return {**base, "score": 0, "classification": "student-test-quality-failure"}
         kinds = set(counts.get("failureKinds", {}).values())
         if counts["failed"] and ("timeout" in kinds or "output-limit" in kinds):
@@ -2234,7 +1830,7 @@ class _AdditionalSubmissionError(Exception):
         )
 
 
-def _flat_additional_inventory(root: Path, config: _ExecutionConfig) -> list[tuple[str, bytes]]:
+def _flat_additional_sources(root: Path, config: _ExecutionConfig) -> list[tuple[str, bytes]]:
     policy = config.get("additionalJavaSources")
     if policy is None:
         raise GraderError("Additional Java sources policy required")
@@ -2282,7 +1878,7 @@ def _additional_evidence(policy: AdditionalSourcePolicy, members: Sequence[tuple
             "files": [{"path": name, "bytes": len(data)} for name, data in members if name not in source_names]}
 
 
-def _additional_inventory(job: Path, config: _ExecutionConfig) -> tuple[list[tuple[str, bytes]], AdditionalSourcesEvidence | None]:
+def _additional_sources(job: Path, config: _ExecutionConfig) -> tuple[list[tuple[str, bytes]], AdditionalSourcesEvidence | None]:
     """Fully validate bounded bytes before creating any extracted source file."""
     policy = config.get("additionalJavaSources")
     if policy is None:
@@ -2291,7 +1887,7 @@ def _additional_inventory(job: Path, config: _ExecutionConfig) -> tuple[list[tup
     file = root / policy["archive"]
     if root.is_symlink() or not root.is_dir():
         raise _AdditionalSubmissionError("небезопасный каталог student")
-    members = _flat_additional_inventory(root, config)
+    members = _flat_additional_sources(root, config)
     if not file.exists() and not file.is_symlink():
         return members, _additional_evidence(policy, members, config["sourceFiles"])
     if file.is_symlink() or not stat.S_ISREG(file.stat(follow_symlinks=False).st_mode):
@@ -2455,7 +2051,7 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             value["additionalSources"] = additional_evidence
         if native_context is not None:
             value["buildEvidence"] = native_context.get(
-                "proof",
+                "build_result",
                 {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"},
             )
         return value
@@ -2478,7 +2074,7 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             )
         )
     try:
-        additional, additional_evidence = _additional_inventory(job, config)
+        additional, additional_evidence = _additional_sources(job, config)
     except _AdditionalSubmissionError as error:
         result = _invalid(str(error), classification=error.classification)
         if "apiPrecheck" in config:
@@ -2511,7 +2107,7 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             extra_names[str(target)] = name
         runtime = _JobRuntime(Path(runtime_dir), bundle)
         if native_context is not None:
-            native_context["proof"] = {
+            native_context["build_result"] = {
                 "schemaVersion": 1,
                 "kind": "gradle-jar-v1",
                 "status": "not-run",
@@ -2537,9 +2133,9 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             except (OSError, ValueError, KeyError, GraderError) as error:
                 if native_context is None:
                     raise
-                prior_proof = native_context.get("proof")
-                if prior_proof is None or prior_proof["status"] != "success":
-                    native_context["proof"] = {"schemaVersion": 1, "kind": "gradle-jar-v1",
+                prior_build = native_context.get("build_result")
+                if prior_build is None or prior_build["status"] != "success":
+                    native_context["build_result"] = {"schemaVersion": 1, "kind": "gradle-jar-v1",
                                                "status": "failure", "reason": "build"}
                 stages: _NativeFailureStages = (
                     {

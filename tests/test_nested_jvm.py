@@ -6,13 +6,13 @@ import sys
 import unittest
 import test_grading_job as fixtures
 from selected_job_fixture import fixture_record, fixture_set_up
-from test_assertion_feedback import grader_run
+
 
 class ProcessFileLimit(unittest.TestCase):
  def test_supervisor_caps_child_hard_limit_without_changing_parent(self) -> None:
   import resource
   before=resource.getrlimit(resource.RLIMIT_NOFILE)
-  code,text,reason=grader_run()([sys.executable,'-c','import resource;print(resource.getrlimit(resource.RLIMIT_NOFILE)[1])'],Path.cwd(),5)
+  code,text,reason=fixtures.grader._run([sys.executable,'-c','import resource;print(resource.getrlimit(resource.RLIMIT_NOFILE)[1])'],Path.cwd(),5)
   self.assertEqual(code,0);self.assertIsNone(reason);self.assertLessEqual(int(text),4096)
   self.assertEqual(resource.getrlimit(resource.RLIMIT_NOFILE),before)
 

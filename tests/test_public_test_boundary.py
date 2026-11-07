@@ -7,7 +7,10 @@ import unittest
 from pathlib import Path
 import jsonschema
 
-import test_assertion_feedback as assertions
+from test_student_feedback import feedback
+
+def sample_counts():
+    return {"complete":True,"eventErrors":0,"discovered":1,"executed":1,"passed":1,"failed":0,"skipped":0,"aborted":0,"containerFailures":0,"registered":["t"],"started":["t"],"outcomes":{"t":"successful"},"failureKinds":{},"cases":[{"id":"t","name":"Тест","status":"passed","expected":"42","actual":"42"}]}
 from json_boundary import is_object, is_list
 import test_grading_job as fixtures
 
@@ -77,7 +80,7 @@ class PublicTestBoundary(unittest.TestCase):
             validate_config(fixture.cfg)
 
     def test_legacy_observation_cannot_add_a_card_or_override_junit(self) -> None:
-        counts = assertions.CheckShape().counts()
+        counts = sample_counts()
         leaf = counts['cases'][0]
         leaf['name'] = 'Обычный JUnit display name'
         source = {'classification': 'success', 'score': 1, 'counts': counts,
@@ -86,7 +89,7 @@ class PublicTestBoundary(unittest.TestCase):
         descriptor = {'publicCases': [{'id': 'legacy', 'test': 'T#t',
                                       'name': 'CLOSED_LEGACY_NAME', 'action': 'CLOSED_ACTION',
                                       'expected': 'CLOSED_EXPECTED'}]}
-        native = assertions.feedback(source, descriptor)
+        native = feedback.student_result(source, descriptor)
         assert 'tests' in native
         self.assertEqual(len(native['tests']), 1)
         self.assertEqual(native['tests'][0]['name'], leaf['name'])
@@ -94,12 +97,11 @@ class PublicTestBoundary(unittest.TestCase):
         self.assertEqual(native['score'], 1)
         self.assertNotIn('publicCases', native['feedback'])
         self.assertNotIn('CLOSED_', json.dumps(native))
-        assert 'checks' in leaf
-        self.assertIn('Ожидается: ' + leaf['checks'][0]['expected'], native['tests'][0]['message'])
+        self.assertIn('Ожидается: ' + leaf['expected'], native['tests'][0]['message'])
 
     def test_no_description_cards_on_compile_or_infrastructure_failure(self) -> None:
         for kind in ('student-compilation-failure', 'infrastructure-failure'):
-            native = assertions.feedback({'classification': kind, 'score': 0}, {})
+            native = feedback.student_result({'classification': kind, 'score': 0}, {})
             self.assertNotIn('publicCases', native['feedback'])
             self.assertFalse(native.get('tests'))
             if kind == 'infrastructure-failure':
@@ -139,23 +141,23 @@ class AuthorFeedbackBoundary(unittest.TestCase):
         for classification in ('success', 'behavior-failure', 'infrastructure-failure', 'student-compilation-failure'):
             source = {'classification': classification, 'score': 0}
             with self.subTest(classification=classification):
-                expected = assertions.feedback(source, {})
-                actual = assertions.feedback(source, descriptor)
+                expected = feedback.student_result(source, {})
+                actual = feedback.student_result(source, descriptor)
                 self.assertEqual(actual, expected)
                 self.assertIn('feedback', actual)
                 self.assertNotIn('CLOSED_', json.dumps(actual))
 
     def test_ordinary_junit_projection_survives_removed_author_feedback(self) -> None:
         source: dict[str, object] = {'classification': 'behavior-failure', 'score': 0,
-                  'counts': assertions.CheckShape().counts()}
-        actual = assertions.feedback(source, {'feedback': {'requirement': 'CLOSED_REQUIREMENT', 'whatCheck': 'CLOSED_HINT'}})
-        self.assertEqual(actual, assertions.feedback(source, {}))
+                  'counts': sample_counts()}
+        actual = feedback.student_result(source, {'feedback': {'requirement': 'CLOSED_REQUIREMENT', 'whatCheck': 'CLOSED_HINT'}})
+        self.assertEqual(actual, feedback.student_result(source, {}))
         assert 'cases' in actual['feedback']
         public_leaf = actual['feedback']['cases'][0]
-        assert 'checks' in public_leaf
+        assert 'expected' in public_leaf
         counts = fixture_record(source['counts'])
         original_leaf = fixture_record(fixture_list(counts['cases'])[0])
-        self.assertEqual(public_leaf['checks'], original_leaf['checks'])
+        self.assertEqual(public_leaf['expected'], original_leaf['expected'])
         assert 'tests' in actual
         self.assertEqual(len(actual['tests']), 1)
 
