@@ -54,6 +54,10 @@ class LaunchContract(unittest.TestCase):
   self.assertEqual(len(self.calls),1)
   call=self.calls[0];assert isinstance(call,tuple);args,kw=call;self.assertEqual(args[2],str(self.entry));self.assertEqual(kw.get('cwd'),self.owner)
   self.assertEqual(args[3],str(self.source));self.assertEqual(args[-2:],['--book','tasks'])
+ def test_generated_lock_does_not_prevent_export(self) -> None:
+  (self.entry.parents[1]/'deno.lock').write_text('{}')
+  with self.assertRaisesRegex(builder.BuildError,'Installed full owner export failed'):self.call()
+  self.assertEqual(len(self.calls),1)
  def test_explicit_stage_literal_is_selected_before_child_and_removed_after_failure(self) -> None:
   with self.assertRaisesRegex(builder.BuildError,'Installed full owner export failed'):self.call(export_stage=self.stage)
   self.assertEqual(len(self.calls),1);call=self.calls[0];assert isinstance(call,tuple);args,_=call

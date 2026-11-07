@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble a native PL course from a clean source checkout and owner exports."""
+"""Собрать Native-курс штатным установленным экспортёром."""
 import argparse
 import ctypes
 import json
@@ -50,26 +50,6 @@ def relative_path(root: Path, name: object) -> Path:
         if current.is_symlink():
             raise BuildError(f'Symlink is forbidden: {current}')
     return current
-
-def tree(root: Path) -> dict[str, bytes]:
-    if not root.is_dir() or root.is_symlink():
-        raise BuildError(f'Expected a real directory: {root}')
-    result: dict[str, bytes] = {}
-    for p in sorted(root.rglob('*')):
-        if p.is_symlink():
-            raise BuildError(f'Symlink is forbidden: {p}')
-        if p.is_file():
-            result[p.relative_to(root).as_posix()] = p.read_bytes()
-        elif not p.is_dir():
-            raise BuildError(f'Special file is forbidden: {p}')
-    return result
-
-def git(root: Path, *args: str) -> str:
-    try:
-        return subprocess.run(['git', *args], cwd=root, check=True,
-                              capture_output=True, text=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise BuildError(f'Git source validation failed: {root}') from error
 
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +128,6 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     if source.resolve()!=source or not source.is_dir():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
     if not output.parent.is_dir() or output.parent.resolve()!=output.parent:raise BuildError('Output parent must be real existing directory')
-    if git(source,'status','--porcelain','--untracked-files=all'):raise BuildError('Source checkout must be clean before export')
     root=relative_path(source,book)
     entries=[root/'_extensions/course-prairielearn/entrypoints/export-course.ts',root/'_extensions/Afonenko-Course-Tools/course-prairielearn/entrypoints/export-course.ts']
     entries=[p for p in entries if p.is_file() and not p.is_symlink()]
