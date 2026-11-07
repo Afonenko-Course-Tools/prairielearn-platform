@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import test_selected_file_delivery as fixtures
+from selected_job_fixture import fixture_record
 
 g = fixtures.g
 
@@ -37,9 +38,10 @@ class RuntimeExpectations(unittest.TestCase):
             job = g.prepare_job(manifest, Path(snapshot), 'demo/exr-answer', 'contract:runtime',
                                 registry=fixtures.registry())
             try:
-                self.assertEqual(job['expectations']['classification'], 'student-runtime-failure')
-                self.assertEqual(job['expectations']['score'], {'exactly': 0})
-                job['expectations']['classification'] = 'unknown-runtime-outcome'
+                expectations = fixture_record(job['expectations'])
+                self.assertEqual(expectations['classification'], 'student-runtime-failure')
+                self.assertEqual(expectations['score'], {'exactly': 0})
+                expectations['classification'] = 'unknown-runtime-outcome'
                 with self.assertRaisesRegex(g.JobError, 'unknown-runtime-outcome'):
                     g.validate('grading-job', job)
             finally:
@@ -59,14 +61,14 @@ class RuntimeExpectations(unittest.TestCase):
             job = g.prepare_job(manifest, Path(snapshot), 'demo/exr-answer', 'starter',
                                 registry=fixtures.registry())
             try:
-                self.assertEqual(job['expectations']['classification'], 'student-runtime-failure')
+                self.assertEqual(fixture_record(job['expectations'])['classification'], 'student-runtime-failure')
             finally:
                 shutil.rmtree(job.root)
 
     def test_author_expectations_accept_runtime_failure(self):
         for scenario in ('reference', 'starter'):
             with self.subTest(scenario=scenario):
-                check = copy.deepcopy(fixtures.manifest()['projects'][0]['check'])
+                check = fixture_record(copy.deepcopy(fixtures.manifest()['projects'][0]['check']))
                 check['verification-expectations'] = {
                     scenario: {'classification': 'student-runtime-failure'},
                 }
@@ -80,7 +82,7 @@ class RuntimeExpectations(unittest.TestCase):
             for schema in ('project-check', 'native-checks'):
                 with self.subTest(scenario=scenario, schema=schema):
                     manifest = fixtures.manifest()
-                    check = manifest['projects'][0]['check']
+                    check = fixture_record(manifest['projects'][0]['check'])
                     check['verification-expectations'] = {
                         scenario: {'classification': 'unknown-runtime-outcome'},
                     }

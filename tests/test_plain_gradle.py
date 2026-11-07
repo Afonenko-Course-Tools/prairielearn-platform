@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('gradle'), 'Нужен локальный Gradle')
 class PlainGradleTests(unittest.TestCase):
-    def test_ordinary_jar_run_and_test(self):
+    def test_ordinary_jar_run_and_test(self) -> None:
         with tempfile.TemporaryDirectory(prefix='plain-gradle-') as temporary:
             work=Path(temporary)
             for name in ('build.gradle','settings.gradle'):
@@ -21,7 +21,12 @@ class PlainGradleTests(unittest.TestCase):
             (work/'tests').mkdir()
             (work/'src/Student.java').write_text('public class Student { public static int answer(){return 42;} public static void main(String[] args){System.out.println(answer());}}')
             (work/'tests/AnswerTest.java').write_text('import org.junit.jupiter.api.Test; import static org.junit.jupiter.api.Assertions.*; public class AnswerTest { @Test void answer(){assertEquals(42,Student.answer());}}')
-            java_home=os.environ.get('JAVA_HOME') or str(Path(shutil.which('javac')).resolve().parents[1])
+            java_home=os.environ.get('JAVA_HOME')
+            if not java_home:
+                javac=shutil.which('javac')
+                if javac is None:
+                    raise RuntimeError('Требуется локальный компилятор Java')
+                java_home=str(Path(javac).resolve().parents[1])
             environment={**os.environ,'JAVA_HOME':java_home,'GRADLE_USER_HOME':str(work/'gradle-home')}
             environment['PATH']=environment['JAVA_HOME']+'/bin:'+environment['PATH']
             (work/'gradle.properties').write_text('org.gradle.java.installations.auto-download=false\norg.gradle.java.installations.paths='+environment['JAVA_HOME']+'\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2\n')

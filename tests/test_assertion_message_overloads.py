@@ -1,42 +1,41 @@
 """Перегрузки JUnit сохраняют аргументы, делегирование и границы native feedback."""
 
 import json
-import runpy
+from collections.abc import Sequence
 import unittest
 
-import test_grading_job as fixtures
+import test_assertion_feedback as af
 
-feedback = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))["student_result"]
+feedback = af.feedback
 
 
-class AssertionMessageOverloads(unittest.TestCase):
-    setUp = fixtures.JUnitJob.setUp
-    run_job = fixtures.JUnitJob.run_job
+class AssertionMessageOverloads(af.JobCase):
 
-    def source(self, methods, extra=""):
+    def source(self, methods: str, extra: str = "") -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             "import org.junit.jupiter.api.*;import static org.junit.jupiter.api.Assertions.*;"
             "public class AnswerTest {" + extra + methods + "}"
         )
 
-    def test_long_array_string_message_reaches_native_as_one_leaf(self):
+    def test_long_array_string_message_reaches_native_as_one_leaf(self) -> None:
         self.source('''@Test @DisplayName("Длинные целые") void arrays(){
           assertArrayEquals(new long[]{1,2},new long[]{1,3},"PRIVATE_ARRAY_MESSAGE");
         }''')
         result = self.run_job()
-        self.assertEqual((result["counts"]["executed"], result["score"]), (1, 0))
-        checks = result["counts"]["cases"][0]["checks"]
+        assert "score" in result
+        self.assertEqual((af.result_counts(result)["executed"], result["score"]), (1, 0))
+        checks = af.case_checks(af.result_counts(result)["cases"][0])
         self.assertEqual(
             [(c["expected"], c["actual"], c["delegated"]) for c in checks],
             [("[1, 2]", "[1, 3]", "threw")],
         )
         native = feedback(result, self.cfg)
-        self.assertEqual((native["score"], len(native["tests"])), (0, 1))
-        self.assertIn("[1, 2]", native["tests"][0]["message"])
-        self.assertIn("[1, 3]", native["tests"][0]["message"])
+        self.assertEqual((af.public_score(native), len(af.public_tests(native))), (0, 1))
+        self.assertIn("[1, 2]", af.public_tests(native)[0]["message"])
+        self.assertIn("[1, 3]", af.public_tests(native)[0]["message"])
         self.assertNotIn("PRIVATE_ARRAY_MESSAGE", json.dumps(native))
 
-    def test_primitive_array_and_numeric_overloads_preserve_arguments_and_groups(self):
+    def test_primitive_array_and_numeric_overloads_preserve_arguments_and_groups(self) -> None:
         # Удаление любой перегрузки теряет наблюдение при неизменном результате JUnit.
         arrays = [
             ("byte", "1,2", "1,3", "[01, 02]", "[01, 03]"),
@@ -49,9 +48,11 @@ class AssertionMessageOverloads(unittest.TestCase):
             ("boolean", "true,false", "true,true", "[true, false]", "[true, true]"),
             ("Object", '"a","b"', '"a","c"', '["a", "b"]', '["a", "c"]'),
         ]
-        methods, expected = [], {}
+        methods: list[str] = []
+        expected: dict[str, tuple[list[tuple[str, str]], str | None]] = {}
 
-        def grouped(name, assertion, good, bad, want, delta=None):
+        def grouped(name: str, assertion: str, good: Sequence[str], bad: Sequence[str],
+                    want: list[tuple[str, str]], delta: str | None = None) -> None:
             args = ",".join(good)
             wrong = ",".join(bad)
             methods.append(
@@ -92,22 +93,23 @@ class AssertionMessageOverloads(unittest.TestCase):
         self.source("".join(methods), '''int messageCalls;
           @AfterEach void messages(){if(messageCalls!=1)throw new AssertionError("extra supplier evaluation");}''')
         result = self.run_job()
-        counts = result["counts"]
+        assert "score" in result
+        counts = af.result_counts(result)
         self.assertEqual((counts["executed"], counts["failed"], result["score"]), (29, 29, 0))
         self.assertTrue(counts["complete"])
         for case in counts["cases"]:
             with self.subTest(case=case["name"]):
                 want, delta = expected[case["name"]]
-                self.assertEqual([(c["expected"], c["actual"]) for c in case["checks"]], want)
-                self.assertEqual([c["delegated"] for c in case["checks"]], ["returned", "threw", "threw"])
-                self.assertTrue(all(c["availability"] == "complete" for c in case["checks"]))
+                self.assertEqual([(c["expected"], c["actual"]) for c in af.case_checks(case)], want)
+                self.assertEqual([c["delegated"] for c in af.case_checks(case)], ["returned", "threw", "threw"])
+                self.assertTrue(all(c["availability"] == "complete" for c in af.case_checks(case)))
                 if delta is not None:
-                    self.assertEqual([c["delta"] for c in case["checks"]], [delta] * 3)
+                    self.assertEqual([af.check_text(c, "delta") for c in af.case_checks(case)], [delta] * 3)
         native = feedback(result, self.cfg)
-        self.assertEqual((native["score"], len(native["tests"])), (0, 29))
+        self.assertEqual((af.public_score(native), len(af.public_tests(native))), (0, 29))
         self.assertNotIn("PRIVATE_", json.dumps(native))
 
-    def test_lazy_throwing_message_and_opaque_array_keep_native_delegate(self):
+    def test_lazy_throwing_message_and_opaque_array_keep_native_delegate(self) -> None:
         self.source('''
           @Test @DisplayName("Ленивый и бросающий message") void supplier(){
             int[] calls={0};
@@ -130,14 +132,15 @@ class AssertionMessageOverloads(unittest.TestCase):
             public String toString(){toStringCalls++;return "PRIVATE_OPAQUE_TEXT";}
           }''')
         result = self.run_job()
-        self.assertEqual((result["counts"]["executed"], result["counts"]["passed"], result["score"]), (2, 2, 1))
-        cases = {case["name"]: case for case in result["counts"]["cases"]}
-        checks = cases["Ленивый и бросающий message"]["checks"]
+        assert "score" in result
+        self.assertEqual((af.result_counts(result)["executed"], af.result_counts(result)["passed"], result["score"]), (2, 2, 1))
+        cases = {case["name"]: case for case in af.result_counts(result)["cases"]}
+        checks = af.case_checks(cases["Ленивый и бросающий message"])
         self.assertEqual([c["delegated"] for c in checks], ["returned", "returned", "threw"])
         self.assertEqual((checks[-1]["expected"], checks[-1]["actual"]), ("[1]", "[2]"))
-        self.assertIn("unsupported", cases["Непрозрачный элемент"]["checks"][0]["availability"])
+        self.assertIn("unsupported", af.case_checks(cases["Непрозрачный элемент"])[0]["availability"])
         native = feedback(result, self.cfg)
-        self.assertEqual(native["feedback"]["feedbackCompleteness"], "incomplete")
+        self.assertEqual(af.completeness(native), "incomplete")
         self.assertNotIn("PRIVATE_", json.dumps(native))
 
 

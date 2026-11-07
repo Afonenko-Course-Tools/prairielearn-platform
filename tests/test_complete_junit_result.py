@@ -1,5 +1,14 @@
 """Полный набор JUnit: равные случаи, достоверность событий и ноль попытки."""
 
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+from types import FunctionType
+from typing import Literal, Protocol, runtime_checkable
+from selected_job_fixture import fixture_set_up, fixture_run_job, fixture_record, fixture_list, fixture_text
+
+import copy
 import os
 import shutil
 import json
@@ -10,19 +19,92 @@ from unittest.mock import patch
 import test_grading_job as fixtures
 import test_api_precheck as api
 
+@runtime_checkable
+class _GraderRun(Protocol):
+    def __call__(self, command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal["timeout", "output_limit"] | None]: ...
+
+
+@runtime_checkable
+class _CountsValidator(Protocol):
+    def __call__(self, counts: object, require_cases: bool = True) -> None: ...
+
+
+@runtime_checkable
+class _StudentResult(Protocol):
+    def __call__(self, result: object, descriptor: object) -> object: ...
+
+
+@runtime_checkable
+class _JUnitReader(Protocol):
+    def __call__(self, directory: str | Path, feedback_file: str | Path, *, report_key: str | None = None) -> object: ...
+
+
+@runtime_checkable
+class _Validator(Protocol):
+    def validate(self, value: object) -> None: ...
+
+
+@runtime_checkable
+class _Envelope(Protocol):
+    def __call__(self, value: Mapping[str, object], runtime: str = "java25-junit-v1") -> dict[str, object]: ...
+
+
+class _ApiOwner(Protocol):
+    @property
+    def job(self) -> Path: ...
+
+
+@runtime_checkable
+class _ApiSetup(Protocol):
+    def __call__(self, owner: AdmissionZero, /) -> None: ...
+    def __get__(self, instance: AdmissionZero, owner: type[object] | None = None, /) -> Callable[[], None]: ...
+
+
+@runtime_checkable
+class _ApiCheck(Protocol):
+    def __call__(self, owner: _ApiOwner, /, body: str) -> None: ...
+    def __get__(self, instance: _ApiOwner, owner: type[object] | None = None, /) -> Callable[[str], None]: ...
+
+
 grader = fixtures.grader
+
+# API setup дополнительно вызывает self.check(METHOD); одного TestCase недостаточно.
+api_setup: object = getattr(api.ApiPrecheckTests, "setUp")
+if not isinstance(api_setup, _ApiSetup) or not isinstance(api_setup, FunctionType):
+    raise AssertionError("Fixture API setup должен быть прежней unbound функцией")
+
+api_check: object = getattr(api.ApiPrecheckTests, "check")
+if not isinstance(api_check, _ApiCheck) or not isinstance(api_check, FunctionType):
+    raise AssertionError("Fixture API check должен быть прежней unbound функцией")
+
+
+def _public_result(result: object, descriptor: object) -> dict[str, object]:
+    boundary: object = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))["student_result"]
+    if not isinstance(boundary, _StudentResult):
+        raise AssertionError("Функция student_result недоступна")
+    return fixture_record(boundary(result, descriptor))
+
+
+def _records(value: object) -> list[dict[str, object]]:
+    return [fixture_record(row) for row in fixture_list(value)]
+
+
+def _validator(value: object) -> _Validator:
+    if not isinstance(value, _Validator):
+        raise AssertionError("Schema validator недоступен")
+    return value
 
 
 class CompleteJUnitResult(unittest.TestCase):
-    setUp = fixtures.JUnitJob.setUp
-    run_job = fixtures.JUnitJob.run_job
+    job: Path
+    cfg: dict[str, object]
+    setUp = fixture_set_up(fixtures.JUnitJob.setUp)
+    run_job = fixture_run_job(fixtures.JUnitJob.run_job)
 
-    def public_result(self, result):
-        return runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, self.cfg)
+    def public_result(self, result: object) -> dict[str, object]:
+        return _public_result(result, self.cfg)
 
-    def test_mutable_throwable_stack_cannot_authorize_subject_values(self):
+    def test_mutable_throwable_stack_cannot_authorize_subject_values(self) -> None:
         for trace in (
             "new StackTraceElement[0]",
             'new StackTraceElement[]{new StackTraceElement("org.junit.jupiter.api.Assertions", "assertEquals", "Assertions.java", 1)}',
@@ -43,10 +125,10 @@ public class AnswerTest {
                 result = self.run_job()
                 public = self.public_result(result)
                 self.assertEqual(public["score"], 0)
-                self.assertEqual(result["counts"]["executed"], 1)
-                self.assertEqual(result["counts"]["failed"], 1)
+                self.assertEqual(fixture_record(result["counts"])["executed"], 1)
+                self.assertEqual(fixture_record(result["counts"])["failed"], 1)
                 self.assertEqual(
-                    public["feedback"]["cases"],
+                    fixture_record(public["feedback"])["cases"],
                     [{"name": "Ответ студента", "status": "failed", "checks": []}],
                 )
                 for canary in (
@@ -56,9 +138,9 @@ public class AnswerTest {
                     "junit-platform-console",
                 ):
                     self.assertNotIn(canary, json.dumps(public))
-                self.assertIn("Подробности сравнения не получены", public["tests"][0]["message"])
+                self.assertIn("Подробности сравнения не получены", fixture_text(fixture_record(fixture_list(public["tests"])[0])["message"]))
 
-    def test_real_typed_assertion_captures_arguments_without_throwable_values(self):
+    def test_real_typed_assertion_captures_arguments_without_throwable_values(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -69,16 +151,16 @@ public class AnswerTest {
         public = self.public_result(result)
         self.assertEqual(result["classification"], "behavior-failure")
         self.assertEqual(public["score"], 0)
-        case = public["feedback"]["cases"][0]
+        case = fixture_record(fixture_list(fixture_record(public["feedback"])["cases"])[0])
         self.assertEqual(case["name"], "Проверка фактических аргументов")
         self.assertEqual(
-            [(c["expected"], c["actual"]) for c in case["checks"]], [("41", "42")]
+            [(c["expected"], c["actual"]) for c in _records(case["checks"])], [("41", "42")]
         )
-        self.assertIn("Ожидается: 41", public["tests"][0]["message"])
-        self.assertIn("Получено: 42", public["tests"][0]["message"])
+        self.assertIn("Ожидается: 41", fixture_text(fixture_record(fixture_list(public["tests"])[0])["message"]))
+        self.assertIn("Получено: 42", fixture_text(fixture_record(fixture_list(public["tests"])[0])["message"]))
         self.assertNotIn("PRIVATE_ASSERTION_MESSAGE", json.dumps(public))
 
-    def test_two_ordinary_and_eight_parameter_rows_have_equal_weight(self):
+    def test_two_ordinary_and_eight_parameter_rows_have_equal_weight(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -91,13 +173,13 @@ public class AnswerTest {
  void rows(int n) { assertEquals(n, n == 7 ? 8 : n); }
 }""")
         result = self.run_job()
-        self.assertEqual(result["counts"]["executed"], 10)
-        self.assertEqual(result["counts"]["passed"], 9)
+        self.assertEqual(fixture_record(result["counts"])["executed"], 10)
+        self.assertEqual(fixture_record(result["counts"])["passed"], 9)
         self.assertEqual(result["score"], 0.9)
         self.assertEqual(result["maxPoints"], 10)
-        self.assertEqual(len(result["tests"]), 10)
+        self.assertEqual(len(fixture_list(result["tests"])), 10)
 
-    def test_dynamic_cases_count_but_factory_and_containers_do_not(self):
+    def test_dynamic_cases_count_but_factory_and_containers_do_not(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("""
 import java.util.stream.Stream;
 import org.junit.jupiter.api.*;
@@ -110,10 +192,10 @@ public class AnswerTest {
 }""")
         result = self.run_job()
         self.assertEqual(result["score"], 0.5)
-        self.assertEqual(result["counts"]["discovered"], 2)
-        self.assertEqual(len(result["tests"]), 2)
+        self.assertEqual(fixture_record(result["counts"])["discovered"], 2)
+        self.assertEqual(len(fixture_list(result["tests"])), 2)
 
-    def test_own_compile_failure_is_zero_without_invented_cases(self):
+    def test_own_compile_failure_is_zero_without_invented_cases(self) -> None:
         (self.job / "student/Student.java").write_text("not Java")
         result = self.run_job()
         self.assertTrue(result["gradable"])
@@ -122,7 +204,7 @@ public class AnswerTest {
         self.assertNotIn("counts", result)
         self.assertNotIn("tests", result)
 
-    def test_packaged_compiler_error_shows_relative_file_line_and_types(self):
+    def test_packaged_compiler_error_shows_relative_file_line_and_types(self) -> None:
         (self.job / "student/Student.java").unlink()
         (self.job / "student/pkg").mkdir()
         (self.job / "student/pkg/Student.java").write_text(
@@ -130,13 +212,9 @@ public class AnswerTest {
         )
         self.cfg["sourceFiles"] = ["pkg/Student.java"]
         result = self.run_job()
-        import runpy
-
-        public = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, self.cfg)
+        public = _public_result(result, self.cfg)
         self.assertEqual(
-            public["feedback"]["compileErrors"],
+            fixture_record(public["feedback"])["compileErrors"],
             [
                 {
                     "file": "pkg/Student.java",
@@ -149,7 +227,7 @@ public class AnswerTest {
         self.assertNotIn("PRIVATE_SOURCE_CANARY", json.dumps(public))
         self.assertNotIn("/grade", json.dumps(public))
 
-    def test_executor_kill_cannot_establish_a_complete_zero(self):
+    def test_executor_kill_cannot_establish_a_complete_zero(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){while(true){}}}"
         )
@@ -161,29 +239,32 @@ public class AnswerTest {
         public = self.public_result(result)
         self.assertFalse(public["gradable"])
         self.assertTrue(public["grading_error"])
-        self.assertEqual(public["feedback"]["kind"], "infrastructure")
-        self.assertIn("3 с", public["message"])
+        self.assertEqual(fixture_record(public["feedback"])["kind"], "infrastructure")
+        self.assertIn("3 с", fixture_text(public["message"]))
         for value in (result, public):
             for field in ("score", "counts", "tests", "rawResult", "dependentExecution"):
                 self.assertNotIn(field, value)
-        self.assertNotIn("cases", public["feedback"])
-        self.assertNotIn("feedbackCompleteness", public["feedback"])
+        self.assertNotIn("cases", fixture_record(public["feedback"]))
+        self.assertNotIn("feedbackCompleteness", fixture_record(public["feedback"]))
 
-    def test_missing_duplicate_and_inconsistent_event_records_are_rejected(self):
+    def test_missing_duplicate_and_inconsistent_event_records_are_rejected(self) -> None:
         import tempfile
-        from pathlib import Path
         import xml.etree.ElementTree as ET
-        original = grader._run
-        captured = {}
-        def capture(command, *args, **kwargs):
-            result = original(command, *args, **kwargs)
+        original: object = getattr(grader, "_run")
+        if not isinstance(original, _GraderRun):
+            raise AssertionError("Внутренний callback JUnit grader недоступен")
+        captured: dict[str, bytes] = {}
+        def capture(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
+            result = original(command, cwd, timeout, output_limit, env=env)
             if any(arg.endswith("PlatformJUnitAdapter") for arg in command):
                 report_dir = Path(command[-1]).parent.parent/'results'
                 captured.update({p.name:p.read_bytes() for p in report_dir.iterdir()})
             return result
         with patch.object(grader, '_run', side_effect=capture):
             self.run_job()
-        reader = runpy.run_path(str(fixtures.ROOT/'runtime/junit_result.py'))['read_junit_xml']
+        reader: object = runpy.run_path(str(fixtures.ROOT/'runtime/junit_result.py'))['read_junit_xml']
+        if not isinstance(reader, _JUnitReader):
+            raise AssertionError('Функция read_junit_xml недоступна')
         for mutation in ('missing-report','duplicate','discovery','status','unfinished','missing-feedback','malformed','external-entity'):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
                 directory=Path(temporary)
@@ -191,15 +272,16 @@ public class AnswerTest {
                 path=next(p for p in directory.glob('TEST-*.xml') if b'<testcase' in p.read_bytes())
                 xml=ET.fromstring(path.read_bytes())
                 feedback_path=directory/'feedback.json'
-                feedback=json.loads(feedback_path.read_text())
+                feedback=fixture_record(json.loads(feedback_path.read_text()))
                 if mutation=='missing-report':
                     for report in directory.glob('TEST-*.xml'): report.unlink()
                 elif mutation=='duplicate':
                     path.with_name('TEST-duplicate.xml').write_bytes(path.read_bytes())
                 elif mutation=='discovery':
-                    xml.set('tests',str(int(xml.get('tests'))+1)); path.write_bytes(ET.tostring(xml))
+                    xml.set('tests',str(int(fixture_text(xml.get('tests')))+1)); path.write_bytes(ET.tostring(xml))
                 elif mutation=='status':
-                    ET.SubElement(xml.find('testcase'),'failure'); path.write_bytes(ET.tostring(xml))
+                    case=xml.find('testcase'); assert case is not None
+                    ET.SubElement(case,'failure'); path.write_bytes(ET.tostring(xml))
                 elif mutation=='unfinished':
                     feedback['complete']=False; feedback_path.write_text(json.dumps(feedback))
                 elif mutation=='missing-feedback':
@@ -212,12 +294,12 @@ public class AnswerTest {
         os.environ.get("JAVA_CONSOLE_SUPPORT"),
         "Требуется канонический JavaProcess.java",
     )
-    def test_observed_case_timeout_preserves_other_case_credit(self):
+    def test_observed_case_timeout_preserves_other_case_credit(self) -> None:
         helper = self.job / "tests/coursesupport/JavaProcess.java"
         helper.parent.mkdir()
         shutil.copyfile(os.environ["JAVA_CONSOLE_SUPPORT"], helper)
-        self.cfg["testFiles"].append("coursesupport/JavaProcess.java")
-        self.cfg["limits"]["run-seconds"] = 10
+        fixture_list(self.cfg["testFiles"]).append("coursesupport/JavaProcess.java")
+        fixture_record(self.cfg["limits"])["run-seconds"] = 10
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){return 42;} public static void main(String[] args){while(true){}}}"
         )
@@ -235,16 +317,16 @@ public class AnswerTest {
         self.assertEqual(result["classification"], "student-timeout")
         self.assertEqual(result["score"], 0.5)
         self.assertEqual(
-            (result["counts"]["passed"], result["counts"]["failed"]), (1, 1)
+            (fixture_record(result["counts"])["passed"], fixture_record(result["counts"])["failed"]), (1, 1)
         )
         import test_review_receipts as review
 
-        bound = review.result()
+        bound = fixture_record(review.result())
         bound.update(result)
         bound["backend"] = "host"
         review.g.validate("check-result", bound)
 
-    def test_full_feedback_has_subject_values_without_private_exception_noise(self):
+    def test_full_feedback_has_subject_values_without_private_exception_noise(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("""
 import org.junit.jupiter.api.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -253,13 +335,9 @@ public class AnswerTest {
  @Test @DisplayName("Обычный случай") void normal(TestReporter reporter) { reporter.publishEntry(java.util.Map.of("expected","42","actual",String.valueOf(Student.answer()))); assertEquals(42, Student.answer()); }
 }""")
         result = self.run_job()
-        import runpy
-
-        public = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, self.cfg)
+        public = _public_result(result, self.cfg)
         self.assertEqual(public["score"], 0.5)
-        cases = public["feedback"]["cases"]
+        cases = _records(fixture_record(public["feedback"])["cases"])
         self.assertEqual(len(cases), 2)
         failed = next(case for case in cases if case["status"] == "failed")
         self.assertEqual(
@@ -272,17 +350,19 @@ public class AnswerTest {
             ("Обычный случай", "42", "42"),
         )
         self.assertTrue(
-            all("не установлено" not in case["description"] for case in public["tests"])
+            all("не установлено" not in fixture_text(case["description"]) for case in _records(public["tests"]))
         )
         self.assertNotIn("PRIVATE_TRACE_CANARY", json.dumps(public))
 
 
 class AdmissionZero(unittest.TestCase):
-    setUp = api.ApiPrecheckTests.setUp
-    check = api.ApiPrecheckTests.check
-    run_job = fixtures.JUnitJob.run_job
+    job: Path
+    cfg: dict[str, object]
+    setUp = api_setup
+    check = api_check
+    run_job = fixture_run_job(fixtures.JUnitJob.run_job)
 
-    def test_api_failure_is_zero_with_not_run_dependent_tests(self):
+    def test_api_failure_is_zero_with_not_run_dependent_tests(self) -> None:
         (self.job / "student/Student.java").write_text("public class Student {}")
         result = self.run_job()
         self.assertTrue(result["gradable"])
@@ -294,7 +374,7 @@ class AdmissionZero(unittest.TestCase):
 
 
 class CompleteReportBoundary(unittest.TestCase):
-    def test_empty_case_feedback_cannot_claim_complete_implementation_run(self):
+    def test_empty_case_feedback_cannot_claim_complete_implementation_run(self) -> None:
         counts = {
             "discovered": 1,
             "executed": 1,
@@ -312,11 +392,12 @@ class CompleteReportBoundary(unittest.TestCase):
             "cases": [],
         }
         with self.assertRaises(grader.GraderError):
-            grader._validate_junit_counts(counts)
+            validator: object = getattr(grader, "_validate_junit_counts")
+            if not isinstance(validator, _CountsValidator):
+                raise AssertionError("Внутренний validator JUnit counts недоступен")
+            validator(counts)
 
-    def test_compile_feedback_identifies_own_source_line_without_source_or_paths(self):
-        import runpy
-
+    def test_compile_feedback_identifies_own_source_line_without_source_or_paths(self) -> None:
         result = {
             "classification": "student-compilation-failure",
             "gradable": True,
@@ -325,13 +406,11 @@ class CompleteReportBoundary(unittest.TestCase):
                 "studentCompilation": "/grade/student/Student.java:3: error: cannot find symbol\nreturn PRIVATE_SOURCE_CANARY;\n       ^\n"
             },
         }
-        public = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, {})
+        public = _public_result(result, {})
         self.assertTrue(public["gradable"])
         self.assertEqual(public["score"], 0)
         self.assertEqual(
-            public["feedback"]["compileErrors"],
+            fixture_record(public["feedback"])["compileErrors"],
             [
                 {
                     "file": "Student.java",
@@ -346,9 +425,7 @@ class CompleteReportBoundary(unittest.TestCase):
 
 
 class CompilerRelativePath(unittest.TestCase):
-    def test_compiler_diagnostic_preserves_logical_nested_submission_path(self):
-        import runpy
-
+    def test_compiler_diagnostic_preserves_logical_nested_submission_path(self) -> None:
         result = {
             "classification": "student-compilation-failure",
             "gradable": True,
@@ -357,11 +434,9 @@ class CompilerRelativePath(unittest.TestCase):
                 "studentCompilation": "/grade/student/pkg/Student.java:7: error: incompatible types: java.lang.String cannot be converted to int\nPRIVATE_SOURCE_CANARY\n"
             },
         }
-        public = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, {"sourceFiles": ["pkg/Student.java"]})
+        public = _public_result(result, {"sourceFiles": ["pkg/Student.java"]})
         self.assertEqual(
-            public["feedback"]["compileErrors"],
+            fixture_record(public["feedback"])["compileErrors"],
             [
                 {
                     "file": "pkg/Student.java",
@@ -375,9 +450,7 @@ class CompilerRelativePath(unittest.TestCase):
 
 
 class SharedRuntimeCompatibility(unittest.TestCase):
-    def test_fish_syntax_projection_keeps_existing_ungradable_submission_contract(self):
-        import runpy
-
+    def test_fish_syntax_projection_keeps_existing_ungradable_submission_contract(self) -> None:
         result = {
             "classification": "student-compilation-failure",
             "gradable": False,
@@ -387,22 +460,24 @@ class SharedRuntimeCompatibility(unittest.TestCase):
             "format_errors": "Ошибка синтаксиса fish",
             "output": "",
         }
-        public = runpy.run_path(str(fixtures.ROOT / "runtime/student_feedback.py"))[
-            "student_result"
-        ](result, {"runtime": "fish-git-v1"})
+        public = _public_result(result, {"runtime": "fish-git-v1"})
         self.assertFalse(public["gradable"])
         self.assertNotIn("score", public)
         import test_result_admission as schema
 
-        value = schema.envelope(result, "fish-git-v1")
-        schema.jsonschema.Draft202012Validator(schema.SCHEMA).validate(value)
+        envelope: object = getattr(schema, "envelope")
+        if not isinstance(envelope, _Envelope):
+            raise AssertionError("Fixture envelope недоступен")
+        value = envelope(result, "fish-git-v1")
+        validator = _validator(schema.jsonschema.Draft202012Validator(schema.SCHEMA))
+        validator.validate(value)
 
 
 class ReceiptResultAdmission(unittest.TestCase):
-    def test_receipt_boundary_rejects_legacy_missing_terminal_event_evidence(self):
+    def test_receipt_boundary_rejects_legacy_missing_terminal_event_evidence(self) -> None:
         import test_review_receipts as review
 
-        value = review.result()
+        value = fixture_record(review.result())
         for key in (
             "complete",
             "eventErrors",
@@ -411,15 +486,15 @@ class ReceiptResultAdmission(unittest.TestCase):
             "failureKinds",
             "cases",
         ):
-            value["counts"].pop(key)
+            fixture_record(value["counts"]).pop(key)
         with self.assertRaises(review.g.JobError):
             review.g.validate("check-result", value)
 
-    def test_receipt_boundary_rejects_inconsistent_counts_and_weighted_fraction(self):
+    def test_receipt_boundary_rejects_inconsistent_counts_and_weighted_fraction(self) -> None:
         import test_review_receipts as review
 
-        value = review.result()
-        value["counts"].update(
+        value = fixture_record(review.result())
+        fixture_record(value["counts"]).update(
             complete=True,
             eventErrors=0,
             registered=["T#t"],
@@ -428,9 +503,9 @@ class ReceiptResultAdmission(unittest.TestCase):
             cases=[{"id": "T#t", "name": "Проверка результата", "status": "passed"}],
         )
         for mutation in ("discovery", "fraction", "public"):
-            changed = __import__("copy").deepcopy(value)
+            changed = copy.deepcopy(value)
             if mutation == "discovery":
-                changed["counts"]["discovered"] = 2
+                fixture_record(changed["counts"])["discovered"] = 2
             elif mutation == "fraction":
                 changed["score"] = 0.5
             else:
@@ -450,9 +525,9 @@ class ReceiptResultAdmission(unittest.TestCase):
                 }
                 changed["publicResult"] = {
                     key: item
-                    for key, item in __import__("copy").deepcopy(value).items()
+                    for key, item in copy.deepcopy(value).items()
                     if key not in excluded
                 }
-                changed["publicResult"]["counts"]["executed"] = 2
+                fixture_record(fixture_record(changed["publicResult"])["counts"])["executed"] = 2
             with self.subTest(mutation=mutation), self.assertRaises(review.g.JobError):
                 review.g.validate("check-result", changed)

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ExactOverloads(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.temp = tempfile.TemporaryDirectory(prefix='junit-abi-source-')
         cls.base = Path(cls.temp.name)
         cls.jar = Path(os.environ.get('JUNIT_STANDALONE', ROOT/'runtime/java25-junit-v1/junit-platform-console-standalone-1.14.1.jar'))
@@ -21,31 +21,38 @@ class ExactOverloads(unittest.TestCase):
         cls.helper = cls.base/'helper'
         cls.facade.mkdir(); cls.helper.mkdir()
         sources = sorted((ROOT/'runtime/java25-junit-v1/feedback/module').rglob('*.java'))
-        cls.invoke(['javac', '--release', '25', '--module-path', os.pathsep.join(map(str, (cls.jar, ROOT/'runtime/java25-junit-v1/json-simple-1.1.1.jar'))), '-d', str(cls.facade), *map(str, sources)])
+        empty = cls.base / 'empty-libs'
+        empty.mkdir()
+        bundle = ROOT / 'runtime/java25-junit-v1'
+        names = ('junit-jupiter-api-5.14.1.jar', 'junit-jupiter-engine-5.14.1.jar', 'junit-jupiter-params-5.14.1.jar', 'junit-platform-commons-1.14.1.jar', 'junit-platform-engine-1.14.1.jar', 'junit-platform-launcher-1.14.1.jar', 'junit-platform-reporting-1.14.1.jar', 'opentest4j-1.3.0.jar', 'apiguardian-api-1.1.2.jar', 'open-test-reporting-tooling-spi-0.2.3.jar')
+        module_path = os.pathsep.join(map(str, [*(bundle / 'junit-modules' / name for name in names),
+                                                  bundle / 'json-simple-1.1.1.jar']))
+        cls.invoke(['javac', '--release', '25', '-cp', str(empty), '--module-path', module_path,
+                    '-d', str(cls.facade), *map(str, sources)])
         cls.invoke(['javac', '--release', '25', '-d', str(cls.helper), str(ROOT/'runtime/java25-junit-v1/feedback/Transform.java')])
         (cls.facade/'org/prairielearn/feedback/internal/policy.properties').write_text('# inert Source control, no live leaf\n')
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         cls.temp.cleanup()
 
     @classmethod
-    def invoke(cls, args, check=True):
+    def invoke(cls, args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
         argv = [str(cls.jdk/args[0]), *args[1:]]
         return subprocess.run(argv, capture_output=True, text=True, timeout=45, check=check)
 
-    def compile_fixture(self, name, body):
+    def compile_fixture(self, name: str, body: str) -> Path:
         root = self.base/name; root.mkdir()
         source = self.base/(name+'.java'); source.write_text(body)
         self.invoke(['javac', '--release', '25', '-cp', str(self.jar), '-d', str(root), str(source)])
         return root
 
-    def transform(self, root):
+    def transform(self, root: Path) -> subprocess.CompletedProcess[str]:
         return self.invoke(['java', '-cp', os.pathsep.join(map(str,(self.helper,self.jar))), 'Transform', str(root),
                          str(self.facade/'org/prairielearn/feedback/Assertions.class'),
                          str(root/'sites.properties')], check=False)
 
-    def test_exact_three_descriptors_delegate_success_failure_and_null(self):
+    def test_exact_three_descriptors_delegate_success_failure_and_null(self) -> None:
         root = self.compile_fixture('OverloadFixture', '''
 import static org.junit.jupiter.api.Assertions.*;
 public class OverloadFixture {
@@ -75,7 +82,7 @@ public class OverloadFixture {
         result = self.invoke(['java', '-cp', os.pathsep.join(map(str, (root, self.facade, self.jar))), 'OverloadFixture'])
         self.assertEqual(result.stdout.strip(), 'EXACT_OVERLOADS_OK')
 
-    def test_ordinary_descriptor_without_observer_keeps_junit_behavior(self):
+    def test_ordinary_descriptor_without_observer_keeps_junit_behavior(self) -> None:
         root = self.compile_fixture('UnsupportedFixture', '''
 import static org.junit.jupiter.api.Assertions.*;
 public class UnsupportedFixture {public static void main(String[] args){

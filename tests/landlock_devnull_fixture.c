@@ -14,7 +14,7 @@
 #include <stdarg.h>
 #include <errno.h>
 
-static int scenario, abi=3, target_executed, leaf_rule, grant_done, bad_flags;
+static int scenario, fixture_abi=3, target_executed, leaf_rule, grant_done, bad_flags;
 static unsigned closed_fds,opened_fds;
 static unsigned long long allowed;
 static int fake_open(const char *p,int flags,...) {
@@ -29,7 +29,13 @@ static int fake_openat(int fd,const char *p,int flags,...) {
   errno=EINVAL;return -1;
 }
 static void fill(int fd,struct stat *s) {
-  memset(s,0,sizeof(*s));s->st_dev=1;s->st_ino=fd;s->st_nlink=2;s->st_mode=S_IFDIR|0755;
+  memset(s,0,sizeof(*s));s->st_dev=1;s->st_nlink=2;s->st_mode=S_IFDIR|0755;
+  switch(fd) {
+    case 6:s->st_ino=6;break;
+    case 7:s->st_ino=7;break;
+    case 8:s->st_ino=8;break;
+    default:abort();
+  }
   if(fd==8){s->st_mode=S_IFCHR|0666;s->st_nlink=1;s->st_rdev=makedev(1,3);}
   if(fd==8 && scenario==1)s->st_mode=S_IFLNK|0777;
   if(fd==8 && scenario==2)s->st_mode=S_IFREG|0666;
@@ -63,11 +69,12 @@ static int fake_prctl(int option,...){(void)option;return 0;}
 static int fake_execvp(const char *file,char *const argv[]){(void)file;(void)argv;target_executed++;errno=EIO;return -1;}
 static long fake_syscall(long nr,...) {
   va_list args;va_start(args,nr);long result=-1;
-  if(nr==SYS_landlock_create_ruleset){void *attr=va_arg(args,void*);result=attr?5:abi;}
+  if(nr==SYS_landlock_create_ruleset){void *attr=va_arg(args,void*);result=attr?5:fixture_abi;}
   if(nr==SYS_landlock_add_rule){(void)va_arg(args,int);(void)va_arg(args,int);struct landlock_path_beneath_attr *a=va_arg(args,void*);leaf_rule++;allowed=a->allowed_access;grant_done=1;if(a->parent_fd!=8)bad_flags=1;result=scenario==18?-1:0;errno=EPERM;}
   if(nr==SYS_landlock_restrict_self)result=0;
   va_end(args);return result;
 }
+static int upstream_sandbox_main(int argc, char *argv[]);
 #define main upstream_sandbox_main
 #define open fake_open
 #define openat fake_openat
@@ -83,7 +90,8 @@ static long fake_syscall(long nr,...) {
 #include "../images/java25-grader/landlock/sandbox.c"
 #undef main
 int main(int argc,char **argv) {
-  scenario=argc>1?atoi(argv[1]):0;abi=argc>2?atoi(argv[2]):3;
-  char *command[]={"sandbox","never-executed",NULL};int rc=upstream_sandbox_main(2,command);
+  scenario=argc>1?atoi(argv[1]):0;fixture_abi=argc>2?atoi(argv[2]):3;
+  char command_name[]="sandbox", target_name[]="never-executed";
+  char *command[]={command_name,target_name,NULL};int rc=upstream_sandbox_main(2,command);
   printf("{\"rc\":%d,\"executed\":%d,\"leafRules\":%d,\"allowed\":%llu,\"closedFDs\":%u,\"badFlags\":%d,\"leakedFDs\":%u}\n",rc,target_executed,leaf_rule,allowed,closed_fds,bad_flags,opened_fds&~closed_fds);return 0;
 }

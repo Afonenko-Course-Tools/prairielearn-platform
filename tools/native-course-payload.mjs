@@ -14,7 +14,8 @@ export async function readNativeCoursePayload(path) {
   if(!(await lstat(current)).isFile())throw new Error('Native regular file required');
   return readFile(current);
  }
- const delivery=bridgeDeliverySchema.parse(JSON.parse((await containedFile('delivery.json')).toString('utf8')));
+ const delivery=bridgeDeliverySchema.parse(/** @type {unknown} */(JSON.parse((await containedFile('delivery.json')).toString('utf8'))));
+ /** @type {unknown} */
  const info=JSON.parse((await containedFile('infoCourse.json')).toString('utf8'));
  if(delivery.candidate)throw new Error('Candidate payload cannot be used by configured production bootstrap');
  for(const name of delivery.files)await containedFile(name);

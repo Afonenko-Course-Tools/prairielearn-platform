@@ -4,17 +4,30 @@ import {test} from 'node:test';
 const modulePath=new URL('../../tools/institution-bootstrap.mjs',import.meta.url);
 test('institution bootstrap exists before native imports',()=>assert.ok(existsSync(modulePath),'Generic institution bootstrap is missing'));
 if(existsSync(modulePath)) {
- const {resolveInstitution,bootstrapNativeCourse,validateInstitutionCatalog}=await import(modulePath.href);
+ const {resolveInstitution,bootstrapNativeCourse,validateInstitutionCatalog}=await import('../../tools/institution-bootstrap.mjs');
  const descriptor={shortName:'SYN',longName:'Synthetic University',displayTimezone:'Europe/Minsk',uidRegexp:null};
  const catalog={schema:'pl-institutions-v1',institutions:{synthetic:descriptor}};
  const registry={schema:'pl-courses-v2',courses:[{id:'course-a',institution:'synthetic',repository:'https://example.test/native.git',commit:'a'.repeat(40),mount:'/course'}]};
  function nativeStore() {
-  const institutions=[],courses=[];let lockTail=Promise.resolve();
+  /** @type {import("../../types/native-contracts.d.ts").Institution[]} */
+  const institutions=[];
+  /** @type {import("../../types/native-contracts.d.ts").NativeCourse[]} */
+  const courses=[];let lockTail=Promise.resolve();
   return {institutions,courses,
-   withLock(name,fn){const previous=lockTail;let release;lockTail=new Promise(r=>release=r);return previous.then(fn).finally(()=>release());},
+   /** @template T @param {string} name @param {()=>Promise<T>} fn */
+   withLock(name,fn) {
+    const previous=lockTail;
+    /** @type {{release?:()=>void}} */
+    const state={};
+    lockTail=new Promise(resolve=>{state.release=resolve;});
+    return previous.then(fn).finally(()=>{assert.ok(state.release);state.release();});
+   },
    async selectAllInstitutions(){return institutions;},
+   /** @param {import("../../types/native-contracts.d.ts").InstitutionDescriptor} d */
    async insertInstitution(d){const id=String(institutions.length+1);institutions.push({id,short_name:d.shortName,long_name:d.longName,display_timezone:d.displayTimezone,uid_regexp:d.uidRegexp});return id;},
+   /** @param {string} path */
    async selectOptionalCourseByPath(path){return courses.find(c=>c.path===path)??null;},
+   /** @param {import("../../types/native-contracts.d.ts").CourseInsert} course */
    async insertCourse(course){const row={...course,id:String(courses.length+1)};courses.push(row);return row;},
   };
  }

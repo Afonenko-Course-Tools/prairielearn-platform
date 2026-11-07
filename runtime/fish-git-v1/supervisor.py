@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
-import argparse
-import hashlib
-import shutil
-import json
 import os
-from pathlib import Path, PurePosixPath
-import re
+from pathlib import Path
 import selectors
-import secrets
 import signal
 import subprocess
-import sys
-import tempfile
 import time
+from collections.abc import Sequence
+from typing import Literal
+
+__all__ = ["GraderError", "_protect_input_identity", "_run"]
 
 OUTPUT_LIMIT = 65536
 
@@ -22,7 +18,7 @@ class GraderError(Exception):
     """An operator/configuration failure, never a wrong student answer."""
 
 
-def _protect_input_identity(job):
+def _protect_input_identity(job: Path) -> None:
     # Bind mounts retain host owners. chmod(0700) alone is ineffective when a
     # host owner has the same numeric UID as the official container's sbuser.
     # Remap only the container account; never chown the caller's mounted tree.
@@ -34,12 +30,12 @@ def _protect_input_identity(job):
     allocated={entry.pw_uid for entry in pwd.getpwall()}
     candidate=next((uid for uid in range(60000,60100) if uid not in owners|allocated),None)
     if candidate is None:raise GraderError('No isolated sandbox UID is available')
-    code,text,reason=_run(['usermod','--uid',str(candidate),'sbuser'],job,5)
+    code,_text,reason=_run(['usermod','--uid',str(candidate),'sbuser'],job,5)
     if code or reason or pwd.getpwnam('sbuser').pw_uid in owners:
         raise GraderError('Cannot isolate sandbox UID from mounted input owners')
 
 
-def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT):
+def _run(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
     try:
         process = subprocess.Popen(
             command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -47,8 +43,10 @@ def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT):
         )
     except OSError as exc:
         raise GraderError("Required grading executable is unavailable") from exc
+    if process.stdout is None:
+        raise GraderError("Required grading output pipe is unavailable")
     output = bytearray()
-    reason = None
+    reason: Literal["timeout", "output_limit"] | None = None
     deadline = time.monotonic() + timeout
     try:
         with selectors.DefaultSelector() as selector:
@@ -81,9 +79,9 @@ def _run(command, cwd, timeout, output_limit=OUTPUT_LIMIT):
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        process.wait()
+        returncode = process.wait()
         process.stdout.close()
     text = bytes(output).decode("utf-8", errors="replace")
     text = text.encode("utf-8")[:output_limit].decode("utf-8", errors="ignore")
-    return process.returncode, text, reason
+    return returncode, text, reason
 

@@ -6,7 +6,10 @@ import subprocess
 import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
-spec=importlib.util.spec_from_file_location('builder',ROOT/'tools/build-course.py');builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
+spec=importlib.util.spec_from_file_location('builder',ROOT/'tools/build-course.py')
+if spec is None or spec.loader is None:
+    raise RuntimeError("Загрузчик локального Python-модуля недоступен")
+builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
 class BuilderContract(unittest.TestCase):
  def test_existing_output_is_preserved(self):
   with tempfile.TemporaryDirectory() as d:

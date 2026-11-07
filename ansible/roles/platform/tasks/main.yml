@@ -33,7 +33,7 @@
     dest: '{{ pl_release_dir }}/{{ item }}/'
     mode: preserve
   loop: [compose, proxy]
-  register: pl_code
+  register: platform_code
 
 - name: Создать каталог startup helper
   ansible.builtin.file:
@@ -47,7 +47,7 @@
     dest: '{{ pl_release_dir }}/tools/{{ item }}'
     mode: '0755'
   loop: [start-pl.sh, sync-native-course.mjs, course-sync-policy.mjs, institution-bootstrap.mjs, bootstrap-native-course.mjs, native-course-payload.mjs]
-  register: pl_startup
+  register: platform_startup
 
 - name: Создать каталог versioned deployment конфигурации
   ansible.builtin.file:
@@ -61,7 +61,7 @@
     dest: '{{ pl_release_dir }}/config/institutions.json'
     mode: '0644'
     directory_mode: '0755'
-  register: pl_institutions
+  register: platform_institutions
 
 - name: Доставить immutable course
   ansible.builtin.copy:
@@ -69,7 +69,7 @@
     dest: '{{ pl_course_dir }}/'
     mode: '0644'
     directory_mode: '0755'
-  register: pl_course
+  register: platform_course
 
 - name: Разрешить readonly потребителям читать поставки курса
   ansible.builtin.file:
@@ -83,7 +83,7 @@
     dest: /etc/prairielearn/private/
     mode: preserve
   no_log: true
-  register: pl_config
+  register: platform_config
 
 - name: Разрешить чтение Gateway своего private каталога
   ansible.builtin.file:
@@ -99,7 +99,7 @@
     dest: '{{ pl_release_dir }}/runtime.env'
     mode: '0600'
   no_log: true
-  register: pl_env
+  register: platform_env
 
 - name: Проверить наличие exact images
   ansible.builtin.command:
@@ -108,7 +108,7 @@
   changed_when: false
   check_mode: false
   failed_when: false
-  register: pl_images_present
+  register: platform_images_present
   no_log: true
 
 - name: Доставить проверенный image archive при отсутствии image
@@ -116,13 +116,14 @@
     src: '{{ pl_images_archive }}'
     dest: /var/lib/prairielearn/images/runtime.tar
     mode: '0600'
-  when: pl_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
+  when: platform_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
 
 - name: Загрузить image archive
   ansible.builtin.command:
     argv: [docker, load, -i, /var/lib/prairielearn/images/runtime.tar]
-  when: pl_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
-  register: pl_images_loaded
+  changed_when: true
+  when: platform_images_present.results | selectattr('rc', 'ne', 0) | list | length > 0
+  register: platform_images_loaded
 
 - name: Проверить runtime Compose
   ansible.builtin.command:
@@ -135,17 +136,22 @@
     src: prairielearn.service.j2
     dest: /etc/systemd/system/prairielearn.service
     mode: '0644'
-  register: pl_service
+  register: platform_service
 
 - name: Применить deployment
   ansible.builtin.command:
     argv: [docker, compose, --env-file, '{{ pl_release_dir }}/runtime.env', -f, '{{ pl_release_dir }}/compose/compose.prod.yml', up, -d, --force-recreate]
-  when: not ansible_check_mode and (pl_code.changed or pl_startup.changed or pl_institutions.changed or pl_course.changed or pl_config.changed or pl_env.changed or pl_service.changed or pl_images_loaded is changed)
+  changed_when: true
+  when: >-
+    not ansible_check_mode and
+    (platform_code.changed or platform_startup.changed or platform_institutions.changed or
+    platform_course.changed or platform_config.changed or platform_env.changed or
+    platform_service.changed or platform_images_loaded is changed)
 
 - name: Включить запуск после reboot
   ansible.builtin.systemd_service:
     name: prairielearn
-    daemon_reload: '{{ pl_service.changed }}'
+    daemon_reload: '{{ platform_service.changed }}'
     enabled: true
     state: started
   when: not ansible_check_mode

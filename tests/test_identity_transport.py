@@ -4,15 +4,30 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class NamePatch(Protocol):
+    DECODER: str
+    NEW_NAME_READ: str
+    NAME_READ: str
+
+    def patch(self, source: str, kind: str) -> str: ...
+    def patch_files(self, source_path: str | pathlib.Path, dist_path: str | pathlib.Path) -> None: ...
 
 ROOT = pathlib.Path(__file__).parents[1]
 SPEC = importlib.util.spec_from_file_location('gateway_name_patch', ROOT / 'images/prairielearn/patch-gateway-name.py')
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("Загрузчик локального Python-модуля недоступен")
 PATCH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PATCH)
+if not isinstance(PATCH, NamePatch):
+    raise RuntimeError("Контракт Unicode transport patch недоступен")
 
 
 class NativeNamePatch(unittest.TestCase):
-    def original(self, kind):
+    def original(self, kind: str) -> str:
         return (ROOT / 'tests/fixtures' / ('gateway-name-base.' + ('ts' if kind == 'src' else 'js'))).read_text()
 
     def test_generated_body_and_no_uid_sql_change(self):

@@ -3,7 +3,7 @@ import test_assertion_feedback as af
 
 
 class CourseDescriptors(af.ProductionCase):
-    def test_course_descriptors_preserve_return_and_independent_failures(self):
+    def test_course_descriptors_preserve_return_and_independent_failures(self) -> None:
         (self.job / 'tests/AnswerTest.java').write_text('''
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,17 +21,18 @@ public class AnswerTest {
  @Test void wrongType() { assertInstanceOf(String.class,(Object) Student.answer()); }
 }''')
         result = self.run_job()
+        assert "score" in result
         self.assertEqual(result['score'], 0.2)
-        self.assertEqual((result['counts']['executed'], result['counts']['passed'],
-                          result['counts']['failed']), (5, 1, 4))
-        correct = next(c for c in result['counts']['cases'] if 'correct()' in c['id'])
-        self.assertEqual([c['delegated'] for c in correct['checks']], ['returned'] * 4)
-        for case in result['counts']['cases']:
+        self.assertEqual((af.result_counts(result)['executed'], af.result_counts(result)['passed'],
+                          af.result_counts(result)['failed']), (5, 1, 4))
+        correct = next(c for c in af.result_counts(result)['cases'] if 'correct()' in c['id'])
+        self.assertEqual([c['delegated'] for c in af.case_checks(correct)], ['returned'] * 4)
+        for case in af.result_counts(result)['cases']:
             if case is not correct:
-                self.assertEqual([c['delegated'] for c in case['checks']], ['threw'])
+                self.assertEqual([c['delegated'] for c in af.case_checks(case)], ['threw'])
 
 
-    def test_three_exact_overloads_keep_leaf_feedback(self):
+    def test_three_exact_overloads_keep_leaf_feedback(self) -> None:
         (self.job / 'tests/AnswerTest.java').write_text('''
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -47,11 +48,12 @@ public class AnswerTest {
  @Test void wrongChars() {assertArrayEquals(new char[]{'я'},new char[]{'ю'});}
 }''')
         result = self.run_job()
-        self.assertEqual((result['counts']['executed'], result['counts']['passed'],
-                          result['counts']['failed']), (5, 1, 4))
+        assert "score" in result
+        self.assertEqual((af.result_counts(result)['executed'], af.result_counts(result)['passed'],
+                          af.result_counts(result)['failed']), (5, 1, 4))
         self.assertEqual(result['score'], 0.2)
-        correct = next(c for c in result['counts']['cases'] if 'correct()' in c['id'])
-        self.assertEqual([c['delegated'] for c in correct['checks']], ['returned'] * 3)
-        for case in result['counts']['cases']:
+        correct = next(c for c in af.result_counts(result)['cases'] if 'correct()' in c['id'])
+        self.assertEqual([c['delegated'] for c in af.case_checks(correct)], ['returned'] * 3)
+        for case in af.result_counts(result)['cases']:
             if case is not correct:
-                self.assertEqual([c['delegated'] for c in case['checks']], ['threw'])
+                self.assertEqual([c['delegated'] for c in af.case_checks(case)], ['threw'])

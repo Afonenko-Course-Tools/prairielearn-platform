@@ -54,6 +54,8 @@ def project(counts, raw):
     spec = importlib.util.spec_from_file_location(
         "f0_grader", ROOT / "images/java25-grader/grade.py"
     )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Загрузчик локального Python-модуля недоступен")
     grader = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(grader)
     score = grader._score(raw, clean, {"mode": "weighted"})

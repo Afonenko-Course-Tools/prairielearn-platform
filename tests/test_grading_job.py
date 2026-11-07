@@ -1,28 +1,40 @@
 import base64
+import importlib.util
 from selected_job_fixture import native_manifest
 """Real JUnit jobs expose discovery, isolation and policy mistakes."""
 
 from gradle_unit_fixtures import registry as unit_registry
-import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from platform_modules import load_java_grader
+from grading_types import JavaGradingDescriptor, JavaOutcome
+from typing import TypeGuard
+from json_boundary import is_object
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["PATH"] = "/usr/lib/jvm/java-25-openjdk/bin:" + os.environ["PATH"]
-spec = importlib.util.spec_from_file_location(
-    "grader", ROOT / "images/java25-grader/grade.py"
-)
-grader = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(grader)
+grader = load_java_grader(ROOT / 'images/java25-grader/grade.py')
 TEST = """import org.junit.jupiter.api.Test; import static org.junit.jupiter.api.Assertions.*;
 public class AnswerTest { @Test void right() throws Exception { assertEquals(42,Class.forName("Student").getMethod("answer").invoke(null)); } }"""
 
 
+def _is_record(value: object) -> TypeGuard[dict[str, object]]:
+    return is_object(value) and all(isinstance(key, str) for key in value)
+
+
+def _record(value: object) -> dict[str, object]:
+    if not _is_record(value):
+        raise AssertionError('Ожидался изменяемый объект fixture')
+    return value
+
+
 class JUnitJob(unittest.TestCase):
-    def setUp(self):
+    job: Path
+    cfg: JavaGradingDescriptor
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.job = Path(self.tmp.name)
@@ -54,59 +66,60 @@ class JUnitJob(unittest.TestCase):
             "discovery": {"min-executed": 1, "allow-skipped": False},
         }
 
-    def run_job(self):
+    def run_job(self) -> JavaOutcome:
         (self.job / "tests/grading-job.json").write_text(json.dumps(self.cfg))
         return grader.grade(self.job, registry=unit_registry())
 
-    def test_existing_junit_suite_runs_without_course_main(self):
+    def test_existing_junit_suite_runs_without_course_main(self) -> None:
         r = self.run_job()
-        self.assertEqual(r["score"], 1)
-        self.assertEqual(r["counts"]["executed"], 1)
+        self.assertEqual(r.get("score"), 1)
+        counts=r.get("counts");assert counts is not None
+        self.assertEqual(counts["executed"], 1)
 
-    def test_trusted_zero_tests_is_infrastructure(self):
+    def test_trusted_zero_tests_is_infrastructure(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("public class AnswerTest {}")
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_student_compile_error_is_not_infrastructure(self):
+    def test_student_compile_error_is_not_infrastructure(self) -> None:
         (self.job / "student/Student.java").write_text("not java")
         r = self.run_job()
         self.assertTrue(r["gradable"])
-        self.assertEqual(r["score"], 0)
+        self.assertEqual(r.get("score"), 0)
         self.assertEqual(r["classification"], "student-compilation-failure")
 
-    def test_trusted_compile_error_is_infrastructure(self):
+    def test_trusted_compile_error_is_infrastructure(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text("not java")
         r = self.run_job()
         self.assertEqual(r["classification"], "infrastructure-failure")
-        self.assertEqual(r["studentCompilation"], "success")
-        self.assertEqual(r["trustedCompilation"], "failure")
+        self.assertEqual(r.get("studentCompilation"), "success")
+        self.assertEqual(r.get("trustedCompilation"), "failure")
         self.assertNotIn("score", r)
 
-    def test_submitted_test_injection_is_not_compiled(self):
+    def test_submitted_test_injection_is_not_compiled(self) -> None:
         (self.job / "student/AnswerTest.java").write_text("not java")
-        self.assertEqual(self.run_job()["score"], 1)
+        self.assertEqual(self.run_job().get("score"), 1)
 
-    def test_unsafe_fqcn_collision_rejected(self):
+    def test_unsafe_fqcn_collision_rejected(self) -> None:
         (self.job / "student/Student.java").write_text("class AnswerTest {}")
         r = self.run_job()
         self.assertFalse(r["gradable"])
         self.assertEqual(r["classification"], "unsafe-submission")
 
-    def test_missing_api_is_behavior_failure(self):
+    def test_missing_api_is_behavior_failure(self) -> None:
         (self.job / "student/Student.java").write_text("public class Student {}")
         r = self.run_job()
-        self.assertEqual(r["score"], 0)
+        self.assertEqual(r.get("score"), 0)
         self.assertEqual(r["classification"], "behavior-failure")
 
-    def test_disabled_trusted_suite_is_not_success(self):
+    def test_disabled_trusted_suite_is_not_success(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             TEST.replace("@Test", "@org.junit.jupiter.api.Disabled @Test")
         )
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_disabled_container_with_active_test_is_infrastructure(self):
+    def test_disabled_container_with_active_test_is_infrastructure(self) -> None:
         (self.job / "tests/DisabledTest.java").write_text(
             "import org.junit.jupiter.api.*; @Disabled public class DisabledTest { @Test void skipped(){} }"
         )
@@ -114,59 +127,63 @@ class JUnitJob(unittest.TestCase):
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_weighted_and_all_pass_preserve_raw_outcomes(self):
+    def test_weighted_and_all_pass_preserve_raw_outcomes(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             TEST.replace(" } }", " } @Test void bad(){fail();} }")
         )
         r = self.run_job()
-        self.assertEqual(r["score"], 0.5)
-        self.assertEqual(r["maxPoints"], 2)
+        self.assertEqual(r.get("score"), 0.5)
+        self.assertEqual(r.get("maxPoints"), 2)
         self.cfg["scoring"] = {"mode": "all-pass"}
         r = self.run_job()
-        self.assertEqual(r["score"], 0)
-        self.assertEqual(r["counts"]["passed"], 1)
-        self.assertEqual(r["maxPoints"], 2)
+        self.assertEqual(r.get("score"), 0)
+        counts=r.get("counts");assert counts is not None
+        self.assertEqual(counts["passed"], 1)
+        self.assertEqual(r.get("maxPoints"), 2)
 
-    def test_whole_executor_timeout_is_incomplete_infrastructure(self):
+    def test_whole_executor_timeout_is_incomplete_infrastructure(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){while(true){}}}"
         )
         result = self.run_job()
         self.assertFalse(result["gradable"])
-        self.assertTrue(result["grading_error"])
+        self.assertTrue(result.get("grading_error"))
         self.assertEqual(result["classification"], "infrastructure-failure")
         self.assertEqual(result["infrastructure"], "failure")
-        self.assertIs(result["timed_out"], True)
-        self.assertEqual(result["studentCompilation"], "success")
-        self.assertEqual(result["trustedCompilation"], "success")
+        self.assertIs(result.get("timed_out"), True)
+        self.assertEqual(result.get("studentCompilation"), "success")
+        self.assertEqual(result.get("trustedCompilation"), "success")
         for field in ("score", "counts", "tests", "rawResult", "dependentExecution"):
             self.assertNotIn(field, result)
 
-    def test_whole_executor_output_stop_is_incomplete_infrastructure(self):
+    def test_whole_executor_output_stop_is_incomplete_infrastructure(self) -> None:
         (self.job / "student/Student.java").write_text(
             'public class Student {public static int answer(){while(true){System.out.println("x".repeat(8192));}}}'
         )
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_missing_report_is_infrastructure(self):
+    def test_missing_report_is_infrastructure(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){System.exit(0);return 42;}}"
         )
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_unknown_runtime_blocks_preflight(self):
-        self.cfg["runtime"] = "unknown"
+    def test_unknown_runtime_blocks_preflight(self) -> None:
+        invalid: dict[str, object] = {**self.cfg, "runtime": "unknown"}
         with self.assertRaises(grader.GraderError):
-            self.run_job()
+            (self.job / "tests/grading-job.json").write_text(json.dumps(invalid))
+            grader.grade(self.job, registry=unit_registry())
 
 
 class MutationJob(unittest.TestCase):
+    job: Path
+    cfg: JavaGradingDescriptor
     setUp = JUnitJob.setUp
     run_job = JUnitJob.run_job
 
-    def setup_mutation(self):
+    def setup_mutation(self) -> None:
         self.cfg.update(
             mode="student-tests",
             runtime="java25-mutation-v1",
@@ -184,29 +201,31 @@ class MutationJob(unittest.TestCase):
                 f"public class Student {{ public static int answer(){{return {value};}} }}"
             )
 
-    def test_duplicate_fixture_fqcn_isolated(self):
+    def test_duplicate_fixture_fqcn_isolated(self) -> None:
         self.setup_mutation()
         r = self.run_job()
-        self.assertEqual(r["score"], 1)
-        self.assertEqual(r["variants"]["wrong"]["counts"]["failed"], 1)
+        self.assertEqual(r.get("score"), 1)
+        variants=r.get("variants");assert variants is not None
+        counts=variants["wrong"].get("counts");assert counts is not None
+        self.assertEqual(counts["failed"], 1)
 
-    def test_submitted_zero_tests_is_quality_failure(self):
+    def test_submitted_zero_tests_is_quality_failure(self) -> None:
         self.setup_mutation()
         (self.job / "student/AnswerTest.java").write_text("public class AnswerTest {}")
         r = self.run_job()
         self.assertEqual(r["classification"], "student-test-quality-failure")
-        self.assertEqual(r["score"], 0)
+        self.assertEqual(r.get("score"), 0)
 
-    def test_disabled_mutation_suite_is_not_success(self):
+    def test_disabled_mutation_suite_is_not_success(self) -> None:
         self.setup_mutation()
         (self.job / "student/AnswerTest.java").write_text(
             TEST.replace("@Test", "@org.junit.jupiter.api.Disabled @Test")
         )
         r = self.run_job()
-        self.assertEqual(r["score"], 0)
+        self.assertEqual(r.get("score"), 0)
         self.assertEqual(r["classification"], "student-test-quality-failure")
 
-    def test_broken_mutant_fixture_is_infrastructure(self):
+    def test_broken_mutant_fixture_is_infrastructure(self) -> None:
         self.setup_mutation()
         (self.job / "tests/variants/wrong/Student.java").write_text("not java")
         with self.assertRaises(grader.GraderError):
@@ -214,10 +233,12 @@ class MutationJob(unittest.TestCase):
 
 
 class ScoringTests(unittest.TestCase):
+    job: Path
+    cfg: JavaGradingDescriptor
     setUp = JUnitJob.setUp
     run_job = JUnitJob.run_job
 
-    def test_contract_groups_use_stable_ids_and_weights(self):
+    def test_contract_groups_use_stable_ids_and_weights(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             TEST.replace(" } }", " } @Test void bad(){fail();} }")
         )
@@ -241,17 +262,18 @@ class ScoringTests(unittest.TestCase):
             ],
         }
         r = self.run_job()
-        self.assertEqual(r["score"], 0.75)
-        self.assertEqual(r["rawResult"]["score"], 0.5)
+        self.assertEqual(r.get("score"), 0.75)
+        raw=r.get("rawResult");assert raw is not None
+        self.assertEqual(raw["score"], 0.5)
 
-    def test_threshold_uses_declared_basis(self):
+    def test_threshold_uses_declared_basis(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             TEST.replace(" } }", " } @Test void bad(){fail();} }")
         )
         self.cfg["scoring"] = {"mode": "threshold", "basis": "passed-tests", "value": 1}
-        self.assertEqual(self.run_job()["score"], 1)
+        self.assertEqual(self.run_job().get("score"), 1)
 
-    def test_contract_groups_unknown_test_id_is_infrastructure(self):
+    def test_contract_groups_unknown_test_id_is_infrastructure(self) -> None:
         self.cfg["scoring"] = {
             "mode": "contract-groups",
             "groups": [{"id": "absent", "weight": 1, "tests": ["absent"]}],
@@ -266,8 +288,6 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
     def test_reference_extra_and_contract_zip_are_explicit_hashed_public_private_inputs(
         self,
     ):
-        import importlib.util
-        import hashlib
         import shutil
         import io
         import zipfile
@@ -275,6 +295,8 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location(
             "additional_jobs", ROOT / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         jobs = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(jobs)
         with tempfile.TemporaryDirectory() as directory:
@@ -332,12 +354,12 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
             }
             (project / "tests/cases.json").write_text(json.dumps(case))
 
-            def select(name, target):
+            def select(name: str, target: str) -> dict[str, str]:
                 return {
                     "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
                 }
 
-            fact = {
+            fact: dict[str, object] = {
                 "qualifiedId": "demo/exr-extra",
                 "projectRoot": "p",
                 "check": {
@@ -374,7 +396,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                 ],
             }
             manifest = native_manifest(fact)
-            archives = []
+            archives: list[bytes] = []
             for scenario in [
                 "reference:correct",
                 "reference:correct",
@@ -414,7 +436,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                 finally:
                     shutil.rmtree(job.root)
             self.assertEqual(archives[0], archives[1])
-            saved = fact["check"].pop("additional-java-sources")
+            saved = _record(fact["check"]).pop("additional-java-sources")
             # Полный named reference разрешён без student ZIP policy.
             job = jobs.prepare_job(
                 manifest,
@@ -454,7 +476,7 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     "contract:extra",
                     registry=unit_registry(),
                 )
-            fact["check"]["additional-java-sources"] = saved
+            _record(fact["check"])["additional-java-sources"] = saved
             # Уже выбранные bytes не перечитываются из изменённого физического source.
             (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
             job=jobs.prepare_job(manifest,snapshot,"demo/exr-extra","contract:extra",registry=unit_registry())
@@ -464,12 +486,13 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
 
 
 class PreparationMetadataTests(unittest.TestCase):
-    def setUp(self):
-        import hashlib
+    def setUp(self) -> None:
 
         spec = importlib.util.spec_from_file_location(
             "metadata_jobs", ROOT / "tools/grading_job.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         self.jobs = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.jobs)
         self.tmp = tempfile.TemporaryDirectory()
@@ -485,12 +508,12 @@ class PreparationMetadataTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(source)
 
-        def selected(name, target):
+        def selected(name: str, target: str) -> dict[str, str]:
             return {
                 "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
             }
 
-        fact = {
+        fact: dict[str, object] = {
             "qualifiedId": "demo/exr-metadata",
             "projectRoot": "p",
             "check": {
@@ -520,7 +543,7 @@ class PreparationMetadataTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, job.root)
         return job
 
-    def test_prepare_omits_author_description_metadata(self):
+    def test_prepare_omits_author_description_metadata(self) -> None:
         job = self.prepare()
         self.assertNotIn('feedback', job['grading'])
         self.assertNotIn('publicCases', job['grading'])
@@ -528,7 +551,7 @@ class PreparationMetadataTests(unittest.TestCase):
         self.assertNotIn('feedback', written)
         self.assertNotIn('publicCases', written)
 
-    def test_embedded_author_feedback_is_rejected(self):
+    def test_embedded_author_feedback_is_rejected(self) -> None:
         import copy
 
         job = self.prepare()
@@ -543,7 +566,7 @@ class PreparationMetadataTests(unittest.TestCase):
                 with self.assertRaises(self.jobs.JobError):
                     self.jobs.validate("grading-job", value)
 
-    def test_embedded_description_cards_are_rejected(self):
+    def test_embedded_description_cards_are_rejected(self) -> None:
         import copy
 
         job = self.prepare()
@@ -569,7 +592,7 @@ class PreparationMetadataTests(unittest.TestCase):
                 with self.assertRaises(self.jobs.JobError):
                     self.jobs.validate("grading-job", value)
 
-    def test_prepared_job_keeps_grading_unknown_fields_closed(self):
+    def test_prepared_job_keeps_grading_unknown_fields_closed(self) -> None:
         import copy
 
         value = copy.deepcopy(dict(self.prepare()))

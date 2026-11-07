@@ -1,16 +1,17 @@
 """Результаты grading: полнота сценариев, образы и ожидаемые ошибки."""
 
 from gradle_unit_fixtures import registry as unit_registry
-import copy, json, sys, unittest
+import sys, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import grading_job as g
+from grading_types import Scenario, UnavailableReference
 
 IMAGE = "registry.example/runtime@sha256:" + "a" * 64
 
 
-def result(scenario="starter", image=IMAGE):
+def result(scenario: str = "starter", image: str = IMAGE) -> dict[str, object]:
     return {
         "schemaVersion": 1,
         "scope": "delivery",
@@ -71,11 +72,11 @@ def result(scenario="starter", image=IMAGE):
 
 class ReviewReceipts(unittest.TestCase):
 
-    def test_starter_only_cannot_claim_complete_scenario_coverage(self):
+    def test_starter_only_cannot_claim_complete_scenario_coverage(self) -> None:
         receipt = g.verify_results([result()], {}, registry=unit_registry())
         self.assertEqual(receipt.get("coverage"), "partial")
 
-    def test_mixed_image_for_same_runtime_is_rejected(self):
+    def test_mixed_image_for_same_runtime_is_rejected(self) -> None:
         with self.assertRaises(g.JobError):
             g.verify_results(
                 [
@@ -89,7 +90,7 @@ class ReviewReceipts(unittest.TestCase):
                 registry=unit_registry(),
             )
 
-    def test_negative_compilation_contract_matches_without_defect(self):
+    def test_negative_compilation_contract_matches_without_defect(self) -> None:
         r = result("contract:invalid")
         for k in [
             "counts",
@@ -124,7 +125,7 @@ class ReviewReceipts(unittest.TestCase):
         )
         self.assertEqual(receipt["exitCode"], 0)
 
-    def test_minimal_claimed_success_is_schema_invalid(self):
+    def test_minimal_claimed_success_is_schema_invalid(self) -> None:
         r = {
             k: result()[k]
             for k in [
@@ -141,13 +142,13 @@ class ReviewReceipts(unittest.TestCase):
             g.validate("check-result", r)
 
 
-    def test_success_cannot_contain_infrastructure_error(self):
+    def test_success_cannot_contain_infrastructure_error(self) -> None:
         r = result()
         r["grading_error"] = True
         with self.assertRaises(g.JobError):
             g.validate("check-result", r)
 
-    def test_resolved_descriptor_requires_full_nested_options(self):
+    def test_resolved_descriptor_requires_full_nested_options(self) -> None:
         cfg = {
             "schemaVersion": 1,
             "sourceFiles": ["S.java"],
@@ -162,8 +163,8 @@ class ReviewReceipts(unittest.TestCase):
         with self.assertRaises(g.JobError):
             g.validate("grading-descriptor", cfg)
 
-    def test_complete_receipt_records_optional_reference_unavailability(self):
-        required = [
+    def test_complete_receipt_records_optional_reference_unavailability(self) -> None:
+        required: list[Scenario] = [
             {
                 "qualifiedId": "demo/exr-a",
                 "scenario": "reference:optional",
@@ -171,7 +172,7 @@ class ReviewReceipts(unittest.TestCase):
             },
             {"qualifiedId": "demo/exr-a", "scenario": "starter", "optional": False},
         ]
-        unavailable = [
+        unavailable: list[UnavailableReference] = [
             {
                 "qualifiedId": "demo/exr-a",
                 "scenario": "reference:optional",
@@ -187,7 +188,7 @@ class ReviewReceipts(unittest.TestCase):
 
     def test_nested_variant_outcome_cannot_omit_compilation_counts_and_raw_results(
         self,
-    ):
+    ) -> None:
         r = result()
         r.pop("counts")
         r.pop("rawResult")
@@ -201,8 +202,8 @@ class ReviewReceipts(unittest.TestCase):
         with self.assertRaises(g.JobError):
             g.validate("check-result", r)
 
-    def test_required_reference_cannot_be_marked_unavailable(self):
-        required = [
+    def test_required_reference_cannot_be_marked_unavailable(self) -> None:
+        required: list[Scenario] = [
             {
                 "qualifiedId": "demo/exr-a",
                 "scenario": "reference:default",
@@ -225,7 +226,7 @@ class ReviewReceipts(unittest.TestCase):
                 registry=unit_registry(),
             )
 
-    def test_single_question_cannot_switch_between_runtime_profiles(self):
+    def test_single_question_cannot_switch_between_runtime_profiles(self) -> None:
         a = result()
         b = result("reference:default")
         b["runtime"] = "java25-mutation-v1"
@@ -238,7 +239,7 @@ class ReviewReceipts(unittest.TestCase):
 
     def test_invalid_starter_cannot_bypass_compilation_gate_with_negative_expectation(
         self,
-    ):
+    ) -> None:
         r = result()
         for k in [
             "counts",

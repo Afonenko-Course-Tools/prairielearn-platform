@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from typing import ClassVar, TypeGuard
 
 ROOT = Path(__file__).resolve().parents[1]
 UID = 'synthetic-user@example.test'
@@ -28,8 +29,16 @@ FORGED = {
 }
 
 
+class CallbackServer(http.server.ThreadingHTTPServer):
+    callbacks = 0
+
+
+def object_value(value: object) -> TypeGuard[dict[object, object]]:
+    return isinstance(value, dict)
+
+
 class Upstream(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path.startswith('/internal/handoff'):
             if (self.headers.get('Authorization') != 'Bearer synthetic-test-token'
                     or self.headers.get('Cookie') != FORGED['Cookie']):
@@ -42,24 +51,31 @@ class Upstream(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path == '/pl/shibcallback':
-            self.server.callbacks += 1
+            server = self.server
+            if not isinstance(server, CallbackServer):
+                raise TypeError('Синтетический callback server недоступен')
+            server.callbacks += 1
         body = json.dumps({'path': self.path, 'headers': dict(self.headers)}).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *_args):
+    def log_message(self, format: str, *_args: object) -> None:
         pass
 
 
 class ProductionProxy(unittest.TestCase):
+    upstream: ClassVar[CallbackServer]
+    port: ClassVar[int]
+    context: ClassVar[ssl.SSLContext]
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         temporary = tempfile.TemporaryDirectory(prefix='pl-prod-proxy-')
         cls.addClassCleanup(temporary.cleanup)
         directory = Path(temporary.name)
-        upstream = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        upstream = CallbackServer(('127.0.0.1', 0), Upstream)
         upstream.callbacks = 0
         cls.upstream = upstream
         cls.addClassCleanup(upstream.server_close)
@@ -103,7 +119,7 @@ class ProductionProxy(unittest.TestCase):
         cls.addClassCleanup(log.close)
         process = subprocess.Popen(command, stdout=log, stderr=log)
 
-        def stop():
+        def stop() -> None:
             process.terminate()
             try:
                 process.wait(timeout=5)
@@ -126,7 +142,7 @@ class ProductionProxy(unittest.TestCase):
         raise AssertionError('Nginx не запустился: ' + log.read())
 
     @classmethod
-    def request(cls, path, headers):
+    def request(cls, path: str, headers: dict[str, str] | list[tuple[str, str]]) -> tuple[int, bytes]:
         connection = http.client.HTTPSConnection(
             '127.0.0.1', cls.port, context=cls.context, timeout=5)
         try:
@@ -142,16 +158,28 @@ class ProductionProxy(unittest.TestCase):
         finally:
             connection.close()
 
-    def observed(self, path):
+    def observed(self, path: str) -> tuple[str, dict[str, str]]:
         status, body = self.request(path, FORGED)
         self.assertEqual(status, 200, body)
-        payload = json.loads(body)
-        headers = {key.lower(): value for key, value in payload['headers'].items()}
+        payload: object = json.loads(body)
+        if not object_value(payload) or not isinstance(payload.get('path'), str):
+            raise AssertionError('Некорректный ответ синтетического upstream')
+        actual_path = payload['path']
+        if not isinstance(actual_path, str):
+            raise AssertionError('Отсутствует путь синтетического upstream')
+        wire_headers = payload.get('headers')
+        if not object_value(wire_headers):
+            raise AssertionError('Отсутствуют headers синтетического upstream')
+        headers: dict[str, str] = {}
+        for key, value in wire_headers.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise AssertionError('Некорректные headers синтетического upstream')
+            headers[key.lower()] = value
         self.assertEqual(headers.get('x-forwarded-for'), '127.0.0.1')
         self.assertEqual(headers.get('x-real-ip'), '127.0.0.1')
         self.assertNotIn('forwarded', headers)
         self.assertEqual(headers.get('x-forwarded-proto'), 'https')
-        return payload['path'], headers
+        return actual_path, headers
 
     def test_public_native_locations_replace_forged_forwarding(self):
         for path in ['/pl/example?x=1', '/favicon.ico', '/assets/example.js', '/socket.io/?EIO=4']:
@@ -174,7 +202,7 @@ class ProductionProxy(unittest.TestCase):
                 self.assertEqual(headers.get('cookie'), 'pl2_pre_auth_url=' + TARGET)
 
     def test_rejected_browser_proof_never_reaches_native_callback(self):
-        invalid = [
+        invalid: list[dict[str, str] | list[tuple[str, str]]] = [
             {},
             {'Cookie': 'pl2_session=synthetic'},
             {'Cookie': 'GatewayLogin=' + 'c' * 43},

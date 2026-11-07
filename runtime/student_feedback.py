@@ -1,11 +1,51 @@
 """Single native RESULTS boundary. Private runner observations never pass through."""
 
+from __future__ import annotations
+
 import math
 import re
 import textwrap
+from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+
+if TYPE_CHECKING:
+    from grading_types import CompileError, PublicCase, PublicFeedback, PublicTest, StudentResult
+    from junit_result import JUnitCounts
 
 
-def _prose(value):
+def _mapping(value: object) -> TypeGuard[dict[object, object]]:
+    return isinstance(value, dict)
+
+
+def _object(value: object) -> TypeGuard[dict[str, object]]:
+    return _mapping(value) and all(isinstance(key, str) for key in value)
+
+
+def _objects(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _strings(value: object) -> TypeGuard[list[str]]:
+    return _objects(value) and all(isinstance(item, str) for item in value)
+
+
+@runtime_checkable
+class _CountsValidator(Protocol):
+    def __call__(self, counts: object, require_cases: bool = True) -> None: ...
+
+
+def _checked_counts(value: object, *, require_cases: bool) -> TypeGuard[JUnitCounts]:
+    import runpy
+    from pathlib import Path
+
+    helpers: dict[str, object] = runpy.run_path(str(Path(__file__).with_name("junit_result.py")))
+    validator = helpers.get("validate_counts")
+    if not isinstance(validator, _CountsValidator):
+        raise RuntimeError("Каноническая проверка JUnit недоступна")
+    validator(value, require_cases=require_cases)
+    return True
+
+
+def _prose(value: str) -> str:
     return textwrap.fill(value, width=50, break_long_words=False, break_on_hyphens=False)
 
 _EXPLANATIONS = {
@@ -69,14 +109,21 @@ _KINDS = {
 }
 
 
-def student_result(result, descriptor):
-    kind = _KINDS.get(result.get("classification"), "infrastructure")
+def student_result(result: object, descriptor: object) -> StudentResult:
+    if not _object(result):
+        raise ValueError("Ожидается объект результата проверки")
+    classification = result.get("classification")
+    kind = _KINDS.get(classification, "infrastructure") if isinstance(classification, str) else "infrastructure"
     if result.get("infrastructure") == "failure" or result.get("grading_error"):
         kind = "infrastructure"
+    if not _object(descriptor):
+        if kind != "infrastructure":
+            raise ValueError("Ожидается объект описания проверки")
+        descriptor = {}
     reason, observed, what_check = _EXPLANATIONS[kind]
     if kind == "infrastructure" and result.get("timed_out") is True:
-        limits = descriptor.get("limits") if isinstance(descriptor, dict) else None
-        limit = limits.get("run-seconds") if isinstance(limits, dict) else None
+        limits = descriptor.get("limits")
+        limit = limits.get("run-seconds") if _object(limits) else None
         try:
             valid_limit = (
                 isinstance(limit, (int, float)) and not isinstance(limit, bool)
@@ -87,21 +134,21 @@ def student_result(result, descriptor):
         reason = "Превышен общий лимит выполнения проверок."
         observed = (
             f"Проверки остановлены по лимиту {limit:g} с. Достоверная оценка не получена."
-            if valid_limit else
+            if valid_limit and isinstance(limit, (int, float)) else
             "Проверки остановлены по общему пределу времени. Достоверная оценка не получена."
         )
         what_check = "Сохраните ответ и повторите отправку; при повторении сообщите преподавателю."
-    feedback = {
+    feedback: PublicFeedback = {
         "kind": kind,
         "reason": reason,
         "observed": observed,
         "whatCheck": what_check,
     }
-    native = {
+    native: StudentResult = {
         "gradable": kind != "infrastructure",
         "classification": (
-            result.get("classification")
-            if kind != "infrastructure"
+            classification
+            if kind != "infrastructure" and isinstance(classification, str)
             else "infrastructure-failure"
         ),
         "feedback": feedback,
@@ -128,43 +175,43 @@ def student_result(result, descriptor):
             and math.isfinite(score)
         ):
             native["score"] = max(0, min(1, score))
-    counts = result.get("counts", {})
-    if isinstance(counts, dict) and (
-        "cases" in counts or "feedbackProtocolVersion" in counts
-    ):
-        # Fish counts have a separate shape and no JUnit case projection.
-        # Every JUnit projection uses the same decoder before reading cases.
-        import runpy
-        from pathlib import Path
-
-        runpy.run_path(str(Path(__file__).with_name("junit_result.py")))[
-            "validate_counts"
-        ](
-            counts,
-            require_cases=not (
-                descriptor.get("mode") == "student-tests"
-                and counts.get("feedbackProtocolVersion", 1) == 1
-            ),
-        )
-    case_results = counts.get("cases") if isinstance(counts, dict) else None
-    has_leaf_results = kind != "infrastructure" and isinstance(case_results, list) and counts.get("complete") is True
-    if has_leaf_results:
-        feedback["cases"] = []
-        native["tests"] = []
+    raw_counts = result.get("counts", {})
+    counts: JUnitCounts | None = None
+    if _object(raw_counts) and ("cases" in raw_counts or "feedbackProtocolVersion" in raw_counts):
+        # Перед чтением JUnit cases выполняется прежняя каноническая проверка.
+        if _checked_counts(raw_counts, require_cases=not (
+            descriptor.get("mode") == "student-tests"
+            and raw_counts.get("feedbackProtocolVersion", 1) == 1
+        )):
+            counts = raw_counts
+    if kind != "infrastructure" and counts is not None and counts["complete"]:
+        public_cases: list[PublicCase] = []
+        public_tests: list[PublicTest] = []
+        feedback["cases"] = public_cases
+        native["tests"] = public_tests
         complete = True
-        for original in case_results:
-            case = {key: original[key] for key in ("name", "status", "expected", "actual") if key in original}
-            feedback["cases"].append(case)
-            lines = []
+        for original in counts["cases"]:
+            case: PublicCase = {"name": original["name"], "status": original["status"]}
+            if "expected" in original:
+                case["expected"] = original["expected"]
+            if "actual" in original:
+                case["actual"] = original["actual"]
+            public_cases.append(case)
+            lines: list[str] = []
             if counts.get("feedbackProtocolVersion") == 2:
-                checks = [dict(check) for check in original["checks"]]
+                checks = [check.copy() for check in original.get("checks", [])]
                 case["checks"] = checks
                 if "expected" in case or "actual" in case:
-                    case["reporter"] = {"origin": "trusted-TestReporter", **{
-                        key: case[key] for key in ("expected", "actual") if key in case}}
+                    reporter = {"origin": "trusted-TestReporter"}
+                    if "expected" in case:
+                        reporter["expected"] = case["expected"]
+                    if "actual" in case:
+                        reporter["actual"] = case["actual"]
+                    case["reporter"] = reporter
                     lines.append("Наблюдение TestReporter:")
-                    lines.extend(label + ": " + case.get(key, "не установлено") for key, label in
-                                 (("expected", "Ожидается"), ("actual", "Получено")))
+                    lines.extend(label + ": " + value for label, value in (
+                        ("Ожидается", case.get("expected", "не установлено")),
+                        ("Получено", case.get("actual", "не установлено"))))
                 if not checks and case["status"] != "passed":
                     complete = False
                     if not case.get("reporter"):
@@ -175,29 +222,30 @@ def student_result(result, descriptor):
                                   "Ожидается: " + check["expected"], "Получено: " + check["actual"]])
                     if check["availability"] != "complete":
                         lines.append("Полнота: " + check["availability"])
-                    for key, label in (("delta", "Допуск"), ("differenceIndex", "Первое различие"),
-                                       ("differenceLine", "Строка"), ("differenceColumn", "Столбец"),
-                                       ("differenceExpected", "Ожидаемый фрагмент"),
-                                       ("differenceActual", "Полученный фрагмент")):
-                        if key in check:
-                            lines.append(label + ": " + check[key])
+                    for value, label in ((check.get("delta"), "Допуск"), (check.get("differenceIndex"), "Первое различие"),
+                                         (check.get("differenceLine"), "Строка"), (check.get("differenceColumn"), "Столбец"),
+                                         (check.get("differenceExpected"), "Ожидаемый фрагмент"),
+                                         (check.get("differenceActual"), "Полученный фрагмент")):
+                        if value is not None:
+                            lines.append(label + ": " + value)
             else:
-                lines.extend(label + ": " + case.get(key, "не установлено") for key, label in
-                             (("expected", "Ожидается"), ("actual", "Получено")))
+                lines.extend(label + ": " + value for label, value in (
+                    ("Ожидается", case.get("expected", "не установлено")),
+                    ("Получено", case.get("actual", "не установлено"))))
             summary = "Проверка пройдена." if case["status"] == "passed" else "Проверка не пройдена."
-            native["tests"].append({"name": case["name"], "description": summary,
-                                    "message": "\n".join([summary, *lines]),
-                                    "points": int(case["status"] == "passed"), "max_points": 1})
+            public_tests.append({"name": case["name"], "description": summary,
+                                 "message": "\n".join([summary, *lines]),
+                                 "points": int(case["status"] == "passed"), "max_points": 1})
         if counts.get("feedbackProtocolVersion") == 2:
             feedback["feedbackCompleteness"] = "complete" if complete else "incomplete"
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
         text = (
             diagnostics.get("studentCompilation", "")
-            if isinstance(diagnostics, dict)
+            if _object(diagnostics)
             else ""
         )
-        errors = []
+        errors: list[CompileError] = []
         if isinstance(text, str):
             for match in re.finditer(
                 r"(?m)^([^\n]+\.java):(\d+): error: ([^\n]+)", text
@@ -208,12 +256,12 @@ def student_result(result, descriptor):
                 elif "/additional-sources/" in path:
                     filename = path.split("/additional-sources/", 1)[1]
                 else:
-                    declared = descriptor.get("sourceFiles", [])
+                    declared_value = descriptor.get("sourceFiles", [])
+                    declared = declared_value if _strings(declared_value) else []
                     matching = [
                         name
                         for name in declared
-                        if isinstance(name, str)
-                        and (path == name or path.endswith("/" + name))
+                        if path == name or path.endswith("/" + name)
                     ]
                     filename = (
                         matching[0] if len(matching) == 1 else path.rsplit("/", 1)[-1]
@@ -270,12 +318,12 @@ def student_result(result, descriptor):
             )
     if result.get("classification") == "student-api-mismatch":
         diagnostic = result.get("apiDiagnostic", {})
-        if all(
-            isinstance(diagnostic.get(key), str) for key in ("expected", "observed")
-        ):
+        expected = diagnostic.get("expected") if _object(diagnostic) else None
+        observed_api = diagnostic.get("observed") if _object(diagnostic) else None
+        if isinstance(expected, str) and isinstance(observed_api, str):
             feedback["api"] = {
-                "expected": diagnostic["expected"][:8192],
-                "actual": diagnostic["observed"][:8192],
+                "expected": expected[:8192],
+                "actual": observed_api[:8192],
             }
             native["message"] += (
                 " Ожидаемый API: "

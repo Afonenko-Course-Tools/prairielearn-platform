@@ -1,19 +1,26 @@
 """Настоящие shell-блоки publisher на вымышленных commands/артефактах."""
+from collections.abc import Mapping
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from typing import TypedDict
 
 ROOT=Path(__file__).resolve().parents[1]
 WORKFLOW=ROOT/'.github/workflows/publish-runtime.yml'
 
-def community():
+class _ReadbackOverrides(TypedDict, total=False):
+    digest: str
+    label_revision: str
+    label_source: str
+
+def community() -> str:
     text=WORKFLOW.read_text()
     assert '\n  community:\n' in text,'Отсутствует изолированный Community publisher'
     return text.split('\n  community:\n',1)[1]
 
-def block(name):
+def block(name: str) -> str:
     source=WORKFLOW.read_text().split('\n  community:\n',1)[0] if name=='Resolve immutable version' else community()
     text=source.split('      - name: '+name+'\n',1)[1]
     run=text.split('        run: |\n',1)[1].split('\n      - ',1)[0]
@@ -32,7 +39,7 @@ class CommunityPublication(unittest.TestCase):
         self.assertIn('tests/recognized-*.test.mjs',c)
         self.assertIn('--aggregate=',c)
 
-    def run_block(self,name,changes=None,git_head='a'*40,digest=None,label_revision=None,label_source=None):
+    def run_block(self,name: str,changes: Mapping[str,str] | None=None,git_head: str='a'*40,digest: str | None=None,label_revision: str | None=None,label_source: str | None=None) -> tuple[subprocess.CompletedProcess[str],dict[str,str]]:
         with tempfile.TemporaryDirectory(prefix='community-publisher-') as tmp:
             root=Path(tmp);bin=root/'bin';bin.mkdir();(root/'VERSION').write_text('2.5.3\n')
             git=bin/'git';git.write_text('#!/bin/sh\nprintf "%s\\n" "$FIXTURE_HEAD"\n');git.chmod(0o700)
@@ -75,9 +82,10 @@ esac
         self.assertEqual(cp.returncode,0,cp.stderr)
         self.assertEqual(files['community-image.txt'].strip(),'ghcr.io/example/prairielearn-community-gateway@sha256:'+'b'*64)
         self.assertIn('pull ghcr.io/example/prairielearn-community-gateway@sha256:',files['calls'])
-        for kwargs in [{'digest':'ghcr.io/example/prairielearn-community-gateway:latest'},
+        variants: list[_ReadbackOverrides] = [{'digest':'ghcr.io/example/prairielearn-community-gateway:latest'},
                        {'digest':'ghcr.io/foreign/prairielearn-community-gateway@sha256:'+'b'*64},
-                       {'label_revision':'c'*40},{'label_source':'https://github.com/foreign/Platform'}]:
+                       {'label_revision':'c'*40},{'label_source':'https://github.com/foreign/Platform'}]
+        for kwargs in variants:
             cp,files=self.run_block('Проверить Community digest и source readback',**kwargs)
             self.assertNotEqual(cp.returncode,0)
             self.assertNotIn('community-image.txt',files)

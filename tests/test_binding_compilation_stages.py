@@ -1,33 +1,68 @@
 """Compiler rejection and runner limits preserve distinct private phase evidence."""
 from gradle_unit_fixtures import unit_platform
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Literal, Protocol, runtime_checkable
+from selected_job_fixture import fixture_record, fixture_run_job, fixture_set_up
 import json,unittest
 from unittest.mock import patch
 import jsonschema
 import test_grading_job as fixtures
+
+@runtime_checkable
+class _Run(Protocol):
+ def __call__(self, command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]: ...
+
+@runtime_checkable
+class _StudentResult(Protocol):
+ def __call__(self, result: object, descriptor: object) -> object: ...
+
+@runtime_checkable
+class _Validator(Protocol):
+ def validate(self, instance: object) -> None: ...
+
+def _private_run(value: object) -> _Run:
+ if not isinstance(value, _Run):
+  raise AssertionError('Внутренний runner grader недоступен')
+ return value
+
+def _validator(value: object) -> _Validator:
+ if not isinstance(value, _Validator):
+  raise AssertionError('Schema validator недоступен')
+ return value
+
+grader = fixtures.grader
+
 class BindingStages(unittest.TestCase):
- setUp=fixtures.JUnitJob.setUp
- run_job=fixtures.JUnitJob.run_job
+ job: Path
+ cfg: dict[str, object]
+ setUp=fixture_set_up(fixtures.JUnitJob.setUp)
+ run_job=fixture_run_job(fixtures.JUnitJob.run_job)
  def test_real_trusted_rejection_retains_existing_raw_schema_and_native_privacy(self):
   (self.job/'tests/AnswerTest.java').write_text('class AnswerTest { CLOSED_BINDING_CANARY value; }')
   raw=self.run_job();self.assertEqual(raw['classification'],'infrastructure-failure');self.assertFalse(raw['gradable']);self.assertNotIn('score',raw)
   self.assertEqual((raw['studentCompilation'],raw['trustedCompilation'],raw['dependentExecution']),('success','failure','not-run'))
   self.assertIn('CLOSED_BINDING_CANARY',json.dumps(raw))
-  schema=json.loads((fixtures.ROOT/'schemas/check-result.schema.json').read_text());jsonschema.Draft202012Validator({'$ref':'#/$defs/outcome','$defs':schema['$defs']}).validate(raw)
+  schema=fixture_record(json.loads((fixtures.ROOT/'schemas/check-result.schema.json').read_text()))
+  validator=_validator(jsonschema.Draft202012Validator({'$ref':'#/$defs/outcome','$defs':schema['$defs']}))
+  validator.validate(raw)
   import runpy
-  native=runpy.run_path(str(fixtures.ROOT/'runtime/student_feedback.py'))['student_result'](raw,self.cfg)
+  student_result: object=runpy.run_path(str(fixtures.ROOT/'runtime/student_feedback.py'))['student_result']
+  if not isinstance(student_result,_StudentResult):raise AssertionError('Функция student_result недоступна')
+  native=fixture_record(student_result(raw,self.cfg))
   self.assertNotIn('CLOSED_BINDING_CANARY',json.dumps(native));self.assertEqual(native['classification'],'infrastructure-failure');self.assertNotIn('studentCompilation',native)
  def test_trusted_compiler_limit_remains_infrastructure_not_completed_binding(self):
-  original=fixtures.grader._run
-  def limit(command,*args,**kwargs):
-   if any(str(x).endswith('/tests/AnswerTest.java') for x in command):return -1,'PRIVATE_LIMIT_CANARY','timeout'
-   return original(command,*args,**kwargs)
-  with patch.object(fixtures.grader,'_run',side_effect=limit),self.assertRaises(fixtures.grader.GraderError):self.run_job()
+  original=_private_run(getattr(grader,'_run',None))
+  def limit(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]:
+   if any(x.endswith('/tests/AnswerTest.java') for x in command):return -1,'PRIVATE_LIMIT_CANARY','timeout'
+   return original(command,cwd,timeout,output_limit,env=env)
+  with patch.object(grader,'_run',side_effect=limit),self.assertRaises(grader.GraderError):self.run_job()
  def test_student_tests_trusted_failure_never_claims_student_success(self):
   self.cfg.update(mode='student-tests',runtime='java25-mutation-v1',sourceFiles=['AnswerTest.java'],testFiles=['variants/correct/Student.java','variants/wrong/Student.java'],variants={'correct':['correct'],'mutants':['wrong']},scoring={'mode':'all-pass'})
   (self.job/'student/Student.java').unlink();(self.job/'student/AnswerTest.java').write_text(fixtures.TEST)
   for name in ['correct','wrong']:
    p=self.job/f'tests/variants/{name}/Student.java';p.parent.mkdir(parents=True);p.write_text('not java')
-  with self.assertRaises(fixtures.grader.GraderError):self.run_job()
+  with self.assertRaises(grader.GraderError):self.run_job()
 
  def test_actual_cli_delivers_native_error_and_retains_operator_failure_exit(self):
   import os,subprocess,sys

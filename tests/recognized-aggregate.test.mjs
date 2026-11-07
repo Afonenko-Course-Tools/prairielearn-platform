@@ -3,15 +3,22 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {test} from 'node:test';
-const file=process.argv.find(v=>v.startsWith('--aggregate=')).slice('--aggregate='.length);
+const file=/** @type {string} */(process.argv.find(v=>v.startsWith('--aggregate='))).slice('--aggregate='.length);
 const text=readFileSync(file,'utf8').replace(/^import[\s\S]*?from ['"][^'"]+['"];\s*/gm,'').replace(/\bexport (?=(?:async )?function|const|class)/g,'').replaceAll('import.meta.url',JSON.stringify('file:///fictional/dist/lib/assessment-grading.js'));
-const schema=new Proxy(function(){return schema;},{get:()=>schema,apply:()=>schema});
+/** @type {import("../types/test-contracts.d.ts").SchemaProxy} */
+const schema=/** @type {import("../types/test-contracts.d.ts").SchemaProxy} */(new Proxy(function(){return schema;},{get:()=>schema,apply:()=>schema}));
+/** @param {{lastCredit?:number|null,credit?:number|null,recognized?:number,points?:number,maxPoints?:number,precomputedPointsByZone?:{points:number,iq_ids:string[]}[],failHook?:boolean}} options */
 async function aggregate({lastCredit=null,credit=null,recognized=1,points=100,maxPoints=100,precomputedPointsByZone,failHook=false}){
- const ai={id:'25',max_points:maxPoints,max_bonus_points:0,points:0,score_perc:0};let saved,calls=0,lastReads=0;
- const ctx=vm.createContext({z:schema,IdSchema:schema,AssessmentInstanceSchema:schema,SubmissionSchema:schema,loadSqlEquiv:()=>new Proxy({},{get:(_,k)=>k}),runInTransactionAsync:async f=>f(),queryRow:async()=>ai,queryOptionalScalar:async()=>{lastReads++;return lastCredit;},queryRows:async()=>[{zone_id:'1',points,iq_ids:['26','27'],max_points:maxPoints,max_iq_ids:['26','27']}],execute:async(q,p)=>{assert.equal(q,'update_assessment_instance_grade');saved=p;},applyRecognizedCredit:async()=>{calls++;if(failHook)throw Error('trusted source I/O failed');return recognized;}});
+ const ai={id:'25',max_points:maxPoints,max_bonus_points:0,points:0,score_perc:0};
+/** @type {{saved?:Record<string,unknown>}} */
+const state={};let calls=0,lastReads=0;
+ const ctx=vm.createContext({z:schema,IdSchema:schema,AssessmentInstanceSchema:schema,SubmissionSchema:schema,loadSqlEquiv:()=>new Proxy({},{get:(_,k)=>k}),
+/** @template T @param {()=>Promise<T>} f */
+ runInTransactionAsync:async f=>f(),queryRow:async()=>ai,queryOptionalScalar:async()=>{lastReads++;return lastCredit;},queryRows:async()=>[{zone_id:'1',points,iq_ids:['26','27'],max_points:maxPoints,max_iq_ids:['26','27']}],execute:async(/** @type {string} */q,
+/** @type {Record<string,unknown>} */p)=>{assert.equal(q,'update_assessment_instance_grade');state.saved=p;},applyRecognizedCredit:async()=>{calls++;if(failHook)throw Error('trusted source I/O failed');return recognized;}});
  new vm.Script(text+'\nglobalThis.entry=updateAssessmentInstanceGrade;').runInContext(ctx);
- const result=await ctx.entry({assessment_instance_id:'25',authn_user_id:'99',credit,onlyLogIfScoreUpdated:true,precomputedPointsByZone});
- assert.equal(calls,1);assert.equal(saved.score_perc,result.score_perc);assert.equal(saved.points,result.points);
+ const result=await /** @type {(args:Record<string,unknown>)=>Promise<{score_perc:number,points:number}>} */(ctx.entry)({assessment_instance_id:'25',authn_user_id:'99',credit,onlyLogIfScoreUpdated:true,precomputedPointsByZone});
+ assert.equal(calls,1);const saved=state.saved;assert.ok(saved);assert.equal(saved.score_perc,result.score_perc);assert.equal(saved.points,result.points);
  return {result,saved,lastReads};
 }
 for(const lastCredit of [null,0,50,100])test('recognized fresh AI: actual native aggregate100, last credit '+lastCredit,async()=>{const {result}=await aggregate({lastCredit});assert.equal(result.points,100);assert.equal(result.score_perc,100);});

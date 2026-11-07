@@ -3,7 +3,12 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "zod": "4.6.7",
-    "pgsql-parser": "18.3.2"
+    "@types/node": "24.19.0",
+    "pgsql-parser": "18.3.2",
+    "typescript": "6.0.3",
+    "zod": "4.6.7"
+  },
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
   }
 }

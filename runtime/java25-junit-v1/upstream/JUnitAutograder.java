@@ -1,5 +1,5 @@
-import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import org.json.simple.parser.JSONParser;
 import org.junit.platform.engine.DiscoverySelector;
 import org.junit.platform.engine.TestExecutionResult;
@@ -49,7 +49,6 @@ public class JUnitAutograder implements TestExecutionListener {
 
     public JUnitAutograder() {
         launcher = LauncherFactory.create();
-        launcher.registerTestExecutionListeners(this);
     }
 
     public static void main(final String[] args) {
@@ -121,7 +120,7 @@ public class JUnitAutograder implements TestExecutionListener {
          */
         LauncherDiscoveryRequestBuilder requestBuilder = LauncherDiscoveryRequestBuilder.request();
         LauncherDiscoveryRequest request = requestBuilder.selectors(selectorList).build();
-        this.launcher.execute(request);
+        this.launcher.execute(request, this);
     }
 
     private synchronized void addProvisionalTest(final TestIdentifier test) {
@@ -223,7 +222,6 @@ public class JUnitAutograder implements TestExecutionListener {
         this.points += autograderTest.points;
     }
 
-    @SuppressWarnings("unchecked")
     private void saveResults(final String signature) {
 
         double maxPoints = this.classTotals.entrySet().stream().mapToDouble(e -> {
@@ -243,7 +241,7 @@ public class JUnitAutograder implements TestExecutionListener {
         }).sum();
         double testMaxPoints = this.tests.values().stream().mapToDouble(t -> t.maxPoints).sum();
 
-        JSONArray resultsTests = new JSONArray();
+        List<JSONObject> resultsTests = new ArrayList<>();
         for (AutograderTest test : this.tests.values()) {
             resultsTests.add(test.toJson());
         }
@@ -257,7 +255,7 @@ public class JUnitAutograder implements TestExecutionListener {
                     .toJson());
         }
 
-        JSONObject results = new JSONObject();
+        Map<String, Object> results = new HashMap<>();
         results.put("score", maxPoints > 0 ? Math.min(this.points / maxPoints, 1) : 0);
         results.put("points", Math.min(this.points, maxPoints));
         results.put("max_points", maxPoints);
@@ -268,13 +266,14 @@ public class JUnitAutograder implements TestExecutionListener {
         results.put("signature", signature);
 
         try (FileWriter writer = new FileWriter(this.resultsFile)) {
-            writer.write(results.toString());
+            writer.write(JSONValue.toJSONString(results));
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private static final class UngradableException extends Exception {
+        private static final long serialVersionUID = 1L;
     }
 
     private final class AutograderTest implements Comparable<AutograderTest> {
@@ -326,16 +325,15 @@ public class JUnitAutograder implements TestExecutionListener {
             });
         }
 
-        @SuppressWarnings("unchecked")
         public JSONObject toJson() {
-            JSONObject object = new JSONObject();
+            Map<String, Object> object = new HashMap<>();
             object.put("name", this.name);
             object.put("description", this.description);
             object.put("points", this.points);
             object.put("max_points", this.maxPoints);
             object.put("output", this.output);
             object.put("message", this.message);
-            return object;
+            return new JSONObject(object);
         }
 
         public int compareTo(final AutograderTest other) {

@@ -6,14 +6,25 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from typing import ClassVar
 
 ROOT = Path(__file__).resolve().parents[1]
 JDK = Path(os.environ.get("JAVA_HOME", "/usr/lib/jvm/java-25-openjdk")) / "bin"
 
 
 class BoundJarTypeNamesTests(unittest.TestCase):
+    temporary: ClassVar[tempfile.TemporaryDirectory[str]]
+    work: ClassVar[Path]
+    classes: ClassVar[Path]
+    tools: ClassVar[Path]
+    jar: ClassVar[Path]
+    empty_jar: ClassVar[Path]
+    side_jar: ClassVar[Path]
+    versioned_jar: ClassVar[Path]
+    library: ClassVar[Path]
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.temporary = tempfile.TemporaryDirectory(prefix="bound-api-jar-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.work = Path(cls.temporary.name)
@@ -31,7 +42,7 @@ class BoundJarTypeNamesTests(unittest.TestCase):
             "GenericQueueHelper.java": "class GenericQueueHelper {}",
             "OtherGenericQueue.java": "class OtherGenericQueue {}",
         }
-        files = []
+        files: list[str] = []
         for name, code in entries.items():
             path = sources / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,13 +120,13 @@ public class TypeNamesJarProbe {
                     str(ROOT / "runtime/java25-junit-v1/PlatformApiPrecheck.java"), str(probe))
 
     @classmethod
-    def command(cls, executable, *args):
+    def command(cls, executable: str, *args: str) -> subprocess.CompletedProcess[str]:
         result = subprocess.run([str(JDK / executable), *args], capture_output=True, text=True, timeout=30)
         if result.returncode:
             raise AssertionError(result.stderr)
         return result
 
-    def probe(self, bound, mode, expected="OK"):
+    def probe(self, bound: Path, mode: str, expected: str = "OK") -> None:
         # Ambient candidate действительно есть в classpath процесса, но не в bound input.
         cp = os.pathsep.join(map(str, [self.tools, self.library, self.side_jar]))
         result = subprocess.run([str(JDK / "java"), "-cp", cp,
@@ -124,22 +135,22 @@ public class TypeNamesJarProbe {
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(expected, result.stdout)
 
-    def test_bound_jar_exact_names_without_loading_initialization_or_ambient_scan(self):
+    def test_bound_jar_exact_names_without_loading_initialization_or_ambient_scan(self) -> None:
         self.probe(self.jar, "jar")
 
-    def test_existing_directory_discovery_is_preserved(self):
+    def test_existing_directory_discovery_is_preserved(self) -> None:
         self.probe(self.classes, "directory")
 
-    def test_empty_jar_has_no_candidates(self):
+    def test_empty_jar_has_no_candidates(self) -> None:
         self.probe(self.empty_jar, "empty")
 
-    def test_runtime_multi_release_names_agree_with_the_bound_loader(self):
+    def test_runtime_multi_release_names_agree_with_the_bound_loader(self) -> None:
         self.probe(self.versioned_jar, "versioned")
 
-    def test_invalid_simple_names_remain_rejected(self):
+    def test_invalid_simple_names_remain_rejected(self) -> None:
         self.probe(self.jar, "invalid")
 
-    def test_symlink_missing_and_corrupt_bound_inputs_are_io_failures(self):
+    def test_symlink_missing_and_corrupt_bound_inputs_are_io_failures(self) -> None:
         link = self.work / "linked.jar"
         link.symlink_to(self.jar)
         corrupt = self.work / "corrupt.jar"

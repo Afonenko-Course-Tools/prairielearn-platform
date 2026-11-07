@@ -1,6 +1,5 @@
 """Изолированная локальная проверка UID1001, fish/Git и restart тома; без portal."""
 import json
-from pathlib import Path
 import subprocess
 import sys
 import time
@@ -15,13 +14,13 @@ fixture.setUp()
 fixture.root.chmod(0o755)
 fixture.home.chmod(0o755)
 
-def docker(*args):
+def docker(*args: str) -> str:
     result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=90)
     if result.returncode:
         raise RuntimeError(result.stderr)
     return result.stdout.strip()
 
-def run(script, seed=False):
+def run(script: str, seed: bool = False) -> str:
     mounts = ['--mount', f'type=volume,source={volume},target=/home/coder/workspace']
     if seed:
         mounts += ['--mount', f'type=bind,source={fixture.home / ".pl-seed"},target=/fixtures,readonly']

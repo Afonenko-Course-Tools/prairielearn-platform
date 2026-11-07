@@ -1,13 +1,30 @@
 """Student boundary rejects private canaries, including failed runner reports."""
 
+from collections.abc import Iterable
 from gradle_unit_fixtures import unit_platform
 import importlib.util, json, unittest
 from pathlib import Path
+from typing import Protocol, runtime_checkable
+from selected_job_fixture import fixture_list, fixture_record
+
+
+@runtime_checkable
+class _CaseSchema(Protocol):
+    def validate(self, value: object) -> None: ...
+    def iter_errors(self, value: object) -> Iterable[object]: ...
+
+
+def _case_schema(value: object) -> _CaseSchema:
+    if not isinstance(value, _CaseSchema):
+        raise AssertionError("Канонический case schema validator недоступен")
+    return value
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
     "student_feedback", ROOT / "runtime/student_feedback.py"
 )
+if spec is None or spec.loader is None:
+    raise RuntimeError("Загрузчик локального Python-модуля недоступен")
 feedback = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(feedback)
 
@@ -62,7 +79,7 @@ class StudentFeedback(unittest.TestCase):
 
 
 class JUnitExecution(unittest.TestCase):
-    def fixture(self):
+    def fixture(self) -> tuple[dict[str,object],dict[str,object]]:
         import test_assertion_feedback as af
         counts = af.CheckShape().counts()
         counts["cases"][0].update(test="T#t", checks=[])
@@ -73,16 +90,16 @@ class JUnitExecution(unittest.TestCase):
 
         decoder = runpy.run_path(str(ROOT / "runtime/junit_result.py"))["validate_counts"]
         schema = json.loads((ROOT / "schemas/check-result.schema.json").read_text())
-        validator = jsonschema.Draft202012Validator({"$ref": "#/$defs/caseResult", "$defs": schema["$defs"]})
+        validator = _case_schema(jsonschema.Draft202012Validator({"$ref": "#/$defs/caseResult", "$defs": schema["$defs"]}))
         result, descriptor = self.fixture()
         decoder(result["counts"])
-        validator.validate(result["counts"]["cases"][0])
-        result["counts"]["complete"] = False
+        validator.validate(fixture_list(fixture_record(result["counts"])["cases"])[0])
+        fixture_record(result["counts"])["complete"] = False
         with self.assertRaises(ValueError):
             feedback.student_result(result, descriptor)
         for selector in ("", 42, "x" * 8193):
             result, _ = self.fixture()
-            case = result["counts"]["cases"][0]; case["test"] = selector
+            case = fixture_record(fixture_list(fixture_record(result["counts"])["cases"])[0]); case["test"] = selector
             with self.subTest(selector_type=type(selector).__name__):
                 with self.assertRaises(ValueError):decoder(result["counts"])
                 self.assertTrue(list(validator.iter_errors(case)))
@@ -102,7 +119,8 @@ public class AnswerTest {
 """)
         result = fixture.run_job()
         native = feedback.student_result(result, fixture.cfg)
-        self.assertEqual((result["counts"]["executed"], result["counts"]["passed"]), (3, 2))
+        assert "counts" in result
+        self.assertEqual((fixture_record(result["counts"])["executed"], fixture_record(result["counts"])["passed"]), (3, 2))
         self.assertEqual(native["score"], 2 / 3)
         self.assertEqual({c["name"] for c in native["feedback"]["cases"]},
                          {"Обычный результат", "Граничный результат", "observed(TestReporter)"})
@@ -247,13 +265,13 @@ class ActualFailureBoundary(unittest.TestCase):
                 str(fixture.job),
             ]
 
-            def execute(extra=[]):
+            def execute(extra: list[str]=[]) -> tuple[subprocess.CompletedProcess[str],dict[str,object]]:
                 run = subprocess.run(
                     command + extra, text=True, capture_output=True, env=os.environ
                 )
-                return run, json.loads(
+                return run, fixture_record(json.loads(
                     (fixture.job / "results/results.json").read_text()
-                )
+                ))
 
             run, native = execute()
             self.assertEqual(run.returncode, 0)
@@ -306,6 +324,8 @@ class ActualFishFeedback(unittest.TestCase):
         spec = importlib.util.spec_from_file_location(
             "feedback_fish", unit_platform(self) / "images/fish-git-grader/grade.py"
         )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         grader = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(grader)
         with tempfile.TemporaryDirectory() as tmp:
@@ -384,8 +404,6 @@ class NativeContainerFeedback(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 result = json.loads((fixture.job / "results/results.json").read_text())
                 if private:
-                    import test_review_receipts as receipts
-
                     self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_CONTAINER_CANARY", json.dumps(result))
                     self.assertNotIn("executionEvidence", result)
@@ -458,8 +476,6 @@ class NativeFishContainerFeedback(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 result = json.loads((job / "results/results.json").read_text())
                 if private:
-                    import test_review_receipts as receipts
-
                     self.assertNotIn("executionEvidence", result)
                     self.assertIn("CLOSED_FISH_CONTAINER", json.dumps(result))
                     self.assertNotIn("executionEvidence", result)

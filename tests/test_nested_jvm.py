@@ -5,20 +5,24 @@ import subprocess
 import sys
 import unittest
 import test_grading_job as fixtures
+from selected_job_fixture import fixture_record, fixture_set_up
+from test_assertion_feedback import grader_run
 
 class ProcessFileLimit(unittest.TestCase):
- def test_supervisor_caps_child_hard_limit_without_changing_parent(self):
+ def test_supervisor_caps_child_hard_limit_without_changing_parent(self) -> None:
   import resource
   before=resource.getrlimit(resource.RLIMIT_NOFILE)
-  code,text,reason=fixtures.grader._run([sys.executable,'-c','import resource;print(resource.getrlimit(resource.RLIMIT_NOFILE)[1])'],Path.cwd(),5)
+  code,text,reason=grader_run()([sys.executable,'-c','import resource;print(resource.getrlimit(resource.RLIMIT_NOFILE)[1])'],Path.cwd(),5)
   self.assertEqual(code,0);self.assertIsNone(reason);self.assertLessEqual(int(text),4096)
   self.assertEqual(resource.getrlimit(resource.RLIMIT_NOFILE),before)
 
 @unittest.skipUnless(os.environ.get('PL_TEST_IMAGE'),'Set PL_TEST_IMAGE to an actual built image ID')
 class NestedJvm(unittest.TestCase):
- setUp=fixtures.JUnitJob.setUp
- def test_six_fresh_scanner_jvms_keep_proc_denied_under_native_limits(self):
-  self.cfg['limits']['run-seconds']=10
+ job: Path
+ cfg: dict[str,object]
+ setUp=fixture_set_up(fixtures.JUnitJob.setUp)
+ def test_six_fresh_scanner_jvms_keep_proc_denied_under_native_limits(self) -> None:
+  fixture_record(self.cfg['limits'])['run-seconds']=10
   (self.job/'student/Student.java').write_text('''public class Student {
  static final java.util.Scanner INPUT=new java.util.Scanner(System.in);
  public static void main(String[] args){System.out.println(INPUT.nextInt()+" "+args[0]);}

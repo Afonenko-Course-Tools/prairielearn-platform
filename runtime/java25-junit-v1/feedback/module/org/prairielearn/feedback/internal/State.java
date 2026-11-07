@@ -12,7 +12,6 @@ public final class State {
       StackWalker.getInstance(Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE,
           StackWalker.Option.SHOW_HIDDEN_FRAMES, StackWalker.Option.SHOW_REFLECT_FRAMES));
   private static final Properties POLICY = new Properties();
-  private static final Module JUNIT = org.junit.jupiter.api.Assertions.class.getModule();
   private static final Map<Class<?>, String> TRUSTED = new IdentityHashMap<>();
   private static final Set<String> REGISTERED = new HashSet<>(), STARTED = new HashSet<>();
   private static final Map<String, Leaf> LEAVES = new HashMap<>();
@@ -103,7 +102,7 @@ public final class State {
     return i;
   }
   private static boolean runtime(Class<?> c) {
-    return c.getModule() == JUNIT || c.getClassLoader() == null;
+    return RuntimeIdentity.intermediary(c, true);
   }
   private static void control(String method) {
     if (!bound)
@@ -118,18 +117,10 @@ public final class State {
     if (caller.getDeclaringClass() != adapter || !caller.getMethodName().equals(method)
         || !POLICY.containsKey(site))
       throw new SecurityException("Wrong lifecycle site");
-    boolean engine = method.equals("main");
-    for (int j = i + 1; j < frames.size(); j++) {
-      Class<?> c = frames.get(j).getDeclaringClass();
-      if (c == adapter && frames.get(j).getMethodName().equals("main"))
-        break;
-      if (c.getModule() == JUNIT)
-        engine = true;
-      else if (!runtime(c) && !ADAPTER.contains(c))
-        throw new SecurityException("Untrusted lifecycle intermediary");
-    }
-    if (!engine)
-      throw new SecurityException("Missing engine caller");
+    if (method.equals("main"))
+      RuntimeIdentity.requireMain();
+    else
+      RuntimeIdentity.lifecycle();
   }
   public static void bind() {
     synchronized (LOCK) {
@@ -140,11 +131,11 @@ public final class State {
         var caller = frames.get(outside(frames));
         Class<?> c = caller.getDeclaringClass();
         Path root = Path.of(POLICY.getProperty("adapterRoot")).toRealPath();
-        if (!c.getName().equals("org.prairielearn.feedback.PlatformJUnitAdapter")
+        if (c != RuntimeIdentity.adapter() || !caller.getMethodName().equals("main")
+            || !caller.getDescriptor().equals("([Ljava/lang/String;)V")
             || c.getClassLoader() != ClassLoader.getSystemClassLoader() || !origin(c).equals(root))
           throw new SecurityException("Wrong bootstrap identity");
-        if (!JUNIT.isNamed() || !JUNIT.getName().equals("org.junit.platform.console.standalone"))
-          throw new SecurityException("Wrong JUnit identity");
+        RuntimeIdentity.requireMain();
         Path tests = Path.of(POLICY.getProperty("trustedRoot")).toRealPath();
         for (String key : POLICY.stringPropertyNames())
           if (key.startsWith("class.")) {
@@ -239,18 +230,8 @@ public final class State {
     }
   }
   private static void engine() {
-    var frames = stack();
-    int i = outside(frames);
-    boolean anchor = false;
-    for (; i < frames.size(); i++) {
-      Class<?> c = frames.get(i).getDeclaringClass();
-      if (c.getModule() == JUNIT)
-        anchor = true;
-      else if (!runtime(c) && !ADAPTER.contains(c))
-        throw new SecurityException("Untrusted scope caller");
-    }
-    if (!anchor)
-      throw new SecurityException("Missing engine scope caller");
+    moduleCaller(Scope.class);
+    RuntimeIdentity.scope();
   }
   public static void open(String id) {
     synchronized (LOCK) {
@@ -472,39 +453,9 @@ public final class State {
   }
   private static boolean worker(boolean executable) {
     var frames = stack();
-    int i = outside(frames);
-    Class<?> boundary;
-    try {
-      boundary = Class.forName("org.junit.jupiter.api.AssertTimeoutPreemptively", false,
-          org.junit.jupiter.api.Assertions.class.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      return false;
-    }
-    // Hidden JUnit adapters are pinned to this exact class/module, not any JUnit frame.
-    if (executable) {
-      if (i >= frames.size())
-        return false;
-      var call = frames.get(i++);
-      if (call.getDeclaringClass() != boundary
-          || !(call.getMethodName().equals("lambda$assertTimeoutPreemptively$0")
-              || call.getMethodName().equals("lambda$assertTimeoutPreemptively$1"))
-          || !call.getDescriptor().equals(
-              "(Lorg/junit/jupiter/api/function/Executable;)Ljava/lang/Object;")
-          || call.getByteCodeIndex() != 1)
-        return false;
-      if (i < frames.size() && frames.get(i).getDeclaringClass().isHidden()
-          && frames.get(i).getDeclaringClass().getNestHost() == boundary)
-        i++;
-    }
-    if (i >= frames.size())
-      return false;
-    var call = frames.get(i);
-    return call.getDeclaringClass() == boundary
-        && call.getMethodName().equals("lambda$submitTask$3")
-        && call.getDescriptor().equals(
-            "(Ljava/util/concurrent/atomic/AtomicReference;Lorg/junit/jupiter/api/function/ThrowingSupplier;)Ljava/lang/Object;")
-        && call.getByteCodeIndex() == 8;
+    return RuntimeIdentity.timeoutWorker(executable, frames, outside(frames));
   }
+
   record Activation(Context previous, Context installed) {}
   static Activation activate(Grant grant, boolean executable) {
     moduleCaller(executable ? Timeouts.ExecutableWrapper.class : Timeouts.SupplierWrapper.class);

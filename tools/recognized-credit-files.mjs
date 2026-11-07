@@ -1,23 +1,32 @@
 // Служебный адаптер Native file-store; все файлы читаются по настоящим owner refs.
+/** @param {import("../types/recognized-credit.d.ts").PrivateReference[]} refs */
 function ordered(refs){return [...refs].sort((a,b)=>a.sourceReference.localeCompare(b.sourceReference));}
-function checkOwner(context,target,actor,needsNotes=true){if(!context||['uid','userId','assessmentId','assessmentInstanceId','instanceQuestionId'].some(k=>context[k]!==target[k])||context.recognizedCredit!==true||(needsNotes&&context.allowPersonalNotes!==true)||context.actorUserId!==actor)throw Error('Native owner/recognized credit/personal-notes delivery required');}
+/** @param {import("../types/recognized-credit.d.ts").PrivateContext} context @param {import("../types/recognized-credit.d.ts").FileTarget} target @param {unknown} actor @param {boolean} [needsNotes] */
+function checkOwner(context,target,actor,needsNotes=true){if(!context||/** @type {const} */(['uid','userId','assessmentId','assessmentInstanceId','instanceQuestionId']).some(k=>context[k]!==target[k])||context.recognizedCredit!==true||(needsNotes&&context.allowPersonalNotes!==true)||context.actorUserId!==actor)throw Error('Native owner/recognized credit/personal-notes delivery required');}
+/** @param {import("../types/recognized-credit.d.ts").PrivateFile} row @param {import("../types/recognized-credit.d.ts").FileTarget} target @param {string} name */
 function checkFile(row,target,name){if(!row||row.user_id!==target.userId||row.assessment_id!==target.assessmentId||row.assessment_instance_id!==target.assessmentInstanceId||row.instance_question_id!==target.instanceQuestionId||row.type!=='student_upload'||row.display_filename!==name||row.deleted_at!=null)throw Error('Existing native private file ownership conflict');}
+/** @param {unknown} refs @param {import("../types/recognized-credit.d.ts").FileTarget} target @returns {asserts refs is import("../types/recognized-credit.d.ts").PrivateReference[]} */
 function references(refs,target){
  if(!Array.isArray(refs)||refs.length>128)throw Error('Private reference count limit');
- const seen=new Set();for(const r of refs){
+ const seen=new Set();for(const value of /** @type {unknown[]} */(refs)){
+  const r=/** @type {Record<string,unknown>} */(value);
   if(typeof r.sourceReference!=='string'||!r.sourceReference||seen.has(r.sourceReference)||r.uid!==target.uid||typeof r.relativeName!=='string'||!r.relativeName||r.relativeName.startsWith('/')||r.relativeName.includes('\\')||r.relativeName.split('/').some(p=>['','.','..'].includes(p)))throw Error('Duplicate/foreign/invalid source file reference');seen.add(r.sourceReference);
-  const s=r.source,keys=s?.kind==='submission'?['kind','submissionId','variantId','assessmentInstanceId','instanceQuestionId','userId','fileIndex','filename','answerField']:s?.kind==='native-file'?['kind','fileId','assessmentInstanceId','instanceQuestionId','userId','filename']:[];
+  const s=/** @type {Record<string,unknown>} */(r.source),keys=s?.kind==='submission'?['kind','submissionId','variantId','assessmentInstanceId','instanceQuestionId','userId','fileIndex','filename','answerField']:s?.kind==='native-file'?['kind','fileId','assessmentInstanceId','instanceQuestionId','userId','filename']:[];
   if(!keys.length||Object.keys(s).sort().join(',')!==keys.sort().join(',')||keys.filter(k=>!['kind','fileIndex','filename','answerField'].includes(k)).some(k=>typeof s[k]!=='string'||!/^[1-9][0-9]*$/.test(s[k]))||s.userId!==target.userId||typeof s.filename!=='string'||!s.filename||/[\x00-\x1f\x7f]/.test(s.filename))throw Error('Typed source file owner missing/foreign');
-  if(s.kind==='submission'&&(!Number.isSafeInteger(s.fileIndex)||s.fileIndex<0||!['raw','submitted'].includes(s.answerField)||r.sourceReference!==`submission:${s.submissionId}:${s.answerField}:${s.fileIndex}`)||s.kind==='native-file'&&r.sourceReference!==`native-file:${s.fileId}`)throw Error('Exact source submission/file reference differs');
+  if(s.kind==='submission'&&(!Number.isSafeInteger(s.fileIndex)||/** @type {number} */(s.fileIndex)<0||!['raw','submitted'].includes(/** @type {string} */(s.answerField))||r.sourceReference!==`submission:${s.submissionId}:${s.answerField}:${s.fileIndex}`)||s.kind==='native-file'&&r.sourceReference!==`native-file:${s.fileId}`)throw Error('Exact source submission/file reference differs');
  }
 }
+/** @param {Pick<import("../types/recognized-credit.d.ts").PrivateFilesApi,"readSourceReference">} api @param {import("../types/recognized-credit.d.ts").PrivateReference} ref */
 async function bytes(api,ref){const data=await api.readSourceReference(ref);if(!Buffer.isBuffer(data)||data.length>1048576)throw Error('Native source file size/type limit');return data;}
+/** @param {import("../types/recognized-credit.d.ts").FileArgs} args @param {Pick<import("../types/recognized-credit.d.ts").PrivateFilesApi,"readSourceReference">} api */
 export async function validatePrivateSourceFiles({refs,target},api){
  references(refs,target);let total=0;
  for(const ref of refs){total+=(await bytes(api,ref)).length;if(total>4194304)throw Error('Private file total size limit');}
  return{sourceReferences:refs.length};
 }
+/** @param {import("../types/recognized-credit.d.ts").PrivateReference} ref */
 export function privateDisplayName(ref){const s=ref.source;const id=s.kind==='native-file'?`file-${s.fileId}`:`submission-${s.submissionId}-${s.answerField}-${s.fileIndex}`;return'recognized-'+id+'-'+s.filename.split('/').at(-1);}
+/** @param {import("../types/recognized-credit.d.ts").FileArgs} args @param {import("../types/recognized-credit.d.ts").PrivateFilesApi} api */
 export async function attachRecognizedPrivateFiles({refs,target,actorUserId},api){
  if(typeof actorUserId!=='string'||!/^[1-9][0-9]*$/.test(actorUserId))throw Error('Exact native administrator actor required');
  references(refs,target);checkOwner(await api.context(),target,actorUserId,refs.length>0);
@@ -32,6 +41,7 @@ export async function attachRecognizedPrivateFiles({refs,target,actorUserId},api
  }
  return{files};
 }
+/** @param {import("../types/recognized-credit.d.ts").FileArgs} args @param {import("../types/recognized-credit.d.ts").PrivateFilesApi} api */
 export async function verifyRecognizedPrivateFiles({refs,target,actorUserId},api){
  references(refs,target);checkOwner(await api.context(),target,actorUserId,refs.length>0);const files=[];
  for(const ref of ordered(refs)){

@@ -10,24 +10,35 @@ import subprocess
 import uuid
 import tempfile
 import shutil
+import sys
+from typing import TypeGuard
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from json_boundary import JSONObject, is_object, is_list, json_object
 
 PLATFORM = Path(__file__).resolve().parents[1]
 ID = re.compile(r'[a-z][a-z0-9-]*\Z')
 QID = re.compile(r'[a-z][a-z0-9-]*/exr-[a-z0-9][a-z0-9-]*\Z')
 
+class BuildArguments(argparse.Namespace):
+    source: Path
+    book: str
+    instance: str
+    output: Path
+    runtime_registry: Path | None
+    candidate_image: str | None
+    export_stage: str | None
+
+
 class BuildError(Exception):
     pass
 
-def read_json(path):
+def read_json(path: Path) -> JSONObject:
     try:
-        value = json.loads(path.read_text())
-        if not isinstance(value, dict):
-            raise BuildError(f'Expected a JSON object: {path}')
-        return value
+        return json_object(json.loads(path.read_text()))
     except (OSError, ValueError) as error:
         raise BuildError(f'Cannot read JSON: {path}') from error
 
-def relative_path(root, name):
+def relative_path(root: Path, name: object) -> Path:
     if not isinstance(name, str) or not name or '\\' in name or '\0' in name:
         raise BuildError(f'Invalid relative path: {name!r}')
     p = Path(name)
@@ -40,10 +51,10 @@ def relative_path(root, name):
             raise BuildError(f'Symlink is forbidden: {current}')
     return current
 
-def tree(root):
+def tree(root: Path) -> dict[str, bytes]:
     if not root.is_dir() or root.is_symlink():
         raise BuildError(f'Expected a real directory: {root}')
-    result = {}
+    result: dict[str, bytes] = {}
     for p in sorted(root.rglob('*')):
         if p.is_symlink():
             raise BuildError(f'Symlink is forbidden: {p}')
@@ -53,19 +64,25 @@ def tree(root):
             raise BuildError(f'Special file is forbidden: {p}')
     return result
 
-def git(root, *args):
+def git(root: Path, *args: str) -> str:
     try:
         return subprocess.run(['git', *args], cwd=root, check=True,
                               capture_output=True, text=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError) as error:
         raise BuildError(f'Git source validation failed: {root}') from error
 
-def write_json(path, value):
+def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)+'\n')
 
-def validate_uuids_and_assessments(course, questions):
-    seen = {}
+def _question_ids(value: object) -> TypeGuard[list[str]]:
+    return is_list(value) and all(isinstance(item, str) for item in value)
+
+
+def validate_uuids_and_assessments(course: Path, questions: object) -> None:
+    if not _question_ids(questions):
+        raise BuildError('Expected a question ID list')
+    seen: dict[str, Path] = {}
     native = [course/'infoCourse.json']
     native += sorted((course/'courseInstances').rglob('infoCourseInstance.json'))
     assessments = sorted((course/'courseInstances').rglob('infoAssessment.json'))
@@ -76,14 +93,17 @@ def validate_uuids_and_assessments(course, questions):
         if 'uuid' not in value and path.name == 'infoCourse.json':
             continue
         try:
-            key = str(uuid.UUID(value['uuid']))
+            identity = value['uuid']
+            if not isinstance(identity, str):
+                raise BuildError(f'Missing or invalid UUID: {path}')
+            key = str(uuid.UUID(identity))
         except (ValueError, TypeError, KeyError) as error:
             raise BuildError(f'Missing or invalid UUID: {path}') from error
         if key in seen:
             raise BuildError(f'UUID collision: {path} and {seen[key]}')
         seen[key] = path
-    def visit(question):
-        if not isinstance(question, dict):
+    def visit(question: object) -> None:
+        if not is_object(question):
             raise BuildError('Assessment question must be an object')
         if 'id' in question and 'alternatives' in question:raise BuildError('id and alternatives cannot coexist')
         if 'alternatives' in question and question.get('numberChoose')!=1:raise BuildError('A random slot requires numberChoose1')
@@ -94,7 +114,7 @@ def validate_uuids_and_assessments(course, questions):
             raise BuildError('Assessment question requires an id or alternatives')
         if 'alternatives' in question:
             alternatives = question['alternatives']
-            if not isinstance(alternatives, list) or len(alternatives)<2:
+            if not is_list(alternatives) or len(alternatives)<2:
                 raise BuildError('Question alternatives must be a nonempty list')
             for alternative in alternatives:
                 visit(alternative)
@@ -103,13 +123,16 @@ def validate_uuids_and_assessments(course, questions):
         if not isinstance(zones, list):
             raise BuildError(f'Assessment zones must be a list: {path}')
         for zone in zones:
-            if not isinstance(zone, dict) or not isinstance(zone.get('questions'), list):
+            if not isinstance(zone, dict):
+                raise BuildError(f'Assessment zone requires a questions list: {path}')
+            entries = zone.get('questions')
+            if not isinstance(entries, list):
                 raise BuildError(f'Assessment zone requires a questions list: {path}')
             if zone.get('numberChoose') is not None:raise BuildError('Zone subset selection is unsupported')
-            for question in zone['questions']:
+            for question in entries:
                 visit(question)
 
-def publish_directory(source, destination, *, source_fd=-100, destination_fd=-100):
+def publish_directory(source: Path, destination: Path, *, source_fd: int = -100, destination_fd: int = -100) -> None:
     # Linux renameat2 makes the no-replacement promise atomic, including an
     # empty directory created by another builder after our initial validation.
     libc = ctypes.CDLL(None, use_errno=True)
@@ -120,7 +143,7 @@ def publish_directory(source, destination, *, source_fd=-100, destination_fd=-10
         error = ctypes.get_errno()
         raise BuildError(f'Cannot publish fresh output: {os.strerror(error)}')
 
-def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry=None, candidate_image=None, export_stage=None) -> None:
+def build_course(source: Path, book: str, instance: str, output: Path, runtime_registry: str | Path | None = None, candidate_image: str | None = None, export_stage: str | Path | None = None) -> None:
     source=Path(source).absolute();output=Path(output).absolute()
     if source.resolve()!=source or not source.is_dir():raise BuildError('Source must be an absolute real checkout')
     if output.exists() or output.is_symlink() or output.is_relative_to(source):raise BuildError('Output must be fresh and outside source')
@@ -164,8 +187,8 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
     finally:
         shutil.rmtree(stage)
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--export-stage');args=parser.parse_args()
+def main() -> None:
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--source',required=True,type=Path);parser.add_argument('--book',default='tasks');parser.add_argument('--instance',required=True);parser.add_argument('--output',required=True,type=Path);parser.add_argument('--runtime-registry',type=Path);parser.add_argument('--candidate-image');parser.add_argument('--export-stage');args=parser.parse_args(namespace=BuildArguments())
     try:build_course(args.source,args.book,args.instance,args.output,args.runtime_registry,args.candidate_image,args.export_stage)
     except (BuildError,OSError) as error:parser.exit(1,f'Course export rejected: {error}\n')
 if __name__=='__main__':main()

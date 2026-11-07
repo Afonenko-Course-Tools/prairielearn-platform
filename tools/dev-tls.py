@@ -20,13 +20,65 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Generator, Sequence
+from typing import NotRequired, TypedDict
+
+
+class TLSArguments(argparse.Namespace):
+    command: str
+    directory: str
+    expect_ca_sha256: str | None
+    dns: list[str]
+    ip: list[str]
+    leaf_days: int
+    renew_before_days: int
+    store: str
+    action: str
+    system: str
+    system_root: str
+    nss_db: list[str]
+    firefox_root: str | None
+
+
+class MaterialReport(TypedDict):
+    status: str
+    action: str
+    directory: str
+    caSha256: str
+    leafSha256: str
+    sans: list[str]
+    dates: list[str]
+    trustInstalledAutomatically: bool
+    reloadRequired: bool
+    nextStep: str
+
+
+class StoreReport(TypedDict):
+    store: str
+    trusted: bool
+    status: str
+    system: NotRequired[str]
+    anchor: NotRequired[str]
+    bundle: NotRequired[str]
+    updateCommand: NotRequired[list[str]]
+    installCommand: NotRequired[list[str]]
+    nextStep: NotRequired[str]
+    directory: NotRequired[str]
+    nickname: NotRequired[str]
+
+
+class TrustReport(TypedDict):
+    action: str
+    caSha256: str
+    stores: list[StoreReport]
+    status: str
 
 
 class TLSError(Exception):
     pass
 
 
-def execute(*args, allow_failure=False):
+def execute(*args: str | Path | int, allow_failure: bool = False) -> subprocess.CompletedProcess[bytes]:
     try:
         p = subprocess.run([str(x) for x in args], capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -36,11 +88,11 @@ def execute(*args, allow_failure=False):
     return p
 
 
-def openssl(*args, **kwargs):
-    return execute('openssl', *args, **kwargs)
+def openssl(*args: str | Path | int, allow_failure: bool = False) -> subprocess.CompletedProcess[bytes]:
+    return execute('openssl', *args, allow_failure=allow_failure)
 
 
-def absolute_path(value):
+def absolute_path(value: str | Path) -> Path:
     p = Path(value)
     if not p.is_absolute():
         raise TLSError('Use an absolute path')
@@ -51,17 +103,17 @@ def absolute_path(value):
     return p.resolve(strict=False)
 
 
-def outside_git(p):
+def outside_git(p: Path) -> None:
     for q in (p, *p.parents):
         if (q / '.git').is_file() or (q / '.git/HEAD').is_file():
             raise TLSError('TLS material must be outside every Git checkout: ' + str(p))
 
 
-def fingerprint(cert):
+def fingerprint(cert: Path) -> str:
     return hashlib.sha256(openssl('x509', '-in', cert, '-outform', 'DER').stdout).hexdigest()
 
 
-def pin_identity(cert, expected):
+def pin_identity(cert: Path, expected: str | None) -> str:
     actual = fingerprint(cert)
     if expected:
         pin = expected.replace(':', '').lower()
@@ -70,7 +122,7 @@ def pin_identity(cert, expected):
     return actual
 
 
-def public_key(path, private=False):
+def public_key(path: Path, private: bool = False) -> bytes:
     if private:
         return openssl('pkey', '-in', path, '-pubout', '-outform', 'DER').stdout
     pub = openssl('x509', '-in', path, '-pubkey', '-noout').stdout
@@ -80,7 +132,7 @@ def public_key(path, private=False):
         return openssl('pkey', '-pubin', '-in', pem, '-outform', 'DER').stdout
 
 
-def valid_ca(cert, expected=None):
+def valid_ca(cert: Path, expected: str | None = None) -> str:
     if not cert.is_file() or cert.is_symlink():
         raise TLSError('Missing regular CA certificate: ' + str(cert))
     if not re.fullmatch(rb'\s*-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\r\n]+-----END CERTIFICATE-----\s*', cert.read_bytes()):
@@ -97,7 +149,7 @@ def valid_ca(cert, expected=None):
     return actual
 
 
-def secure_material(directory):
+def secure_material(directory: Path) -> None:
     if not directory.is_dir() or directory.is_symlink():
         raise TLSError('TLS directory must be a regular private directory')
     if directory.stat().st_mode & 0o077:
@@ -113,7 +165,7 @@ def secure_material(directory):
             raise TLSError('TLS files must be owned by the invoking user')
 
 
-def sans(args):
+def sans(args: TLSArguments) -> list[str]:
     dns = {'localhost'}
     ips = {'127.0.0.1'}
     for value in args.dns:
@@ -130,9 +182,9 @@ def sans(args):
     return sorted('DNS:' + x for x in dns) + sorted('IP:' + x for x in ips)
 
 
-def certificate_sans(cert):
+def certificate_sans(cert: Path) -> list[str]:
     value = openssl('x509', '-in', cert, '-noout', '-ext', 'subjectAltName').stdout.decode()
-    found = []
+    found: list[str] = []
     for entry in ''.join(value.splitlines()[1:]).split(','):
         entry = entry.strip()
         if entry.startswith('DNS:'):
@@ -144,7 +196,7 @@ def certificate_sans(cert):
     return sorted(found)
 
 
-def verify_pair(directory, expected=None):
+def verify_pair(directory: Path, expected: str | None = None) -> str:
     secure_material(directory)
     identity = valid_ca(directory / 'ca.crt', expected)
     for prefix in ('ca', 'server'):
@@ -156,9 +208,9 @@ def verify_pair(directory, expected=None):
     return identity
 
 
-def leaf_needed(directory, wanted, days):
+def leaf_needed(directory: Path, wanted: Sequence[str], days: int) -> list[str]:
     cert = directory / 'server.crt'
-    reasons = []
+    reasons: list[str] = []
     if certificate_sans(cert) != sorted(wanted):
         reasons.append('SAN changed')
     if openssl('x509', '-in', cert, '-checkend', days * 86400, '-noout', allow_failure=True).returncode:
@@ -168,9 +220,9 @@ def leaf_needed(directory, wanted, days):
     return reasons
 
 
-def sign_leaf(directory, key, output, wanted, days):
-    with tempfile.TemporaryDirectory(prefix='.leaf-stage-', dir=directory) as tmp:
-        tmp = Path(tmp)
+def sign_leaf(directory: Path, key: Path, output: Path, wanted: Sequence[str], days: int) -> None:
+    with tempfile.TemporaryDirectory(prefix='.leaf-stage-', dir=directory) as temporary:
+        tmp = Path(temporary)
         csr, ext = tmp / 'server.csr', tmp / 'server.ext'
         ext.write_text('basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=' + ','.join(wanted) + '\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n')
         openssl('req', '-new', '-key', key, '-out', csr, '-subj', '/CN=localhost')
@@ -182,12 +234,12 @@ def sign_leaf(directory, key, output, wanted, days):
         raise TLSError('Staged leaf failed key/SAN validation')
 
 
-def fsync_file(p):
+def fsync_file(p: Path) -> None:
     with p.open('rb') as f:
         os.fsync(f.fileno())
 
 
-def fsync_dir(p):
+def fsync_dir(p: Path) -> None:
     fd = os.open(p, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(fd)
@@ -196,7 +248,9 @@ def fsync_dir(p):
 
 
 @contextlib.contextmanager
-def locked(directory):
+def locked(directory: Path) -> Generator[None, None, None]:
+    if fcntl is None:
+        raise TLSError('Local certificate maintenance requires Linux file locks')
     lock = directory.parent / ('.' + directory.name + '.tls.lock')
     fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
@@ -208,7 +262,7 @@ def locked(directory):
         os.close(fd)
 
 
-def maintain(args):
+def maintain(args: TLSArguments) -> MaterialReport:
     directory = absolute_path(args.directory)
     if directory == Path('/'):
         raise TLSError('Use a private material directory, not the filesystem root')
@@ -260,7 +314,7 @@ def maintain(args):
         return report(directory, identity, action, wanted)
 
 
-def report(directory, identity, action, wanted):
+def report(directory: Path, identity: str, action: str, wanted: list[str]) -> MaterialReport:
     return {'status': 'valid', 'action': action, 'directory': str(directory), 'caSha256': identity,
             'leafSha256': fingerprint(directory / 'server.crt'), 'sans': wanted,
             'dates': openssl('x509', '-in', directory / 'server.crt', '-noout', '-dates').stdout.decode().splitlines(),
@@ -269,7 +323,7 @@ def report(directory, identity, action, wanted):
             'nextStep': 'If renewed, reload each proxy using this directory after nginx -t; CA trust is unchanged.'}
 
 
-def atomic_public_copy(source, destination):
+def atomic_public_copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(prefix='.ca-', dir=destination.parent, delete=False) as tmp:
         staged = Path(tmp.name)
@@ -284,7 +338,7 @@ def atomic_public_copy(source, destination):
             staged.unlink(missing_ok=True)
 
 
-def system_store(args, cert, identity):
+def system_store(args: TLSArguments, cert: Path, identity: str) -> StoreReport:
     root = absolute_path(args.system_root)
     if root == Path('/') and not sys.platform.startswith('linux'):
         raise TLSError('Automatic system trust supports Linux Arch/Debian; use the documented macOS/Windows trust workflow')
@@ -323,7 +377,7 @@ def system_store(args, cert, identity):
             except TLSError:
                 continue
     trusted = installed and bundle.is_file() and not openssl('verify', '-CAfile', bundle, cert, allow_failure=True).returncode
-    result = {'store': 'system', 'system': family, 'anchor': str(anchor), 'bundle': str(bundle), 'trusted': bool(trusted),
+    result: StoreReport = {'store': 'system', 'system': family, 'anchor': str(anchor), 'bundle': str(bundle), 'trusted': bool(trusted),
               'status': 'trusted' if trusted else 'not-trusted', 'updateCommand': update,
               'installCommand': ['sudo', 'python3', str(Path(__file__).resolve()), 'trust', '--directory', args.directory, '--store', 'system', '--system', family, '--system-root', str(root), '--action', 'install',
                                  *(['--expect-ca-sha256', args.expect_ca_sha256] if args.expect_ca_sha256 else [])]}
@@ -346,7 +400,7 @@ def system_store(args, cert, identity):
     return result
 
 
-def nss_directories(args):
+def nss_directories(args: TLSArguments) -> list[Path]:
     if args.store == 'nss':
         if not args.nss_db:
             raise TLSError('Pass explicit --nss-db directories for the intended browser user')
@@ -356,7 +410,7 @@ def nss_directories(args):
     root = absolute_path(args.firefox_root)
     config = configparser.ConfigParser()
     config.read(root / 'profiles.ini')
-    dirs = []
+    dirs: list[Path] = []
     for section in config.sections():
         if section.startswith('Profile') and config.has_option(section, 'Path'):
             raw = config.get(section, 'Path')
@@ -367,12 +421,12 @@ def nss_directories(args):
     return list(dict.fromkeys(dirs))
 
 
-def nss_store(args, cert, identity, directory):
+def nss_store(args: TLSArguments, cert: Path, identity: str, directory: Path) -> StoreReport:
     if not (directory / 'cert9.db').is_file():
         raise TLSError('Existing NSS cert9.db required; refusing to create a browser profile: ' + str(directory))
     db = 'sql:' + str(directory)
     nickname = 'PrairieLearn local CA ' + identity
-    entries = []
+    entries: list[tuple[str, str]] = []
     for line in execute('certutil', '-L', '-d', db).stdout.decode().splitlines():
         match = re.fullmatch(r'(.+?)\s+([A-Za-z]*,[A-Za-z]*,[A-Za-z]*)\s*', line)
         if match:
@@ -392,7 +446,7 @@ def nss_store(args, cert, identity, directory):
                     nickname, found, trusted = alias, True, candidate_trusted
                 if trusted:
                     break
-    result = {'store': args.store, 'directory': str(directory), 'nickname': nickname, 'trusted': trusted,
+    result: StoreReport = {'store': args.store, 'directory': str(directory), 'nickname': nickname, 'trusted': trusted,
               'status': 'trusted' if trusted else 'not-trusted'}
     if args.action == 'install' and not trusted:
         if any(os.path.lexists(directory / name) for name in ('.parentlock', 'parent.lock')):
@@ -402,13 +456,13 @@ def nss_store(args, cert, identity, directory):
             execute('certutil', '-M', '-d', db, '-n', nickname, '-t', 'C,,')
         else:
             execute('certutil', '-A', '-d', db, '-n', nickname, '-t', 'C,,', '-i', cert)
-        result = nss_store(argparse.Namespace(**{**vars(args), 'action': 'check'}), cert, identity, directory)
+        result = nss_store(TLSArguments(**{**vars(args), 'action': 'check'}), cert, identity, directory)
         if not result['trusted']:
             raise TLSError('NSS import did not establish SSL CA trust')
     return result
 
 
-def trust(args):
+def trust(args: TLSArguments) -> TrustReport:
     directory = absolute_path(args.directory)
     source = directory / 'ca.crt'
     if not source.is_file() or source.is_symlink():
@@ -428,11 +482,11 @@ def trust(args):
                 absolute_path(db / 'cert9.db')
                 if not (db / 'cert9.db').is_file():
                     raise TLSError('Existing NSS cert9.db required: ' + str(db))
-                state = nss_store(argparse.Namespace(**{**vars(args), 'action': 'plan'}), cert, identity, db)
+                state = nss_store(TLSArguments(**{**vars(args), 'action': 'plan'}), cert, identity, db)
                 if args.action == 'install' and not state['trusted'] and any(os.path.lexists(db / name) for name in ('.parentlock', 'parent.lock')):
                     raise TLSError('Close Firefox before modifying its certificate database: ' + str(db))
             stores = [nss_store(args, cert, identity, db) for db in directories]
-    result = {'action': args.action, 'caSha256': identity, 'stores': stores,
+    result: TrustReport = {'action': args.action, 'caSha256': identity, 'stores': stores,
               'status': 'trusted' if all(s['trusted'] for s in stores) else 'not-trusted'}
     if args.action == 'check' and result['status'] != 'trusted':
         print(json.dumps(result, indent=2))
@@ -440,7 +494,7 @@ def trust(args):
     return result
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     for name in ('ensure', 'check', 'trust'):
@@ -459,7 +513,7 @@ def main():
             p.add_argument('--system-root', default='/', help='offline staging root; non-/ never invokes the host updater')
             p.add_argument('--nss-db', action='append', default=[])
             p.add_argument('--firefox-root')
-    args = parser.parse_args()
+    args = parser.parse_args(namespace=TLSArguments())
     os.umask(0o077)
     try:
         if not sys.platform.startswith('linux') or fcntl is None or not hasattr(os, 'O_NOFOLLOW') or not hasattr(os, 'O_DIRECTORY'):

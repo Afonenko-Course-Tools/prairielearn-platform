@@ -17,25 +17,50 @@ import java.nio.charset.StandardCharsets;
 import org.junit.platform.launcher.core.*;
 import org.junit.platform.reporting.legacy.xml.LegacyXmlReportGeneratingListener;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+import org.prairielearn.feedback.internal.RuntimeIdentity;
 
 /** Полезная обратная связь рядом со штатным XML отчётом JUnit. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
-  private static void engineCall() {
-    var frames = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
-        .walk(stream -> stream.toList());
-    boolean engine = false;
-    for (var frame : frames) {
-      Class<?> owner = frame.getDeclaringClass();
-      if (owner == PlatformJUnitAdapter.class) {
-        if (frame.getMethodName().equals("main") && engine) return;
-        continue;
-      }
-      Module module = owner.getModule();
-      if (module == org.junit.platform.launcher.Launcher.class.getModule()) engine = true;
-      else if (owner.getClassLoader() != null)
-        throw new SecurityException("Untrusted JUnit lifecycle intermediary");
+  public PlatformJUnitAdapter() {}
+
+  private enum Phase { PREPARED, LAUNCHING, RUNNING, FINISHED, RETIRED }
+  private static volatile PlatformJUnitAdapter authorizedListener;
+  private Phase phase = Phase.PREPARED;
+  private boolean integrityFailure;
+  private final Set<Class<?>> reportingCallers = Collections.newSetFromMap(new IdentityHashMap<>());
+
+  private void engineCall(String event) {
+    if (this != authorizedListener)
+      throw new SecurityException("Unauthorized JUnit listener instance");
+    try {
+      Phase expected = event.equals("testPlanExecutionStarted") ? Phase.LAUNCHING : Phase.RUNNING;
+      if (phase != expected)
+        throw new SecurityException("Invalid JUnit listener phase");
+      RuntimeIdentity.callback(event, reportingCallers);
+    } catch (RuntimeException | Error invalid) {
+      integrityFailure = true;
+      throw invalid;
     }
-    throw new SecurityException("Missing trusted launcher entry");
+  }
+  private void bindReportingOrigin(JSONObject params) throws Exception {
+    bindReportingClasses(params, "trusted_classes_root", "trusted_classes");
+    if (!observeAssertions)
+      bindReportingClasses(params, "student_classes_root", "student_classes");
+  }
+  private void bindReportingClasses(JSONObject params, String rootKey, String classesKey) throws Exception {
+    if (!(params.get(rootKey) instanceof String root)
+        || !(params.get(classesKey) instanceof JSONArray classes))
+      throw new IOException("Missing private trusted reporting binding");
+    Path expected = Path.of(root).toRealPath();
+    ClassLoader loader = PlatformJUnitAdapter.class.getClassLoader();
+    for (Object value : classes) {
+      if (!(value instanceof String name))
+        throw new IOException("Invalid private trusted class");
+      Class<?> type = Class.forName(name, false, loader);
+      verifyOrigin(type, loader, expected);
+      if (!reportingCallers.add(type))
+        throw new IOException("Duplicate private trusted class");
+    }
   }
   private final Map<String, String> outcomes = new TreeMap<>();
   private final Set<String> successfulContainers = new LinkedHashSet<>();
@@ -120,9 +145,14 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
   private boolean complete;
   private final Set<String> registered = new TreeSet<>();
   private final Set<String> started = new TreeSet<>();
-  private final Map<String, Map<String, String>> caseReports = new LinkedHashMap<>();
+  private final Map<String, Map<String, Object>> caseReports = new LinkedHashMap<>();
 
+  private void owner(TestIdentifier test) {
+    if (plan == null || plan.getTestIdentifier(UniqueId.parse(test.getUniqueId())) != test)
+      throw new SecurityException("Wrong JUnit test plan owner");
+  }
   private void register(TestIdentifier test) {
+    owner(test);
     if (!registered.add(test.getUniqueId()))
       eventErrors++;
     discovered = registered.size();
@@ -137,9 +167,9 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     return value.substring(0, Math.min(8192, value.length()));
   }
 
-  private Map<String, String> caseReport(TestIdentifier test) {
+  private Map<String, Object> caseReport(TestIdentifier test) {
     return caseReports.computeIfAbsent(test.getUniqueId(), id -> {
-      Map<String, String> report = new HashMap<>();
+      Map<String, Object> report = new HashMap<>();
       report.put("id", id);
       report.put("name", bounded(test.getDisplayName()));
       if (test.getSource().orElse(null) instanceof MethodSource method)
@@ -181,110 +211,154 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
   }
   private TestPlan plan;
   public synchronized void testPlanExecutionStarted(TestPlan plan) {
-    engineCall();
-    this.plan = plan;
-    for (TestIdentifier root : plan.getRoots()) {
-      Set<TestIdentifier> nodes = new HashSet<>(plan.getDescendants(root));
-      nodes.add(root);
-      for (TestIdentifier node : nodes)
-        if (node.getSource().orElse(null) instanceof ClassSource)
-          for (var tag : node.getTags())
-            if (tag.getName().startsWith("maxpoints=")) {
-              double maximum = Double.parseDouble(tag.getName().substring(10));
-              if (!Double.isFinite(maximum) || maximum < 0)
-                throw new IllegalArgumentException("Invalid JUnit maxpoints");
-              classMaximums.put(node.getUniqueId(), maximum);
-            }
-    }
-    if (this.complete || !registered.isEmpty())
-      eventErrors++;
-    for (TestIdentifier root : plan.getRoots()) {
-      if (root.isTest())
-        register(root);
-      for (TestIdentifier test : plan.getDescendants(root))
-        if (test.isTest())
-          register(test);
+    try {
+      engineCall("testPlanExecutionStarted");
+      this.plan = Objects.requireNonNull(plan);
+      phase = Phase.RUNNING;
+      for (TestIdentifier root : plan.getRoots()) {
+        Set<TestIdentifier> nodes = new HashSet<>(plan.getDescendants(root));
+        nodes.add(root);
+        for (TestIdentifier node : nodes)
+          if (node.getSource().orElse(null) instanceof ClassSource)
+            for (var tag : node.getTags())
+              if (tag.getName().startsWith("maxpoints=")) {
+                double maximum = Double.parseDouble(tag.getName().substring(10));
+                if (!Double.isFinite(maximum) || maximum < 0)
+                  throw new IllegalArgumentException("Invalid JUnit maxpoints");
+                classMaximums.put(node.getUniqueId(), maximum);
+              }
+      }
+      if (this.complete || !registered.isEmpty())
+        eventErrors++;
+      for (TestIdentifier root : plan.getRoots()) {
+        if (root.isTest())
+          register(root);
+        for (TestIdentifier test : plan.getDescendants(root))
+          if (test.isTest())
+            register(test);
+      }
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
     }
   }
   public synchronized void dynamicTestRegistered(TestIdentifier test) {
-    engineCall();
-    if (test.isTest())
-      register(test);
+    try {
+      engineCall("dynamicTestRegistered");
+      owner(test);
+      if (test.isTest())
+        register(test);
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
+    }
   }
   public synchronized void executionStarted(TestIdentifier test) {
-    engineCall();
-    if (test.isTest()) {
-      if (!registered.contains(test.getUniqueId()) || !started.add(test.getUniqueId()))
-        eventErrors++;
-      if (observeAssertions)
-        org.prairielearn.feedback.Gate.start(test.getUniqueId());
-      executed++;
+    try {
+      engineCall("executionStarted");
+      owner(test);
+      if (test.isTest()) {
+        if (!registered.contains(test.getUniqueId()) || !started.add(test.getUniqueId()))
+          eventErrors++;
+        if (observeAssertions)
+          org.prairielearn.feedback.Gate.start(test.getUniqueId());
+        executed++;
+      }
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
     }
   }
   public synchronized void executionSkipped(TestIdentifier test, String reason) {
-    engineCall();
-    Set<TestIdentifier> skippedTests = new HashSet<>();
-    if (test.isTest())
-      skippedTests.add(test);
-    else if (plan != null)
-      for (TestIdentifier child : plan.getDescendants(test))
-        if (child.isTest())
-          skippedTests.add(child);
-    for (TestIdentifier child : skippedTests)
-      if (outcomes.putIfAbsent(child.getUniqueId(), "skipped") == null)
-        skipped++;
+    try {
+      engineCall("executionSkipped");
+      owner(test);
+      Set<TestIdentifier> skippedTests = new HashSet<>();
+      if (test.isTest())
+        skippedTests.add(test);
+      else if (plan != null)
+        for (TestIdentifier child : plan.getDescendants(test))
+          if (child.isTest())
+            skippedTests.add(child);
+      for (TestIdentifier child : skippedTests)
+        if (outcomes.putIfAbsent(child.getUniqueId(), "skipped") == null)
+          skipped++;
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
+    }
   }
   public synchronized void executionFinished(TestIdentifier test, TestExecutionResult result) {
-    engineCall();
-    if (!test.isTest()) {
-      if (result.getStatus() == TestExecutionResult.Status.FAILED)
-        containerFailures++;
-      else if (result.getStatus() == TestExecutionResult.Status.SUCCESSFUL)
-        successfulContainers.add(test.getUniqueId());
-      return;
-    }
-    String status = result.getStatus().name().toLowerCase(Locale.ROOT);
-    if (!registered.contains(test.getUniqueId()) || !started.contains(test.getUniqueId())
-        || outcomes.putIfAbsent(test.getUniqueId(), status) != null)
-      eventErrors++;
-    Map<String, String> report = caseReport(test);
-    report.put("status",
-        result.getStatus() == TestExecutionResult.Status.SUCCESSFUL ? "passed" : "failed");
-    if (observeAssertions) {
-      List<Map<String, String>> checks = new ArrayList<>();
-      Set<String> publicFields = Set.of("site", "property", "availability", "expected", "actual",
-          "delta", "differenceIndex", "differenceExpected", "differenceActual", "differenceLine",
-          "differenceColumn", "delegated");
-      for (var check : org.prairielearn.feedback.Gate.finish(test.getUniqueId())) {
-        Map<String, String> safe = new LinkedHashMap<>();
-        for (var entry : check.entrySet())
-          if (publicFields.contains(entry.getKey()))
-            safe.put(entry.getKey(), entry.getValue());
-        checks.add(Map.copyOf(safe));
+    try {
+      engineCall("executionFinished");
+      owner(test);
+      if (!test.isTest()) {
+        if (result.getStatus() == TestExecutionResult.Status.FAILED)
+          containerFailures++;
+        else if (result.getStatus() == TestExecutionResult.Status.SUCCESSFUL)
+          successfulContainers.add(test.getUniqueId());
+        return;
       }
-      ((Map) report).put("checks", List.copyOf(checks));
-    }
-    if (result.getStatus() == TestExecutionResult.Status.FAILED) {
-      String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
-      failures.put(test.getUniqueId(), kind);
-    }
-    switch (result.getStatus()) {
-      case SUCCESSFUL:
-        passed++;
-        break;
-      case FAILED:
-        failed++;
-        break;
-      case ABORTED:
-        aborted++;
-        break;
+      String status = result.getStatus().name().toLowerCase(Locale.ROOT);
+      if (!registered.contains(test.getUniqueId()) || !started.contains(test.getUniqueId())
+          || outcomes.putIfAbsent(test.getUniqueId(), status) != null)
+        eventErrors++;
+      Map<String, Object> report = caseReport(test);
+      report.put("status",
+          result.getStatus() == TestExecutionResult.Status.SUCCESSFUL ? "passed" : "failed");
+      if (observeAssertions) {
+        List<Map<String, String>> checks = new ArrayList<>();
+        Set<String> publicFields = Set.of("site", "property", "availability", "expected", "actual",
+            "delta", "differenceIndex", "differenceExpected", "differenceActual", "differenceLine",
+            "differenceColumn", "delegated");
+        for (var check : org.prairielearn.feedback.Gate.finish(test.getUniqueId())) {
+          Map<String, String> safe = new LinkedHashMap<>();
+          for (var entry : check.entrySet())
+            if (publicFields.contains(entry.getKey()))
+              safe.put(entry.getKey(), entry.getValue());
+          checks.add(Map.copyOf(safe));
+        }
+        report.put("checks", List.copyOf(checks));
+      }
+      if (result.getStatus() == TestExecutionResult.Status.FAILED) {
+        String kind = result.getThrowable().map(this::failureKind).orElse("runtime");
+        failures.put(test.getUniqueId(), kind);
+      }
+      switch (result.getStatus()) {
+        case SUCCESSFUL:
+          passed++;
+          break;
+        case FAILED:
+          failed++;
+          break;
+        case ABORTED:
+          aborted++;
+          break;
+      }
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
     }
   }
   public synchronized void testPlanExecutionFinished(TestPlan plan) {
-    engineCall();
-    if (this.plan != plan || complete)
-      eventErrors++;
-    complete = true;
+    try {
+      engineCall("testPlanExecutionFinished");
+      if (this.plan != plan || complete) {
+        integrityFailure = true;
+        throw new SecurityException("Wrong JUnit plan owner");
+      }
+      complete = true;
+      phase = Phase.FINISHED;
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
+    }
   }
   private String failureKind(Throwable failure) {
     Set<Throwable> wrappers = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -326,17 +400,49 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     return "infrastructure";
   }
   public synchronized void reportingEntryPublished(TestIdentifier test, ReportEntry entry) {
-    if (test.isTest() && "implementation".equals(submissionMode)) {
-      Map<String, String> report = caseReport(test);
-      Map<String, String> values = entry.getKeyValuePairs();
-      for (String key : List.of("expected", "actual"))
-        if (values.containsKey(key))
-          report.put(key, bounded(values.get(key)));
+    try {
+      engineCall("reportingEntryPublished");
+      owner(test);
+      if (test.isTest() && "implementation".equals(submissionMode)) {
+        if (!registered.contains(test.getUniqueId()) || !started.contains(test.getUniqueId())
+            || outcomes.containsKey(test.getUniqueId())) {
+          integrityFailure = true;
+          throw new SecurityException("Reporting requires an active registered leaf");
+        }
+        Map<String, Object> report = caseReport(test);
+        Map<String, String> values = entry.getKeyValuePairs();
+        for (String key : List.of("expected", "actual"))
+          if (values.containsKey(key))
+            report.put(key, bounded(values.get(key)));
+      }
+
+    } catch (RuntimeException | Error invalid) {
+      if (this == authorizedListener) integrityFailure = true;
+      throw invalid;
     }
   }
 
-  @SuppressWarnings("unchecked")
+  private synchronized Map<String, Object> retire(boolean observe) {
+    RuntimeIdentity.requireMain();
+    if (this != authorizedListener || phase != Phase.FINISHED || integrityFailure || !complete)
+      throw new SecurityException("JUnit listener integrity failed");
+    phase = Phase.RETIRED;
+    authorizedListener = null;
+    Map<String, Object> feedback = new HashMap<>();
+    feedback.put("feedbackProtocolVersion", observe ? 2 : 1);
+    feedback.put("complete", eventErrors == 0);
+    feedback.put("verifiedOutcomes", Map.copyOf(outcomes));
+    feedback.put("successfulContainers", List.copyOf(successfulContainers));
+    feedback.put("cases", caseReports.values().stream().map(Map::copyOf).toList());
+    feedback.put("failureKinds", Map.copyOf(failures));
+    feedback.put("grading", Map.copyOf(grading));
+    feedback.put("classMaximums", Map.copyOf(classMaximums));
+    feedback.put("containerFailures", containerFailures);
+    return Map.copyOf(feedback);
+  }
+
   public static void main(String[] args) throws Exception {
+    RuntimeIdentity.bootstrap(PlatformJUnitAdapter.class);
     Path parameterFile = Path.of(args[0]);
     JSONObject params;
     try (Reader reader = Files.newBufferedReader(parameterFile)) {
@@ -344,43 +450,45 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     }
     Files.delete(parameterFile);
     byte[] reportKey = HexFormat.of().parseHex((String) params.remove("report_key"));
-    if (reportKey.length != 32) throw new IOException("Invalid result authentication key");
-    if (!(params.get("observe_assertions") instanceof Boolean observe))
-      throw new IOException("Missing private assertion mode");
-    if (observe)
-      org.prairielearn.feedback.Gate.bind();
-    String feedbackFile = (String) params.get("feedback_file");
-    String[] testClasses = (String[]) ((JSONArray) params.get("test_classes")).toArray(new String[0]);
-    PlatformJUnitAdapter listener = new PlatformJUnitAdapter();
-    listener.bindConsoleSupport(params.get("trusted_console_support_root"));
-    listener.bindStudentOrigin(params);
-    if (observe != "implementation".equals(listener.submissionMode))
-      throw new IOException("Private assertion mode mismatch");
-    listener.observeAssertions = observe;
-    Launcher launcher = LauncherFactory.create();
-    launcher.registerTestExecutionListeners(listener,
-        new LegacyXmlReportGeneratingListener(Path.of((String) params.get("reports_dir")),
-            new PrintWriter(System.err)));
-    var request = LauncherDiscoveryRequestBuilder.request().selectors(
-        Arrays.stream(testClasses).map(name -> selectClass(name)).toList()).build();
-    launcher.execute(request);
-    JSONObject feedback = new JSONObject();
-    feedback.put("feedbackProtocolVersion", observe ? 2 : 1);
-    feedback.put("complete", listener.complete && listener.eventErrors == 0);
-    feedback.put("verifiedOutcomes", listener.outcomes);
-    feedback.put("successfulContainers", new ArrayList<>(listener.successfulContainers));
-    feedback.put("cases", new ArrayList<>(listener.caseReports.values()));
-    feedback.put("failureKinds", listener.failures);
-    feedback.put("grading", listener.grading);
-    feedback.put("classMaximums", listener.classMaximums);
-    feedback.put("containerFailures", listener.containerFailures);
-    byte[] payload = feedback.toJSONString().getBytes(StandardCharsets.UTF_8);
-    Mac authentication = Mac.getInstance("HmacSHA256");
-    authentication.init(new SecretKeySpec(reportKey, "HmacSHA256"));
-    Files.write(Path.of(feedbackFile), payload);
-    Files.writeString(Path.of(feedbackFile + ".signature"),
-        HexFormat.of().formatHex(authentication.doFinal(payload)));
-    Arrays.fill(reportKey, (byte) 0);
+    try {
+      if (reportKey.length != 32) throw new IOException("Invalid result authentication key");
+      RuntimeIdentity.bind(params.remove("runtime_modules"));
+      if (!(params.get("observe_assertions") instanceof Boolean observe))
+        throw new IOException("Missing private assertion mode");
+      if (observe)
+        org.prairielearn.feedback.Gate.bind();
+      String feedbackFile = (String) params.get("feedback_file");
+      Object[] classes = ((JSONArray) params.get("test_classes")).toArray();
+      String[] testClasses = Arrays.copyOf(classes, classes.length, String[].class);
+      PlatformJUnitAdapter listener = new PlatformJUnitAdapter();
+      listener.bindConsoleSupport(params.get("trusted_console_support_root"));
+      listener.bindStudentOrigin(params);
+      if (observe != "implementation".equals(listener.submissionMode))
+        throw new IOException("Private assertion mode mismatch");
+      listener.observeAssertions = observe;
+      listener.bindReportingOrigin(params);
+      Launcher launcher = LauncherFactory.create();
+      launcher.registerTestExecutionListeners(listener,
+          new LegacyXmlReportGeneratingListener(Path.of((String) params.get("reports_dir")),
+              new PrintWriter(System.err)));
+      var request = LauncherDiscoveryRequestBuilder.request().selectors(
+          Arrays.stream(testClasses).map(name -> selectClass(name)).toList()).build();
+      synchronized (listener) {
+        authorizedListener = listener;
+        listener.phase = Phase.LAUNCHING;
+      }
+      launcher.execute(request);
+      Map<String, Object> feedback = listener.retire(observe);
+      byte[] payload = JSONValue.toJSONString(feedback).getBytes(StandardCharsets.UTF_8);
+      Mac authentication = Mac.getInstance("HmacSHA256");
+      authentication.init(new SecretKeySpec(reportKey, "HmacSHA256"));
+      Files.write(Path.of(feedbackFile), payload);
+      Files.writeString(Path.of(feedbackFile + ".signature"),
+          HexFormat.of().formatHex(authentication.doFinal(payload)));
+    } finally {
+      authorizedListener = null;
+      Arrays.fill(reportKey, (byte) 0);
+    }
     System.exit(0);
   }
 }

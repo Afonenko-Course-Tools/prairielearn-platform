@@ -1,7 +1,7 @@
 import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.util.*;
-import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
 import org.prairielearn.feedback.PlatformJUnitAdapter;
 
 public class InitializerOriginProbe {
@@ -34,10 +34,10 @@ public class InitializerOriginProbe {
         failures.put("untyped-cause",new RuntimeException("trusted wrapper",failures.get("student-first")));
         failures.put("wrapper-cycle",new CycleInvocation());
         failures.put("wrapper-expanding",new ExpandingInvocation());
-        JSONObject result=new JSONObject();
+        Map<String,Map<String,Object>> result=new LinkedHashMap<>();
         for (var row:failures.entrySet()) {
             Throwable failure=row.getValue();
-            JSONObject item=new JSONObject();
+            Map<String,Object> item=new LinkedHashMap<>();
             item.put("kind",classify.invoke(adapter,failure));
             item.put("type",failure.getClass().getName());
             List<String> chain=new ArrayList<>();
@@ -46,7 +46,7 @@ public class InitializerOriginProbe {
                 chain.add(cause.getClass().getSimpleName()+":"+Arrays.stream(cause.getStackTrace()).map(StackTraceElement::getClassName).limit(3).toList());
             item.put("chain",chain);result.put(row.getKey(),item);
         }
-        System.out.println(result.toJSONString());
+        System.out.println(JSONValue.toJSONString(result));
     }
 }
 class TrustedInit {
@@ -57,10 +57,12 @@ class TrustedMissing { static void entry() { MissingTrusted.entry(); } }
 class MissingTrusted { static void entry() {} }
 
 class CycleInvocation extends InvocationTargetException {
+    private static final long serialVersionUID = 1L;
     CycleInvocation() { super((Throwable)null); }
     @Override public Throwable getCause() { return this; }
 }
 class ExpandingInvocation extends InvocationTargetException {
+    private static final long serialVersionUID = 1L;
     ExpandingInvocation() { super((Throwable)null); }
     @Override public Throwable getCause() { return new ExpandingInvocation(); }
 }
