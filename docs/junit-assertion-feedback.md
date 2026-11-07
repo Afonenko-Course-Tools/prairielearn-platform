@@ -1,25 +1,23 @@
-# Наблюдения JUnit assertions: кандидат исходников C3-1
+# Ошибки JUnit через публичный API
 
-Этот договор относится к исходному кандидату. Прежний OCI digest не подтверждает совместимость protocol2; image/release, installed copies и полный census остаются отдельными gates.
+Действующий договор: [простой запуск Java/JUnit](public-junit.md).
 
-После свежей компиляции trusted Java один проход JDK25 Class-File API заменяет только точный `invokestatic org.junit.jupiter.api.Assertions.method:descriptor` на типизированный фасад с тем же descriptor. Фасад получает уже вычисленные аргументы и вызывает исходную JUnit-перегрузку ровно один раз. API precheck, student sources и student-tests не инструментируются. Неподдержанный descriptor, неверный manifest или ошибка transform — инфраструктурный отказ до исполнения, а не студенческий ноль.
+Проверки остаются обычными JUnit-тестами. Для понятного имени случая
+используйте штатные имена и DisplayName; пояснение задаётся сообщением
+assertion. Адаптер получает результат через публичный TestExecutionListener,
+а доступные expected/actual — из публичного AssertionFailedError OpenTest4J.
+Значения передаются готовыми строковыми представлениями библиотеки.
 
-Рабочий observer — закрытый именованный JPMS module. Приватная JUnit JVM получает ровно десять официальных named non-open модулей JUnit 5.14.1 / Platform 1.14.1 из `runtime/java25-junit-v1/junit-modules/` и прежний json-simple на module path. Standalone остаётся только в публичной компиляции, Gradle и отдельном offline Transform; его нет в приватном runtime classpath или module path. Пустой явный `empty-libs` исключает неявный classpath текущего каталога. Состав, SHA256, происхождение и лицензии companion JAR перечислены рядом с ними.
+В результате случая доступны name, status, message, expected, actual,
+exceptionType и stackTrace. Необязательные поля отсутствуют, если JUnit
+не предоставляет соответствующие данные. teacherTrace остаётся в частном
+отчёте и не передаётся студенту. Вывод и трассировки ограничены по объёму.
 
-Supervisor создаёт отдельные копии библиотек для каждого задания и проверяет закреплённый SHA256 при обязательном копировании. Закрытые параметры передают конечные module/version/path/SHA256 и полный descriptor receipt; `RuntimeIdentity` связывает actual Class, boot-layer Module, system loader, file CodeSource и ModuleReference location, проверяет requires/exports/opens/uses/provides и эффективную закрытость lifecycle packages. Горячие callbacks не перечитывают JAR и не вычисляют digest. Единственный TestEngine provider — квалифицированный Jupiter; неизвестный provider означает инфраструктурный отказ.
+Каждый самостоятельный JUnit-случай сохраняет свой исход и принятый вес.
+Неполный запуск или сбой инструмента не дают выдуманного балла. Сообщения
+и подробности успешных assertions автоматически не собираются.
 
-Перед загрузкой студенческих классов runner создаёт отдельную policy из свежих compiler outputs, exact Class hashes, source/descriptor/BCI inventory и adapter control sites. В официальном режиме module, companion copies, пустой каталог и compiled classes принадлежат supervisor, доступны sbuser только для чтения; private input protection, Landlock, namespaces, подписи результатов и JSON budget сохраняются.
-
-Исходный VM main допускается одноразово до чтения аргументов и файла параметров. Constructor и классификатор остаются инертными. Только созданный main экземпляр listener получает полномочие; фазы запуска, qualified dispatch, необратимый признак нарушения целостности и отзыв полномочия перед immutable snapshot защищают подписанный отчёт. Parallel callbacks используют реальный путь Platform worker; trusted TestReporter проверяется отдельно. В `student-tests` bootstrap и registry работают без загрузки State, policy и assertion observation. Диагностические host jobs используют отдельную узкую source copy с ожидаемым открытием только собственного observer internal package; закрытость JUnit сохраняется, production privacy такой диагностикой не подтверждается.
-
-Live StackWalker проверяет фактические Class, defining loader, method descriptor и post-transform BCI. Throwable stack, сообщения, имена файлов сами по себе, произвольный reflective caller и student → trusted helper reentry не дают observation authority. Штатный Jupiter interceptor привязывает scope к настоящему leaf UID. Для typed preemptive delegates одноразовый grant принадлежит точной pinned JUnit worker chain и живому ancestor; finally/Scope close/finish его отзывают. Поздний worker не меняет замороженный output.
-
-`projection-admissions.json` — конечный список binaryName + SHA доверенного исходника, а не схема учебных ожиданий. Начальный допуск содержит фактический D1 State. Schema извлекается из Record attribute свежего classfile; generated GETFIELD bridge проверяется полностью, а bind сопоставляет реальные Class/loader/pre-post hashes/schema. Закрытый reader не вызывает record accessors, произвольные `toString`, `get`, `iterator` или пользовательский `equals`. Обычные безопасные immutable значения и списки читаются в прежних квотах; остальные объекты явно incomplete.
-
-Snapshot ограничен 32768 bytes, 256 items, depth6 и 64 checks на leaf; render ограничен 2048 UTF16 units/8192 UTF8 bytes. Reservation предшествует snapshot/window allocation. Переполнение сохраняет исходный delegate и баллы, а полнота становится incomplete. Длинные exact String сравниваются только через `charAt`, с конечным scan budget 1048576 UTF16 units; первая разница имеет индекс, LF-строку/UTF16-столбец и bounded escaped window. Полные String references живут только в transient begin snapshot и не остаются в queued checks/finish/result. Budget отражает конкретные payload/node/copy statements, а не измерение всего JVM heap.
-
-ClassLoader/Path/служебные объекты, private authority/audit, absolute source paths, stdout/stderr и Throwable/messages/trace не публикуются. Exact immutable String уже вычисленного expected/actual настоящего trusted assertion является предметным значением в этих квотах. Произвольная цензура предметных строк не вводится; абсолютная безопасность любого кода внутри JVM не утверждается.
-
-Adapter кладёт allowlisted immutable checks внутрь прежнего подписанного counts. Implementation counts имеют `feedbackProtocolVersion=2`, student-tests сохраняют protocol1. `assertionFeedbackProtocol=2` в Java profile означает способность исходного runtime; он не квалифицирует старый image. Один `runtime/junit_result.py` decoder проверяет shape, bounds, protocol и связь checks с теми же фактическими leaves. `student_feedback.py` показывает checks внутри одного native test на leaf. TestReporter сохраняется отдельно с origin `trusted-TestReporter`. Assertions не добавляют баллов: passed/total, API gate и compile/API zero vs infrastructure unknown не меняются.
-
-Локальные адресные проверки находятся в `tests/test_assertion_feedback.py`; actual D1 inputs задаются `JAVA_EARLY_PROJECTS`. Полный compiled descriptor/type/thread census принятого состава, C3-2, новый image и live end-to-end остаются обязательными последующими gates. Этот документ не объявляет полного выполнения решения37.
+Преобразования байткода, фасад Assertions, State/Gate, JPMS-допуски,
+проверки внутренних стеков JUnit, снимки объектов и подписи результатов
+удалены. Для новой проверки не нужны декларации наблюдения или отдельный
+реестр допустимых классов. Прежняя реализация доступна в истории Git.
