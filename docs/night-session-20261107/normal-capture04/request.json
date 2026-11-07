@@ -1,0 +1,52 @@
+{
+  "status": "OBSERVATION_ONLY_SOURCE_READY_FOR_PEER_N0_ONLY",
+  "worker": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+    "bytes": 7294,
+    "mode": 420,
+    "sha256": "88057aaae02d9d47ef81a4f63b429416bd07b06a4fd466c91d1a23b9a7fa5000"
+  },
+  "java_instrumentation_unchanged": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture03/refusal-vector-candidate/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "bytes": 37612,
+    "mode": 420,
+    "sha256": "2bdc0f4be72e8d3e56a8932d5025b9e12acb1dde51752dee0d735e2a5def8322"
+  },
+  "cause": "actual03 javac package rejected RI outside sourcepath; no runtime frame witness yet",
+  "fix_ru": "Новый private observer-module-source с exact module-info+8classes;8unchanged иRIinstrumented. Как accepted diagnostic-copy pattern, заменяются sourcepath root и9explicitmodule source args. Остальныеflags/args/guard/caps прежние.",
+  "module_source_pins": {
+    "module-info.java": "33df77f13818d2daf13e453ae1f083d1b4f7387a73b52c655fc7fd43de92ed93",
+    "org/prairielearn/feedback/Assertions.java": "99ef0b9d8674fcf5f14b8e5be4dc4bf67e012e5d839f03478ec0ebd81f7710f6",
+    "org/prairielearn/feedback/Gate.java": "e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69",
+    "org/prairielearn/feedback/PlatformJUnitAdapter.java": "cb4ccb52d68b7fed7ac9203f5fcf7193be9b1845462e0a96a1b32f0edd4ba7a8",
+    "org/prairielearn/feedback/ProjectionAccess.java": "4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a",
+    "org/prairielearn/feedback/internal/RuntimeIdentity.java": "c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e",
+    "org/prairielearn/feedback/internal/Scope.java": "523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b",
+    "org/prairielearn/feedback/internal/State.java": "48f5c84486dba28540896c9bf938e290fe4d4eb2b1c52c8237da626b96044f39",
+    "org/prairielearn/feedback/internal/Timeouts.java": "00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516"
+  },
+  "module_copy_bytes": 144130,
+  "private_setup_read_write_bytes_bound": 507614,
+  "source349": "5e5cd2bb98610d3dd9e88321abaa9093624e6cc34c5061408ccf3fd6a421c628",
+  "cwd": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source",
+  "argv": [
+    "/home/tolya/Java/CI/.tools/night-20261107/tools/platform-python/bin/python",
+    "-B",
+    "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+    "${N0_NEW_CAPTURE_DIR}",
+    "${N0_PRIVATE_RI_SOURCE}"
+  ],
+  "supervision": "N0outer04 separate owner;493/heavylock/source349;180inclusive=160useful+20cleanup;global07:29:13Z",
+  "existing_method": "test_hostile_records_are_bounded_without_user_code",
+  "methods": 1,
+  "jobs": 1,
+  "direct_JVM_max": 10,
+  "source_swaps_required": 1,
+  "vector_frames": 64,
+  "vector_metadata_bytes": 16384,
+  "capture_bound": 999424,
+  "outer_log_bound": 1048576,
+  "new_probes_flags_limits": false,
+  "live_mutations": [],
+  "author_execution": []
+}

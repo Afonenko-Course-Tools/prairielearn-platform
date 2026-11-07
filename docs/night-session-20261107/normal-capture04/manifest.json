@@ -1,0 +1,49 @@
+{
+  "worker": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+    "bytes": 7294,
+    "mode": 420,
+    "sha256": "88057aaae02d9d47ef81a4f63b429416bd07b06a4fd466c91d1a23b9a7fa5000"
+  },
+  "candidate": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture03/refusal-vector-candidate/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "bytes": 37612,
+    "mode": 420,
+    "sha256": "2bdc0f4be72e8d3e56a8932d5025b9e12acb1dde51752dee0d735e2a5def8322"
+  },
+  "files": [
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/admission.json",
+      "bytes": 2761,
+      "mode": 420,
+      "sha256": "c14d476394c1d330dd66e97f95456fafeafcd95047e5dd14c0643e1bfad253c5"
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+      "bytes": 7294,
+      "mode": 420,
+      "sha256": "88057aaae02d9d47ef81a4f63b429416bd07b06a4fd466c91d1a23b9a7fa5000"
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/report.md",
+      "bytes": 924,
+      "mode": 420,
+      "sha256": "255125dba2e51688c5f6cc761a664c7680da240a0c24f7ad72c538e5f758325a"
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/request.json",
+      "bytes": 3335,
+      "mode": 420,
+      "sha256": "9e80b84f4e92081840e0448cbd285d8134d9f14ec7e5773a97b676019bebe4f6"
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/worker.diff",
+      "bytes": 2989,
+      "mode": 420,
+      "sha256": "4dc34d1f2bb274136a2088d6bfd3cbc21a64998dd4c49454a6291b51cbd8fb8e"
+    }
+  ],
+  "product_mutations": [],
+  "author_execution": [],
+  "admission_contexts": 10
+}

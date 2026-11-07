@@ -1,0 +1,39 @@
+--- inner03.py
++++ inner04.py
+@@ -29,6 +29,22 @@
+     raise RuntimeError("HOLD: instrumented source hash mismatch")
+ ORIGINAL_RI = str(SOURCE / "runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java")
+ source_swaps = 0
++ORIGINAL_MODULE = SOURCE / "runtime/java25-junit-v1/feedback/module"
++MODULE_SOURCE_PINS = {'module-info.java': '33df77f13818d2daf13e453ae1f083d1b4f7387a73b52c655fc7fd43de92ed93', 'org/prairielearn/feedback/Assertions.java': '99ef0b9d8674fcf5f14b8e5be4dc4bf67e012e5d839f03478ec0ebd81f7710f6', 'org/prairielearn/feedback/Gate.java': 'e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69', 'org/prairielearn/feedback/PlatformJUnitAdapter.java': 'cb4ccb52d68b7fed7ac9203f5fcf7193be9b1845462e0a96a1b32f0edd4ba7a8', 'org/prairielearn/feedback/ProjectionAccess.java': '4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a', 'org/prairielearn/feedback/internal/RuntimeIdentity.java': 'c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e', 'org/prairielearn/feedback/internal/Scope.java': '523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b', 'org/prairielearn/feedback/internal/State.java': '48f5c84486dba28540896c9bf938e290fe4d4eb2b1c52c8237da626b96044f39', 'org/prairielearn/feedback/internal/Timeouts.java': '00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516'}
++private_module = root.parent / "observer-module-source"
++private_module.mkdir(mode=0o700)
++for relative, expected in MODULE_SOURCE_PINS.items():
++    source = ORIGINAL_MODULE / relative
++    data = source.read_bytes()
++    if hashlib.sha256(data).hexdigest() != expected:
++        raise RuntimeError("HOLD: module source identity mismatch")
++    if relative == "org/prairielearn/feedback/internal/RuntimeIdentity.java":
++        data = instrumented.read_bytes()
++    target = private_module / relative
++    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
++    descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
++    with os.fdopen(descriptor, "wb") as stream:
++        stream.write(data)
+ 
+ # Импорт/выполнение разрешены только исполнителю N0, не автору пакета.
+ import test_feedback_state_guards as guards
+@@ -57,7 +73,12 @@
+     if ORIGINAL_RI in command:
+         if source_swaps != 0 or list(command).count(ORIGINAL_RI) != 1:
+             raise RuntimeError("HOLD: unexpected second RuntimeIdentity source swap")
+-        actual_command = [str(instrumented) if arg == ORIGINAL_RI else arg for arg in command]
++        actual_command = [
++            str(private_module / Path(arg).relative_to(ORIGINAL_MODULE))
++            if arg.startswith(str(ORIGINAL_MODULE) + os.sep) else
++            str(private_module) if arg == str(ORIGINAL_MODULE) else arg
++            for arg in command
++        ]
+         source_swaps += 1
+     result = original(actual_command, cwd, timeout, output_limit, env=env)
+     try:

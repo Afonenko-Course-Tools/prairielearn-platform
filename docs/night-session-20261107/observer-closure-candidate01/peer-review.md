@@ -1,0 +1,7 @@
+# Независимая рецензия observer closure candidate01
+
+**SPEC/QUALITY SOURCE_ACCEPTED; findings0. LIVE HOLD, actual candidate NOT_RUN.** Exact candidate e6c55db0a5abb064945dfa9319029689d032809ca655c99d20eb717e7e8eeb95/35674B0644; before c11573d3…/35589B0644 сохранён. Две exact isExported дельты сверены, все manifest inputs SHA/bytes/modes совпадают.
+
+Direct quota capture445B подтверждает bootstrap observerClosure260 refusal при accepted diagnostic add-opens. Прочитан official JDK25 receipt1468ad89: открытый данному модулю package считается exported ему runtime. Оба новых effectiveexport predicates сравниваются с тем же expectedInternalOpen: production E=false эквивалентна старой проверке; foreign V!=unnamed также эквивалентен старому запрету; diagnostic Etrue/unnamed ожидает open и effectiveexport одновременно. Descriptor/publicopens/selfviewer guards без изменений; anchorfalse ровноодин, properties/env bypass нет.
+
+Это source fix диагностического predicate conflict, не объяснение normal output_limit/missingreports. До normalraw+N0GO/newcoherentfreeze live остаётся frozen. Direct affected compiler units ровно4 по исходным argv:bootstrap/observer-strict/current02/current10. Другие outputs reuse только по отдельному exact dependency/ABI binding. Existing quota first coveringruntime и оставшиеся4diagnostics требуют отдельного N0 finite назначения; runtime/privacy/image/composite200PASS не заявлены. Primary admission обоих ролей полный original Sol/high Standard. Рецензент ничего product/controlauthor не менял и не запускал.

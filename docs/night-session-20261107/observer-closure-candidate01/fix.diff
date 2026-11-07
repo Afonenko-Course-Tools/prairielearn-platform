@@ -1,0 +1,21 @@
+--- a/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java
++++ b/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java
+@@ -256,7 +256,7 @@
+         || !own.provides().iterator().next().service().equals("org.junit.jupiter.api.extension.Extension")
+         || !own.provides().iterator().next().providers().equals(List.of("org.prairielearn.feedback.internal.Scope"))
+         || !own.opens().isEmpty()
+-        || observer.isExported("org.prairielearn.feedback.internal", unnamed))
++        || observer.isExported("org.prairielearn.feedback.internal", unnamed) != expectedInternalOpen)
+       throw new SecurityException("Observer internal package is exposed");
+     Set<Module> viewers = new HashSet<>(ModuleLayer.boot().modules());
+     viewers.remove(observer);
+@@ -265,7 +265,8 @@
+       if (observer.isOpen("org.prairielearn.feedback", viewer)
+           || observer.isOpen("org.prairielearn.feedback.internal", viewer)
+               != (expectedInternalOpen && viewer == unnamed)
+-          || observer.isExported("org.prairielearn.feedback.internal", viewer))
++          || observer.isExported("org.prairielearn.feedback.internal", viewer)
++              != (expectedInternalOpen && viewer == unnamed))
+         throw new SecurityException("Observer effective closure differs");
+   }
+   private static Path safeFile(Path path) throws IOException {

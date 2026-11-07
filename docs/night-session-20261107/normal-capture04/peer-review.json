@@ -1,0 +1,118 @@
+{
+  "status": "SOURCE_ACCEPTED_ONLY_STOP_NO_EXECUTION_AUTHORITY_TRANSFER",
+  "spec_verdict": "SOURCE_ACCEPTED",
+  "quality_verdict": "SOURCE_ACCEPTED",
+  "findings": [],
+  "worker": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+    "sha256": "88057aaae02d9d47ef81a4f63b429416bd07b06a4fd466c91d1a23b9a7fa5000",
+    "bytes": 7294,
+    "mode": 420
+  },
+  "request": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/request.json",
+    "sha256": "9e80b84f4e92081840e0448cbd285d8134d9f14ec7e5773a97b676019bebe4f6",
+    "bytes": 3335,
+    "mode": 420
+  },
+  "java_instrumentation_unchanged": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture03/refusal-vector-candidate/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+    "sha256": "2bdc0f4be72e8d3e56a8932d5025b9e12acb1dde51752dee0d735e2a5def8322",
+    "bytes": 37612,
+    "mode": 420
+  },
+  "prior_source_proof_reused": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture03/peer-review.json",
+    "sha256": "177c301d30390f59fce3598af8d65f378a02c377b4ac4af62fc39940831c8f53",
+    "bytes": 7287,
+    "mode": 420
+  },
+  "module_source_inputs": [
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/module-info.java",
+      "sha256": "33df77f13818d2daf13e453ae1f083d1b4f7387a73b52c655fc7fd43de92ed93",
+      "bytes": 420,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/Assertions.java",
+      "sha256": "99ef0b9d8674fcf5f14b8e5be4dc4bf67e012e5d839f03478ec0ebd81f7710f6",
+      "bytes": 48915,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/Gate.java",
+      "sha256": "e321f38c5aa88ec6d0aa00776a3d7e43f9d1f12a9df6d6988c858a122056ea69",
+      "bytes": 569,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/PlatformJUnitAdapter.java",
+      "sha256": "cb4ccb52d68b7fed7ac9203f5fcf7193be9b1845462e0a96a1b32f0edd4ba7a8",
+      "bytes": 22263,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/ProjectionAccess.java",
+      "sha256": "4006d1bb8e36ef5714b5080f9c35c918c1d9bb086c9dbd1aa6fae8a2d407d01a",
+      "bytes": 327,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/RuntimeIdentity.java",
+      "sha256": "c11573d3edd61aba18039d0cdaea83630aecdc95463bb3eb4ffd84bbbe110c0e",
+      "bytes": 35589,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/Scope.java",
+      "sha256": "523e8610c256b055131d8d926db1a63f3d4960f46bb6866cb520fb99e07f5b2b",
+      "bytes": 1024,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/State.java",
+      "sha256": "48f5c84486dba28540896c9bf938e290fe4d4eb2b1c52c8237da626b96044f39",
+      "bytes": 31339,
+      "mode": 420
+    },
+    {
+      "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source/runtime/java25-junit-v1/feedback/module/org/prairielearn/feedback/internal/Timeouts.java",
+      "sha256": "00949364f2ecab588d4a539addde82a2595f6cad56ca7011f27ea2d2983a7516",
+      "bytes": 1661,
+      "mode": 420
+    }
+  ],
+  "module_copy_bytes": 144130,
+  "source_manifest": {
+    "path": "/home/tolya/Java/CI/.tools/night-20261107/control/N0/platform-named-runtime177-04/source-manifest.json",
+    "sha256": "cf6c56f9f11437d1eed5a6cf046bed951121a271aa806c7e75a02ea696ca7305",
+    "bytes": 61341,
+    "mode": 420
+  },
+  "source349": "5e5cd2bb98610d3dd9e88321abaa9093624e6cc34c5061408ccf3fd6a421c628",
+  "delta_verified_ru": "Только private9source setup/pins и remap одного observer compiler invocation:9explicit source args+sourcepath root теперь один package-correct private module root. Originalmodule descriptor+8classes,RI заменён instrumented2bdc. Остальные args/CP/MP/output/flags/caps/test/guard unchanged; original lowerhook/result/capture suffix literal equal03.",
+  "membership": "module-info.java and package-relative8classes co-located under same private root; sourcepath points there. Freshmkdir/O_EXCL0700/0600 prevents stale merge. Source swaps must equal1 after future actual.",
+  "caps": {
+    "methods": 1,
+    "jobs": 1,
+    "leaves": 5,
+    "source_derived_JVM_ceiling": 10,
+    "compile15": 15,
+    "run12": 12,
+    "output65536": 65536,
+    "capture999424": 999424,
+    "outer180_inclusive": 180,
+    "useful160": 160,
+    "cleanup20": 20,
+    "global_deadline": "07:29:13Z"
+  },
+  "integration": "Separate independently accepted N0outer04/finalbinding/full349+private9fileguards required before any execution; N0 currently stopped, actual role not transferred.",
+  "actual": "NOT_RUN",
+  "raw03": "HOLD preserved; first rejected owner UNKNOWN",
+  "admission": "peer-admission.json",
+  "checks_imports_JVM_executed": [],
+  "product_edits": [],
+  "old_reports_edited": [],
+  "stop_after_current_review": true
+}

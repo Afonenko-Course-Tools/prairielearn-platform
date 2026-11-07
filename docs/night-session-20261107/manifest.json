@@ -1,0 +1,71 @@
+{
+  "status": "Сохранённые предложения; не применены к продукту и не проверены запуском",
+  "files": [
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/fix.diff",
+      "file": "observer-closure-candidate01/fix.diff",
+      "sha256": "4323110e8dc26eeae2b964658cab3e0651cb2069a0a4364a6d86b4cc6545566b",
+      "bytes": 1439
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/source-report.md",
+      "file": "observer-closure-candidate01/source-report.md",
+      "sha256": "e431b536d086a58fcfd4d7249851d1ec0c7d4c9be9edbad0ca60bac1c2d565ed",
+      "bytes": 8532
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/peer-review.md",
+      "file": "observer-closure-candidate01/peer-review.md",
+      "sha256": "f6dc8cca9ee4f28b86d055925794cbecb610ece78e3c8283adb6ade119facac4",
+      "bytes": 1962
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/observer-closure-candidate01/peer-review.json",
+      "file": "observer-closure-candidate01/peer-review.json",
+      "sha256": "962d0b2647ca7b4e902465e2e939ea286ad303ca66d86313f3be0e6f9e6e11ea",
+      "bytes": 4938
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/capture-one-normal-vector.source-only.py",
+      "file": "normal-capture04/capture-one-normal-vector.source-only.py.txt",
+      "sha256": "88057aaae02d9d47ef81a4f63b429416bd07b06a4fd466c91d1a23b9a7fa5000",
+      "bytes": 7294
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/worker.diff",
+      "file": "normal-capture04/worker.diff",
+      "sha256": "4dc34d1f2bb274136a2088d6bfd3cbc21a64998dd4c49454a6291b51cbd8fb8e",
+      "bytes": 2989
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/request.json",
+      "file": "normal-capture04/request.json",
+      "sha256": "9e80b84f4e92081840e0448cbd285d8134d9f14ec7e5773a97b676019bebe4f6",
+      "bytes": 3335
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/report.md",
+      "file": "normal-capture04/report.md",
+      "sha256": "255125dba2e51688c5f6cc761a664c7680da240a0c24f7ad72c538e5f758325a",
+      "bytes": 924
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/manifest.json",
+      "file": "normal-capture04/manifest.json",
+      "sha256": "cd219f1a489806fa026cb28eea832f35d11edf6c7ec4bda5156ab041a823c349",
+      "bytes": 2236
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/peer-review.json",
+      "file": "normal-capture04/peer-review.json",
+      "sha256": "771442e85f7f526e09ed4640f8a45841b8764e30266359ee25c777fe1d720012",
+      "bytes": 6186
+    },
+    {
+      "source": "CI/.tools/night-20261107/control/N4/junit-named-implementation/runtime-red-round1/normal-capture04/peer-review.md",
+      "file": "normal-capture04/peer-review.md",
+      "sha256": "65084d9ccbe21ca1c77a3cff6683c98d080946d4e5bb04a48ec89bd8a06a3c3e",
+      "bytes": 878
+    }
+  ]
+}
