@@ -1,0 +1,23 @@
+name: Доставка в прототип
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: course-cd-prototype
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: [self-hosted, course-cd-prototype]
+    environment: course-cd-prototype
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Доставить уже подготовленный выпуск
+        env:
+          COURSE_CD_TOKEN: ${{ secrets.COURSE_CD_TOKEN }}
+          COURSE_CD_INVENTORY: ${{ vars.COURSE_CD_INVENTORY }}
+          COURSE_CD_VARS: ${{ vars.COURSE_CD_VARS }}
+        run: ansible-playbook -i "$COURSE_CD_INVENTORY" deploy.yml -e "@$COURSE_CD_VARS"

@@ -1,0 +1,48 @@
+---
+- name: Доставить подготовленный выпуск курса в прототип
+  hosts: course_cd
+  gather_facts: false
+  tasks:
+    - name: Запустить штатную Git-синхронизацию PrairieLearn
+      ansible.builtin.uri:
+        url: "{{ pl_url }}/pl/api/v1/course/{{ course_id }}/sync"
+        method: POST
+        headers:
+          Private-Token: "{{ lookup('ansible.builtin.env', 'COURSE_CD_TOKEN') }}"
+        status_code: 200
+      register: sync_request
+      changed_when: true
+      no_log: true
+
+    - name: Дождаться результата штатного задания
+      ansible.builtin.uri:
+        url: "{{ pl_url }}/pl/api/v1/course/{{ course_id }}/sync/{{ sync_request.json.job_sequence_id }}"
+        headers:
+          Private-Token: "{{ lookup('ansible.builtin.env', 'COURSE_CD_TOKEN') }}"
+        status_code: 200
+      register: sync_result
+      until: sync_result.json.status not in ['Running', 'Stopping']
+      retries: 90
+      delay: 2
+      no_log: true
+
+    - name: Принять только успешную синхронизацию
+      ansible.builtin.assert:
+        that: sync_result.json.status == 'Success'
+        fail_msg: "PrairieLearn завершил синхронизацию со статусом {{ sync_result.json.status }}."
+
+    - name: Создать отдельный каталог публичных материалов выпуска
+      ansible.builtin.file:
+        path: "{{ site_directory }}"
+        state: directory
+        mode: '0755'
+
+    - name: Доставить и распаковать готовый student-сайт
+      ansible.builtin.unarchive:
+        src: "{{ site_archive }}"
+        dest: "{{ site_directory }}"
+        mode: 'u=rwX,go=rX'
+
+    - name: Показать результат
+      ansible.builtin.debug:
+        msg: "Native sync {{ sync_request.json.job_sequence_id }}: {{ sync_result.json.status }}. Материалы: {{ site_directory }}."

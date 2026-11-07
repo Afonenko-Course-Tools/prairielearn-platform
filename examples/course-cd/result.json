@@ -1,0 +1,47 @@
+{
+  "prototype": "native-Git-public-REST-sync-and-static-delivery",
+  "communityVersion": "2.5.8",
+  "syncJobs": [
+    {
+      "id": 7,
+      "status": "Success"
+    },
+    {
+      "id": 8,
+      "status": "Success"
+    }
+  ],
+  "baseGitSha": "d85412b29739fec05a58127caa39f614a2091fc3",
+  "finalWorkingGitSha": "a2f7cc609e0aa3ca8fc55dd2998e04b345da6f65",
+  "secondCommitChangedFiles": [
+    "README.md"
+  ],
+  "allIQandAIPointsExactlyUnchanged": true,
+  "selectedInstanceQuestions": 353,
+  "fullCredits": 82,
+  "otherQuestionsZero": 271,
+  "students": 9,
+  "studentLabPairs": 31,
+  "counts": {
+    "student_variants": 0,
+    "student_submissions": 0,
+    "assessment_instances": 31,
+    "recognized_credit_audit": 0
+  },
+  "run2StaticSamples": [
+    {
+      "path": "index.html",
+      "bytes": 55186,
+      "matchesOriginalArtifact": true
+    },
+    {
+      "path": "tasks/_downloads/exr-numbers-console-greeting-starter.zip",
+      "bytes": 46963,
+      "matchesOriginalArtifact": true
+    }
+  ],
+  "productionHealthHttp": 200,
+  "productionStartedAtUnchanged": true,
+  "cloneStopped": true,
+  "ansibleCoreVersion": "2.21.5"
+}
