@@ -161,6 +161,15 @@
             1,
             2
           ]
+        },
+        "containerDiagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
         }
       },
       "required": [
@@ -568,7 +577,7 @@
       ]
     },
     "reportFormat": {
-      "const": "junit-xml"
+      "const": "junit-listener"
     }
   },
   "required": [
@@ -717,6 +726,15 @@
                 1,
                 2
               ]
+            },
+            "containerDiagnostics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
             }
           },
           "required": [
@@ -1109,7 +1127,7 @@
           ]
         },
         "reportFormat": {
-          "const": "junit-xml"
+          "const": "junit-listener"
         }
       },
       "additionalProperties": false,
@@ -1376,6 +1394,15 @@
                       },
                       "containerFailures": {
                         "const": 0
+                      },
+                      "containerDiagnostics": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   },
@@ -1500,6 +1527,15 @@
                     "properties": {
                       "failed": {
                         "minimum": 1
+                      },
+                      "containerDiagnostics": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -1997,6 +2033,15 @@
                               }
                             }
                           }
+                        },
+                        "containerDiagnostics": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
                         }
                       }
                     },
@@ -2125,6 +2170,15 @@
                               "runtime",
                               "output-limit"
                             ]
+                          }
+                        },
+                        "containerDiagnostics": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
                           }
                         }
                       }
@@ -2307,7 +2361,9 @@
         "status": {
           "enum": [
             "passed",
-            "failed"
+            "failed",
+            "skipped",
+            "aborted"
           ]
         },
         "expected": {
@@ -2318,17 +2374,26 @@
           "type": "string",
           "maxLength": 8192
         },
-        "checks": {
-          "type": "array",
-          "maxItems": 64,
-          "items": {
-            "$ref": "#/$defs/assertionCheck"
-          }
-        },
         "test": {
           "type": "string",
           "minLength": 1,
           "maxLength": 8192
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "exceptionType": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "stackTrace": {
+          "type": "string",
+          "maxLength": 8192
+        },
+        "teacherTrace": {
+          "type": "string",
+          "maxLength": 32768
         }
       },
       "required": [
@@ -2365,74 +2430,6 @@
           "score"
         ]
       }
-    },
-    "assertionCheck": {
-      "type": "object",
-      "properties": {
-        "site": {
-          "type": "string",
-          "maxLength": 8192,
-          "pattern": "^[\\w$.-]+\\.java:[0-9]+:[0-9]+$"
-        },
-        "property": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "availability": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "expected": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "actual": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "delta": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "differenceIndex": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "differenceExpected": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "differenceActual": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "differenceLine": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "differenceColumn": {
-          "type": "string",
-          "maxLength": 8192
-        },
-        "delegated": {
-          "type": "string",
-          "maxLength": 8192,
-          "enum": [
-            "returned",
-            "threw",
-            "unknown"
-          ]
-        }
-      },
-      "required": [
-        "site",
-        "property",
-        "availability",
-        "expected",
-        "actual",
-        "delegated"
-      ],
-      "additionalProperties": false
     }
   },
   "allOf": [

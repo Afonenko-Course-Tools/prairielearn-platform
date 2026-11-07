@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, Literal, NotRequired, TypeAlias, TypeVar, TypedDict
 
 if TYPE_CHECKING:
-    from junit_result import AssertionCheck, JUnitCase, JUnitCounts, RawResult, RawTest
+    from junit_result import JUnitCase, JUnitCounts, RawResult, RawTest
 
 
 # Draft202012 допускает integral float как integer; целочисленность проверяет схема.
@@ -408,14 +408,16 @@ class PublicCase(TypedDict):
     status: str
     expected: NotRequired[str]
     actual: NotRequired[str]
-    checks: NotRequired[list[AssertionCheck]]
-    reporter: NotRequired[dict[str, str]]
+    message: NotRequired[str]
+    exceptionType: NotRequired[str]
+    stackTrace: NotRequired[str]
 
 
 class CompileError(TypedDict):
     file: str
     line: int
     reason: str
+    message: NotRequired[str]
 
 
 class PublicApi(TypedDict):
@@ -429,7 +431,6 @@ class PublicFeedback(TypedDict):
     observed: str
     whatCheck: str
     cases: NotRequired[list[PublicCase]]
-    feedbackCompleteness: NotRequired[str]
     compileErrors: NotRequired[list[CompileError]]
     api: NotRequired[PublicApi]
 
@@ -447,6 +448,7 @@ class StudentResult(TypedDict):
     classification: str
     feedback: PublicFeedback
     message: str
+    output: NotRequired[str]
     score: NotRequired[float]
     format_errors: NotRequired[str]
     grading_error: NotRequired[bool]
