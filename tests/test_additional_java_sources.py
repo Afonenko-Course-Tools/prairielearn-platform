@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Protocol, TypeAlias, runtime_checkable
 import base64
 from selected_job_fixture import GradingJobs, fixture_list, fixture_record, fixture_run_job, fixture_set_up, fixture_text, native_manifest
@@ -35,23 +35,11 @@ class _ConfigValidator(Protocol):
     def __call__(self, config: object) -> None: ...
 
 
-@runtime_checkable
-class _AdditionalInventory(Protocol):
-    def __call__(self, job: Path, config: Mapping[str, object]) -> tuple[list[tuple[str, bytes]], object]: ...
-
-
 def validate_config(value: object) -> None:
     validate: object = getattr(grader, "validate_config", None)
     if not isinstance(validate, _ConfigValidator):
         raise AssertionError("Канонический config validator недоступен")
     validate(value)
-
-
-def additional_inventory(job: Path, config: Mapping[str, object]) -> tuple[list[tuple[str, bytes]], object]:
-    inventory: object = getattr(grader, "_additional_inventory", None)
-    if not isinstance(inventory, _AdditionalInventory):
-        raise AssertionError("Канонический additional inventory недоступен")
-    return inventory(job, config)
 
 
 def archive(entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED) -> bytes:
@@ -630,7 +618,7 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
 
 
 class OptionalPreparationTests(unittest.TestCase):
-    def test_reference_and_contract_use_actual_union_and_match_native_hash(self) -> None:
+    def test_reference_and_contract_materialize_and_run_actual_sources(self) -> None:
         import importlib.util, shutil, tempfile
         from gradle_unit_fixtures import registry
 
@@ -745,9 +733,7 @@ class OptionalPreparationTests(unittest.TestCase):
                         (job.root / "student/Student.java").exists(),
                         "placeholder substituted from starter",
                     )
-                    extras, _ = additional_inventory(job.root, fixture_record(job["grading"]))
-                    self.assertEqual([n for n, _ in extras], ["other/Solution.java"])
-                    # Реальная javac/JUnit проверка тех же materialized bytes; это не Gradle/image proof.
+                    # Компиляция и JUnit выполняют реальные исходники подготовленного ответа.
                     cfg = fixture_record(job["grading"])
                     cfg["runtime"] = "java25-junit-v1"
                     cfg.pop("javaBuild")

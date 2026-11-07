@@ -76,13 +76,13 @@ class UploadedJavaSources(unittest.TestCase):
                 self.assertEqual(value['classification'], 'success', value)
                 self.assertEqual(value['score'], 1)
 
-    def test_declared_zip_members_do_not_expand_the_extra_evidence_bound(self):
+    def test_declared_zip_member_runs_with_no_additional_file_count(self):
         self.policy(primaryRequired=True, allowAdditional=False, maxFiles=1)
         (self.job/'student/Student.java').unlink()
         self.zip([('Student.java', 'public class Student {public static int answer(){return 42;}}')])
-        members, evidence = helpers.additional_inventory(self.job, self.cfg)
-        self.assertEqual([name for name, _ in members], ['Student.java'])
-        self.assertEqual(fixture_record(evidence)['files'], [])
+        result = self.run_job()
+        self.assertEqual(result['score'], 1)
+        self.assertEqual(fixture_record(result['additionalSources'])['files'], [])
 
     def test_flat_and_archive_duplicate_is_rejected_before_execution(self):
         self.policy(primaryRequired=False)

@@ -31,7 +31,8 @@ class PlainGradleTests(unittest.TestCase):
             environment['PATH']=environment['JAVA_HOME']+'/bin:'+environment['PATH']
             (work/'gradle.properties').write_text('org.gradle.java.installations.auto-download=false\norg.gradle.java.installations.paths='+environment['JAVA_HOME']+'\norg.gradle.workers.max=2\norg.gradle.jvmargs=-Xmx128m -XX:ActiveProcessorCount=2\n')
             command=['gradle','--offline','--no-daemon','--console=plain','-PjunitJar='+str(ROOT/'runtime/java25-junit-v1/junit-platform-console-standalone-1.14.1.jar'),'jar','run','test']
-            result=subprocess.run(command,cwd=work,env=environment,capture_output=True,text=True,timeout=35)
+            # Свежий GRADLE_USER_HOME включает холодную подготовку Gradle и single-use daemon.
+            result=subprocess.run(command,cwd=work,env=environment,capture_output=True,text=True,timeout=90)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('\n42\n',result.stdout)
             report=(work/'build/test-results/test/TEST-AnswerTest.xml').read_text()
