@@ -3,7 +3,14 @@ FROM eclipse-temurin:25-jdk-noble AS jdk
 FROM gradle:9.8.2-jdk25-noble AS gradle
 FROM docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-jsonschema gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+RUN sed -i \
+      -e 's#^URIs: http://archive\.ubuntu\.com/ubuntu/$#URIs: https://mirrors.edge.kernel.org/ubuntu/#' \
+      -e 's#^URIs: http://security\.ubuntu\.com/ubuntu/$#URIs: https://mirrors.edge.kernel.org/ubuntu/#' \
+      /etc/apt/sources.list.d/ubuntu.sources \
+    && test "$(grep -Fxc 'URIs: https://mirrors.edge.kernel.org/ubuntu/' /etc/apt/sources.list.d/ubuntu.sources)" = 2 \
+    && apt-get -o Acquire::Retries=0 -o Acquire::https::Timeout=20 --error-on=any update \
+    && apt-get -o Acquire::Retries=0 -o Acquire::https::Timeout=20 install -y --no-install-recommends python3 python3-jsonschema gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=jdk /opt/java/openjdk /opt/native-jdk
 COPY --from=gradle /opt/gradle /opt/gradle
 RUN groupadd --system nativebuild && useradd --system --gid nativebuild --shell /usr/sbin/nologin nativebuild \

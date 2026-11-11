@@ -22,9 +22,14 @@ jobs:
           distribution: temurin
           java-version: '25'
       - name: Установить fish для проверки текстового runtime
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fish
+          test -f /etc/apt/apt-mirrors.txt
+          test ! -L /etc/apt/apt-mirrors.txt
+          grep -Rq 'mirror+file:/etc/apt/apt-mirrors.txt' /etc/apt/sources.list.d
+          printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 --error-on=any update
+          sudo timeout --signal=TERM --kill-after=5s 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends fish
       - name: Подготовить закреплённые Python зависимости проверок
         run: |
           python3 -m venv "$RUNNER_TEMP/platform-ci"
