@@ -32,7 +32,7 @@ class CommunityPublication(unittest.TestCase):
         self.assertIn("if: ${{ inputs.components == 'all' }}",text)
         c=community();self.assertIn("if: ${{ inputs.components == 'community' }}",c)
         for forbidden in ['images/java25-grader','images/fish-git-grader','images/sp-git-workspace',
-                          'tools/publish-receipt.py','tools/prepare_native_toolchain.py','quarto','exporter_commit',
+                          'tools/publish-metadata.py','tools/prepare_native_toolchain.py','quarto','exporter_commit',
                           'workspace-smoke.json','delivery4-fixtures']:
             self.assertNotIn(forbidden,c)
         self.assertIn('node --test tests/bridge/*.test.mjs',c)
@@ -90,14 +90,14 @@ esac
             self.assertNotEqual(cp.returncode,0)
             self.assertNotIn('community-image.txt',files)
 
-    def test_all_mode_keeps_exact_exporter_guard(self):
+    def test_all_mode_requires_reviewed_source_without_exporter_input(self):
         name='Resolve immutable version'
-        cp,files=self.run_block(name,{'COMPONENTS':'all','EXPORTER_COMMIT':'d'*40})
+        cp,files=self.run_block(name,{'COMPONENTS':'all'})
         self.assertEqual(cp.returncode,0,cp.stderr)
         self.assertIn('RUNTIME_IMAGE=',files['env']);self.assertIn('WORKSPACE_IMAGE=',files['env'])
-        for change in [{'COMPONENTS':'other','EXPORTER_COMMIT':'d'*40},
-                       {'COMPONENTS':'all','EXPORTER_COMMIT':''},
-                       {'COMPONENTS':'all','EXPORTER_COMMIT':'main'}]:
+        for change in [{'COMPONENTS':'other'},
+                       {'COMPONENTS':'all','REVIEWED_COMMIT':'c'*40},
+                       {'COMPONENTS':'all','VERSION':'0.0.0'}]:
             cp,_=self.run_block(name,change)
             self.assertNotEqual(cp.returncode,0)
 

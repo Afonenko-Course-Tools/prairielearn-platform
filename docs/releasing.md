@@ -34,11 +34,12 @@ image либо unit double. Права, отдельные роли и дост�
 
 После независимой рецензии точной версии и итогового просмотра разрешённый
 координатор запускает `publish-runtime.yml` с `version`, `reviewed_commit` и
-`exporter_commit`. До всех image checks pushes не выполняются. Публикация не
+`components`. Режимы `all`, `community` и `java` сохраняют отдельные задания.
+До всех image checks выбранного режима pushes не выполняются. Публикация не
 входит в текущий локальный пакет; этот workflow здесь не запускался.
 
 Publisher получает фактические Java/Community/fish/Workspace OCI digests после
-push и pull и вызывает `tools/publish-receipt.py`. Команда создаёт два обычных
+push и pull и вызывает `tools/publish-metadata.py`. Команда создаёт два обычных
 JSON файла:
 
 - `runtime-image.json`: sourceCommit, version, images и поддерживаемые версии
@@ -58,12 +59,16 @@ assembly не предоставляется. Git commit и OCI digest сохр�
 переключение deployment требуют отдельного решения. Обычный Docker context
 ограничивается `.dockerignore`; данные студентов и секреты не передаются builder.
 
-## Остаток Native delivery
+## Native delivery
 
-В существующих `build-course.py`, `stage_courses.py`, Gateway и PL ещё есть
-старый course delivery/verification contract. Он не становится новым целевым API
-и не является частью удалённой runtime assembly. Одновременное удаление его
-producer и обязательных readers принадлежит согласованному Native/Gateway
-пакету; пока они не заменены, объявлять весь стек hashless нельзя. Старые данные
-и файлы сохраняются. `--assembly-root` и `--admission-policy` обходы staging
-удалены вместе с собственной authority assembly; обычный staging не переключался.
+Текущий exporter передаёт delivery v5 и отдельные private checks v3.
+`check-course.py verify` проверяет фактические selected bytes и поведение grader;
+Bridge и Gateway сохраняют свои проверки UUID, принадлежности и прав. CI и
+publisher выполняют текущие Python/bridge contracts без отдельного экспорта
+невостребованных synthetic delivery4 fixtures и без второго receipt допуска.
+
+Для локального preview используется стабильный writable course path и штатный
+native loader из [маршрута разработки](development.md). `stage_courses.py`
+сохраняется как ручной инструмент read-only снимков точного Git commit; он не
+заменяет writable Git checkout штатного sync и не является командой обновления
+preview. Старые документы выпуска и данные сохраняются.

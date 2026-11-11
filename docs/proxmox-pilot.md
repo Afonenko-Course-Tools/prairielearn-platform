@@ -93,7 +93,11 @@ Docker socket предоставлен только PL для запуска gra
 `pl-courses-v2` ссылается на `institution` key. Для БГУ это `bsu`; другой descriptor
 работает тем же generic кодом. Не задавайте numeric native ID или названия
 учреждения в записи курса. Перед переносом snapshot выполните `check_registry.py`
-и `stage_courses.py`; публикуемый payload должен иметь полный release receipt.
+и `stage_courses.py`; для текущего payload проверяются delivery v5 и native
+пакет. Отдельный release receipt не требуется. Это ручной маршрут immutable
+снимка; для обновляемого Git checkout используйте
+[штатный REST sync](../examples/course-cd/README.md), для локального preview —
+[Local prepare/up](development.md).
 
 Для новой изолированной поставки подготовьте readonly `/course/KEY/DELIVERY_HASH`.
 Передайте через `--actor-uid` точный UID уже существующего native administrator.
@@ -196,7 +200,7 @@ Native `loadFromDisk` — dev-only route и для production этой кома�
 ## Проверка установленной версии
 
  Используйте согласованные Platform/Gateway 2.0.0 и только опубликованные digest
- pins из release receipts. Перед установкой подтвердите pull всех образов с
+ pins из опубликованных OCI metadata. Перед установкой подтвердите pull всех образов с
  целевого узла; отсутствие доступа к GHCR не доказывает отсутствие версии.
  Диагностические candidate images не проходят production staging gate.
 

@@ -1,61 +1,74 @@
-# Local development
+# Локальная разработка
 
-The current dev-PrairieLearn uses a pinned image, development identities and a
-loopback-only UI. Real Moodle and production authentication are later stages.
+## Текущий preview и обновление курса
 
-## Native course delivery and storage
+Полный exporter создаёт delivery v5 и отдельные private checks v3 из рабочего
+source. Прямые команды `build-course.py` и `check-course.py verify` приведены в
+[README](../README.md#поставка-курса) и [описании builder](qualified-launch.md).
+`submission.mode: editor` задаёт стандартный native редактор выбранного ответа;
+ZIP и готовый workspace предоставляет установленный producer, builder не меняет
+submission controls.
 
-Build from a clean source and builder checkout with `tools/build-course.py`.
-The builder calls the course's exact installed owner exporter and records
-source/builder commits, manifest hashes, content hashes and image refs.
-`submission.mode: editor` in the owner binding provides a standard native text
-editor. It sends accepted starter source as code, leaving full build files in
-the authoring repository. Offline archives and VSCode workspaces are separate
-scenarios. The builder does not add ZIPs or rewrite owner submission controls.
+Local объединяет подготовку и загрузку двумя командами из системного go-task:
 
-Commit generated native files into the public delivery repository, then choose
-that exact commit in a `pl-courses-v1` registry:
+```sh
+go-task --dir ../prairielearn-local prepare COURSE=java \
+  COURSE_ROOT=/absolute/Java PLATFORM_ROOT=/absolute/prairielearn-platform
+go-task --dir ../prairielearn-local up COURSE=java \
+  PLATFORM_ROOT=/absolute/prairielearn-platform
+```
+
+Для System Practice используйте `COURSE=system-practice` и соответствующий
+`COURSE_ROOT`. `prepare` собирает один комплект site/native/checks, `up` использует
+готовый результат и ждёт штатный native load server job. Checks остаются у
+controller. В preview курс находится по стабильному writable пути
+`/course/<course>/current`, а отдельные Compose project/state сохраняют accounts
+и ответы при повторном `up` и `down/up`. Статус контейнера и redirect сами по себе
+не означают успешную загрузку. Штатный dev-вход и роли проверяются в браузере;
+Moodle/LTI и production auth проходят отдельную приёмку.
+
+Полная проверка prepared delivery запускается явно:
+
+```sh
+go-task --dir ../prairielearn-local verify COURSE=java \
+  COURSE_ROOT=/absolute/Java PLATFORM_ROOT=/absolute/prairielearn-platform
+```
+
+Для production Git checkout должен быть writable: штатная
+[REST-синхронизация](../examples/course-cd/README.md) получает новый commit и
+ожидает `Success` без повторного POST после неопределённого исхода. Source ref,
+OCI digests, UUID и фактические Native numeric parents сохраняются; отдельные
+release receipts не заменяют проверку реального результата.
+
+## Ручной read-only снимок точного commit
+
+`stage_courses.py` остаётся отдельным CLI для проверки и размещения точного
+Git snapshot. Он не вызывается Local `prepare/up` и не служит обновлением
+существующего курса: путь `<storage>/<id>/<commit>` меняется при новом commit,
+а generated bind mount read-only не допускает штатный Git pull.
+Для такого снимка используется registry `pl-courses-v2`:
 
 ```json
 {"schema":"pl-courses-v2","courses":[{"id":"java-portal","institution":"bsu","repository":"https://github.com/BSU-RFCT-Afonenko-Courses/pl-course-java","commit":"<exact 40-hex commit>","mount":"/course"}]}
 ```
 
-The example placeholder is deliberately rejected. Registry validation rejects
-moving branches, duplicate IDs/mounts, credential-bearing URLs and missing image
-pins before checkout. Stage into an existing private absolute directory:
+Placeholder отвергается. CLI проверяет Git origin, exact HEAD, clean snapshot,
+безопасность путей, native metadata и текущий package contract. Он не создаёт
+provenance inventory и не импортирует курс. Повтор проверяет прежние bytes через
+действующие readers; новый commit размещается отдельно без удаления прежнего.
 
 ```sh
 python3 tools/check_registry.py /private/courses.json
 python3 tools/stage_courses.py /private/courses.json \
   --storage /private/native-courses --compose-output /private/course-mounts.json
-HOST_JOBS_DIR=/private/jobs DEV_TLS_DIR=/private/dev-tls \
-  docker compose -p prairielearn-local -f compose/compose.yml \
-  -f compose/compose.dev.yml -f /private/course-mounts.json \
-  -f compose/compose.proxy-dev.yml up -d
 ```
 
-Each checkout lives at `<storage>/<id>/<commit>`. Staging verifies Git origin,
-HEAD, cleanliness, native metadata and provenance hashes, refuses symlinks and
-unexpected payload, then publishes without replacing an existing directory.
-Repeated staging verifies existing content; an upgrade retains prior versions.
-Generated mounts are read-only and refuse absent host directories.
-
-Учреждение задано один раз в versioned [config/institutions.json](../config/institutions.json),
-контракт — [institutions.schema.json](../schemas/institutions.schema.json). Запись
-[pl-courses-v2](../schemas/courses-v2.schema.json) ссылается на ключ, не на ID БД.
-`check_registry.py` и `stage_courses.py` принимают `--institutions PATH` для
-другого проверяемого каталога. Неизвестный ключ, неоднозначное native короткое
-имя и неверный timezone отклоняются. Legacy `pl-courses-v1` сохранён только для
-прежнего staging; новый institution bootstrap требует v2, без fallback Default.
-Stage не создаёт учреждение и не импортирует курс. Для production новой поставки
-используйте [штатный локальный bootstrap](proxmox-pilot.md#учреждение-и-новый-native-курс).
-
-Staging files does not import a course. In the pinned PL dev UI open the navbar
-and click **Load from disk**, then wait for **Success** and `Course sync successful`
-for each mounted course. JSON changes need another sync; question HTML changes
-are loaded on page navigation. Course/instance/assessment/question UUIDs remain
-stable across rebuilds and sync. Course enrollment/publishing still need explicit
-configuration; staff override does not prove Student ACL or Moodle login.
+Storage должен быть существующим реальным абсолютным каталогом. Учреждение
+задаётся в [config/institutions.json](../config/institutions.json), registry
+ссылается на его ключ. `--institutions PATH` выбирает другой проверяемый каталог.
+Legacy `pl-courses-v1` сохранён для прежнего manual staging; bootstrap нового
+учреждения требует v2. Неизвестный ключ, неоднозначное native короткое имя,
+неверный timezone, symlinks и неожиданный payload дают отказ.
 
 ## HTTPS proxy
 

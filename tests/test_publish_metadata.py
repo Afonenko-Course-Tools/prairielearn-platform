@@ -25,7 +25,7 @@ class PublishedMetadata(unittest.TestCase):
             **{key.upper()+'_DIGEST': value for key,value in IMAGES.items()})
         env.update(changes or {})
         with tempfile.TemporaryDirectory(prefix='publisher-public-') as output:
-            result = subprocess.run([sys.executable, '-B', str(ROOT/'tools/publish-receipt.py')],
+            result = subprocess.run([sys.executable, '-B', str(ROOT/'tools/publish-metadata.py')],
                 cwd=output, env=env, capture_output=True, timeout=10)
             files = {p.name: fixture_record(json.loads(p.read_bytes())) for p in Path(output).iterdir()}
         return result, files
