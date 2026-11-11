@@ -24,6 +24,11 @@ from gradle_unit_fixtures import registry
 
 IMAGE = 'sha256:' + 'd' * 64
 
+
+def completed(code: int, stderr: str = '', stdout: str = '') -> subprocess.CompletedProcess[str]:
+    # capture_output=True/text=True возвращает оба стандартных stream-поля.
+    return subprocess.CompletedProcess(['docker'], code, stdout=stdout, stderr=stderr)
+
 def _raw_result(value: object) -> TypeGuard[dict[str, object]]:
     return is_object(value) and all(isinstance(key, str) for key in value)
 
@@ -49,9 +54,9 @@ class JobCleanup(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(job.root) if job.root.exists() and not job.root.is_symlink() else None)
         return job
 
-    def execute(self, job: jobs.GradingJob, outcomes: Sequence[SimpleNamespace | Exception] | None = None) -> dict[str, object]:
-        pending = iter(outcomes or [SimpleNamespace(returncode=0, stderr='')])
-        def run(command: Sequence[str], **kwargs: object) -> SimpleNamespace:
+    def execute(self, job: jobs.GradingJob, outcomes: Sequence[subprocess.CompletedProcess[str] | Exception] | None = None) -> dict[str, object]:
+        pending = iter(outcomes or [completed(0, stderr='')])
+        def run(command: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             outcome = next(pending)
             if isinstance(outcome, Exception):
                 raise outcome
@@ -66,7 +71,7 @@ class JobCleanup(unittest.TestCase):
     def test_permission_fallback_uses_only_prepared_mount_and_exact_image(self) -> None:
         job = self.prepare()
         self.execute(job)
-        with patch.object(jobs.secrets, 'token_hex', return_value='f'*24), patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError('mixed owner'), None]) as remove, patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run:
+        with patch.object(jobs.secrets, 'token_hex', return_value='f'*24), patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError('mixed owner'), None]) as remove, patch.object(jobs.subprocess, 'run', return_value=completed(0, stderr='')) as run:
             jobs.cleanup_job(job, 'container')
         self.assertEqual(remove.call_count, 2)
         self.assertEqual(run.call_args.args[0], ['docker','run','--rm','--name','plcleanup-'+'f'*24,'--network','none','--read-only','--entrypoint','/bin/chown','--mount',f'type=bind,src={job.root},dst=/grade,bind-recursive=disabled',IMAGE,'-Rh',f'{os.getuid()}:{os.getgid()}','/grade'])
@@ -75,10 +80,10 @@ class JobCleanup(unittest.TestCase):
     def test_replaced_root_after_ownership_command_blocks_second_deletion(self) -> None:
         job = self.prepare(); self.execute(job)
         original = job.root.with_name(job.root.name+'-original')
-        def chown(*args: object, **kwargs: object) -> SimpleNamespace:
+        def chown(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
             job.root.rename(original); job.root.mkdir()
             self.addCleanup(lambda: shutil.rmtree(original))
-            return SimpleNamespace(returncode=0, stderr='')
+            return completed(0, stderr='')
         with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]) as remove, patch.object(jobs.subprocess, 'run', side_effect=chown):
             with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
             self.assertEqual(remove.call_count, 1)
@@ -94,7 +99,7 @@ class JobCleanup(unittest.TestCase):
 
     def test_unknown_live_failed_timeout_and_public_child_block_all_deletion(self) -> None:
         timeout = subprocess.TimeoutExpired('docker', 1)
-        for public, outcomes in [(False, [OSError('unknown')]), (False, [timeout, SimpleNamespace(returncode=1, stderr='denied')]), (False, [timeout, timeout]), (True, [SimpleNamespace(returncode=0, stderr=''), timeout, SimpleNamespace(returncode=1, stderr='denied')])]:
+        for public, outcomes in [(False, [OSError('unknown')]), (False, [timeout, completed(1, stderr='denied')]), (False, [timeout, timeout]), (True, [completed(0, stderr=''), timeout, completed(1, stderr='denied')])]:
             with self.subTest(public=public, outcomes=outcomes):
                 job = self.prepare(public)
                 self.execute(job, outcomes)
@@ -107,9 +112,9 @@ class JobCleanup(unittest.TestCase):
 
     def test_retry_after_failed_container_removal_cannot_forget_live_container(self) -> None:
         job = self.prepare()
-        self.execute(job, [subprocess.TimeoutExpired('docker', 1), SimpleNamespace(returncode=1, stderr='denied')])
+        self.execute(job, [subprocess.TimeoutExpired('docker', 1), completed(1, stderr='denied')])
         original_name = job.containerName
-        with patch.object(jobs, 'validate'), patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run, patch.object(jobs.secrets, 'token_hex') as name:
+        with patch.object(jobs, 'validate'), patch.object(jobs.subprocess, 'run', return_value=completed(0, stderr='')) as run, patch.object(jobs.secrets, 'token_hex') as name:
             with self.assertRaises(jobs.JobError): jobs.run_job(job, 'container', self.registry)
             run.assert_not_called()
             name.assert_not_called()
@@ -167,15 +172,15 @@ class JobCleanup(unittest.TestCase):
 
     def test_successful_timeout_removal_allows_fallback(self) -> None:
         job = self.prepare()
-        self.execute(job, [subprocess.TimeoutExpired('docker', 1), SimpleNamespace(returncode=0, stderr='')])
-        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]), patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as run:
+        self.execute(job, [subprocess.TimeoutExpired('docker', 1), completed(0, stderr='')])
+        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]), patch.object(jobs.subprocess, 'run', return_value=completed(0, stderr='')) as run:
             jobs.cleanup_job(job, 'container')
             run.assert_called_once()
 
     def test_public_completion_allows_fallback_only_after_child_finishes(self) -> None:
         job = self.prepare(public=True)
         observed: list[Path] = []
-        def run(command: Sequence[str], **kwargs: object) -> SimpleNamespace:
+        def run(command: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             # Любое удаление во время grading-фазы запрещено.
             with patch.object(jobs.shutil, 'rmtree') as remove:
                 with self.assertRaises(jobs.JobError): jobs.cleanup_job(job, 'container')
@@ -184,12 +189,12 @@ class JobCleanup(unittest.TestCase):
             (root/'results').mkdir()
             (root/'results/results.json').write_text('{"infrastructure":"complete","score":1}')
             observed.append(root)
-            return SimpleNamespace(returncode=0, stderr='')
+            return completed(0, stderr='')
         with patch.object(jobs, 'validate'), patch.object(jobs, '_junit_result_helpers', return_value={'unique_json_object':dict}), patch.object(jobs.subprocess, 'run', side_effect=run):
             result = jobs.run_job(job, 'container', self.registry)
         self.assertEqual(raw_result(raw_result(result)['publicResult'])['score'], 1)
         self.assertEqual(observed, [job.root, job.root/'public-verification'])
-        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]), patch.object(jobs.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stderr='')) as cleanup:
+        with patch.object(jobs.shutil, 'rmtree', side_effect=[PermissionError(), None]), patch.object(jobs.subprocess, 'run', return_value=completed(0, stderr='')) as cleanup:
             jobs.cleanup_job(job, 'container')
             cleanup.assert_called_once()
 
@@ -238,16 +243,16 @@ class JobCleanup(unittest.TestCase):
             run.assert_not_called()
 
     def test_chown_failure_timeout_or_retry_failure_is_not_ignored(self) -> None:
-        for outcome in [SimpleNamespace(returncode=1, stderr='unsupported bind-recursive'), subprocess.TimeoutExpired('docker',10), SimpleNamespace(returncode=0, stderr='')]:
+        for outcome in [completed(1, stderr='unsupported bind-recursive'), subprocess.TimeoutExpired('docker',10), completed(0, stderr='')]:
             job = self.prepare(); self.execute(job)
             with patch.object(jobs.shutil, 'rmtree', side_effect=PermissionError()), patch.object(jobs.subprocess, 'run', side_effect=outcome if isinstance(outcome, Exception) else None, return_value=outcome):
                 with self.assertRaises((jobs.JobError, OSError)): jobs.cleanup_job(job, 'container')
 
     def test_ownership_timeout_removes_only_its_named_container_without_retrying_rmtree(self) -> None:
         cases = [
-            (SimpleNamespace(returncode=0, stderr=''), 'timed out; container removed'),
-            (SimpleNamespace(returncode=1, stderr='No such container'), 'timed out; container removed'),
-            (SimpleNamespace(returncode=1, stderr='denied'), 'container cleanup failed: denied'),
+            (completed(0, stderr=''), 'timed out; container removed'),
+            (completed(1, stderr='No such container'), 'timed out; container removed'),
+            (completed(1, stderr='denied'), 'container cleanup failed: denied'),
             (subprocess.TimeoutExpired('docker rm',10), 'container cleanup failed'),
             (OSError('daemon unavailable'), 'container cleanup failed'),
         ]
@@ -269,7 +274,7 @@ class JobCleanup(unittest.TestCase):
             raise RuntimeError("Загрузчик локального Python-модуля недоступен")
         cli=importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
         root=Path(self.temp); source=root/'manifest.json'; source.write_text(json.dumps(self.manifest)); output=root/'report.json'
-        for outcome in [SimpleNamespace(returncode=1, stderr='unsupported bind-recursive'), subprocess.TimeoutExpired('docker',10)]:
+        for outcome in [completed(1, stderr='unsupported bind-recursive'), subprocess.TimeoutExpired('docker',10)]:
             with self.subTest(outcome=outcome):
                 job=self.prepare(); self.execute(job); result={'score':1,'publicResult':{'score':1}}
                 with patch.object(sys,'argv',['check-course.py','--manifest',str(source),'--output',str(output)]), patch.object(cli,'prepare_job',return_value=job), patch.object(cli,'run_job',return_value=result), patch.object(cli,'preserve_build_logs'), patch.object(jobs.shutil,'rmtree',side_effect=PermissionError()), patch.object(jobs.subprocess,'run',side_effect=outcome if isinstance(outcome, Exception) else None, return_value=outcome):

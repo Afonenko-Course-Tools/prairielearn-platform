@@ -23,7 +23,8 @@ CANARY = 'PRIVATE_WATCHDOG_PATH_STACK_CANARY'
 @runtime_checkable
 class GraderRun(Protocol):
     def __call__(self, command: Sequence[str], cwd: Path, timeout: float,
-                 output_limit: int = 65536, *, env: Mapping[str, str] | None = None
+                 output_limit: int = 65536, *, env: Mapping[str, str] | None = None,
+                 diagnostics: dict[str, str] | None = None, stage: str = "process"
                  ) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]: ...
 
 
@@ -32,24 +33,41 @@ class BuildObservationValidator(Protocol):
     def __call__(self, result: object, artifact: str | None = None) -> object: ...
 
 
+@runtime_checkable
+class SchemaValidator(Protocol):
+    def validate(self, instance: object) -> None: ...
+
+
+def schema_validator(value: object) -> SchemaValidator:
+    if not isinstance(value, SchemaValidator):
+        raise AssertionError('Публичный validator JSON Schema недоступен')
+    return value
+
+
 
 class WatchdogProducer(unittest.TestCase):
     job: Path
     config: JavaGradingDescriptor
     setUp = fixture_set_up(fixtures.PlainRuntimeTests.setUp)
 
-    def stopped_execution(self, reason: str | None) -> JavaOutcome:
+    def stopped_execution(self, reason: Literal['timeout', 'output_limit'] | None) -> JavaOutcome:
         (self.job / 'tests/grading-job.json').write_text(json.dumps(self.config))
         original: object = getattr(grader, '_run')
         if not isinstance(original, GraderRun):
             raise AssertionError('Частный контракт grader _run недоступен')
 
         def controlled(command: Sequence[str], cwd: Path, timeout: float,
-                       output_limit: int = 65536, *, env: Mapping[str, str] | None = None
-                       ) -> tuple[int, str, str | None]:
+                       output_limit: int = 65536, *, env: Mapping[str, str] | None = None,
+                       diagnostics: dict[str, str] | None = None, stage: str = "process"
+                       ) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]:
             if 'org.prairielearn.feedback.PlatformJUnitAdapter' in command:
+                if diagnostics is not None:
+                    diagnostics.update({'stage':stage, stage+'.exitCode':'-9',
+                                        stage+'.termination':reason or 'signal',
+                                        stage+'.stdout':CANARY, stage+'.stderr':''})
                 return -9, CANARY, reason
-            return original(command, cwd, timeout, output_limit, env=env)
+            return original(command, cwd, timeout, output_limit, env=env,
+                            diagnostics=diagnostics, stage=stage)
 
         # Компиляция и подготовка настоящие; заменён только результат watchdog,
         # чтобы не ждать настоящий бесконечный процесс в каждой регрессии.
@@ -63,6 +81,12 @@ class WatchdogProducer(unittest.TestCase):
         assert 'grading_error' in result and 'timed_out' in result
         self.assertTrue(result['grading_error'])
         self.assertIs(result['timed_out'], True)
+        self.assertEqual(result.get('studentCompilation'), 'success')
+        self.assertEqual(result.get('trustedCompilation'), 'success')
+        diagnostics = result.get('diagnostics', {})
+        self.assertEqual(diagnostics.get('stage'), 'execution')
+        self.assertEqual(diagnostics.get('execution.exitCode'), '-9')
+        self.assertEqual(diagnostics.get('execution.termination'), 'timeout')
         self.assertNotIn('score', result)
         self.assertNotIn('counts', result)
         self.assertNotIn('dependentExecution', result)
@@ -70,7 +94,8 @@ class WatchdogProducer(unittest.TestCase):
         envelope = {'schemaVersion': 1, 'scope': 'declared', 'backend': 'host',
                     'qualifiedId': 'demo/timeout', 'scenario': 'starter',
                     'runtime': 'java25-junit-v1', 'imageDigest': None, **result}
-        jsonschema.validate(envelope, json.loads((ROOT / 'schemas/check-result.schema.json').read_text()))
+        schema_validator(jsonschema.Draft202012Validator(
+            json.loads((ROOT / 'schemas/check-result.schema.json').read_text()))).validate(envelope)
         # Native Gradle build завершён до JUnit: существующий guard оператора
         # обязан принять эти факты и после watchdog, не подменяя их not-run.
         import test_review_receipts as operator
@@ -82,7 +107,8 @@ class WatchdogProducer(unittest.TestCase):
         validate_build({**result, 'buildEvidence': proof}, 'answer.jar')
 
     def test_output_limit_and_incomplete_reports_still_raise_infrastructure(self) -> None:
-        for reason in ['output-limit', None]:
+        reasons: list[Literal['output_limit'] | None] = ['output_limit', None]
+        for reason in reasons:
             with self.subTest(reason=reason), self.assertRaises(grader.GraderError):
                 self.stopped_execution(reason)
 
