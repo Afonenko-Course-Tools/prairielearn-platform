@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -54,12 +55,13 @@ class DiagnosticRegistry(unittest.TestCase):
       raise RuntimeError("Загрузчик локального Python-модуля недоступен")
   cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);(root/'manifest.json').write_text('{}');(root/'registry.json').write_text('{"profiles":{"diagnostic":{}}}')
+   root=Path(d);(root/'registry.json').write_text('{"profiles":{"diagnostic":{}}}')
    registry: dict[str, object]={'profiles':{'diagnostic':{}}}
    project: dict[str, object]={'qualifiedId':'demo/exr-a','projectRoot':'p','check':{'runtime':'diagnostic'}}
    qualified_id=project['qualifiedId']
    assert isinstance(qualified_id,str)
    prepared_manifest=selected.manifest();prepared_manifest['projects'][0]['qualifiedId']=qualified_id
+   (root/'manifest.json').write_text(json.dumps(prepared_manifest))
    job=jobs.prepare_job(prepared_manifest,root,qualified_id,'starter',registry=unit_registry())
    self.addCleanup(__import__('shutil').rmtree,job.root)
    args=['check-course.py','--manifest',str(root/'manifest.json'),'--snapshot',str(root),'--runtime-registry',str(root/'registry.json'),'--output',str(root/'result.json')]

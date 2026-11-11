@@ -117,6 +117,9 @@ def main() -> int:
     report.update(automatic={'state':'not-applicable','reason':'all-questions-manual' if delivery['schemaVersion']==3 else 'no-project-automatic'},results=[])
     if a.scenario or a.id and set(a.id)!=set(methods):report.update(coverage='partial');status=1
     else:report.pop('coverage',None);status=0
+   elif a.scope=='declared' and m['projects']==[] and not (a.id or a.scenario or a.ready_only):
+    report.update(automatic={'state':'not-applicable','reason':'no-declared-checks'},results=[])
+    report.pop('coverage',None);status=0
    elif not results:
     report.update(coverage='partial',automatic={'state':'not-verified','reason':'partial-selection'},results=[]);status=1
    else:
