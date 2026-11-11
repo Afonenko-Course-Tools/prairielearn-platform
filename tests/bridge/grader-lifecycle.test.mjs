@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {fileURLToPath} from 'node:url';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,7 +13,7 @@ const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'grader-lifecycle-'));
 try {
   const input = path.join(scratch, 'externalGraderLocal.js');
   fs.copyFileSync(new URL('../fixtures/native-grader-upstream/externalGraderLocal.js', import.meta.url), input);
-  const patch = spawnSync('python3', ['-B', new URL('../../images/prairielearn/patch-local-grader.py', import.meta.url).pathname, input], {encoding:'utf8'});
+  const patch = spawnSync('python3', ['-B', fileURLToPath(new URL('../../images/prairielearn/patch-local-grader.py', import.meta.url)), input], {encoding:'utf8'});
   assert.equal(patch.status, 0, patch.stderr);
   source = fs.readFileSync(input, 'utf8').replace(/^import .*;\n/gm, '')
     .replace('export class ExternalGraderLocal', 'globalThis.ExternalGraderLocal = class ExternalGraderLocal')

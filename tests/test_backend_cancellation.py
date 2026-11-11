@@ -132,6 +132,21 @@ class BackendCancellation(unittest.TestCase):
                 pending.append(current.__context__)
         self.fail('Исходная ошибка потеряна в цепочке исключений')
 
+    def test_outer_tool_failure_keeps_exit_and_bounded_streams(self) -> None:
+        job = self.prepare()
+        process = subprocess.CompletedProcess(['docker', 'run'], 125,
+            stdout='startup observation', stderr='daemon cause' + 'x' * 100000)
+        with patch.object(jobs.subprocess, 'run', return_value=process):
+            result = jobs.run_job(job, 'container')
+        self.assertEqual(result['classification'], 'infrastructure-failure')
+        self.assertNotIn('score', result)
+        diagnostics = result.get('diagnostics', {})
+        self.assertEqual(diagnostics.get('container.exitCode'), '125')
+        self.assertEqual(diagnostics.get('container.stdout'), 'startup observation')
+        self.assertTrue(diagnostics.get('container.stderr', '').startswith('daemon cause'))
+        self.assertLessEqual(len(diagnostics.get('container.stderr', '').encode()) +
+                             len(diagnostics.get('container.stdout', '').encode()), 65536)
+
     def test_run_interrupt_removes_own_container_before_scratch_cleanup(self) -> None:
         for removal in confirmed_removals():
             with self.subTest(removal=removal):
@@ -167,13 +182,14 @@ class BackendCancellation(unittest.TestCase):
         for removal in confirmed_removals():
             with self.subTest(removal=removal):
                 job = self.prepare()
-                timeout = subprocess.TimeoutExpired('docker run', 1)
+                timeout = subprocess.TimeoutExpired('docker run', 1, output=b'before timeout', stderr=b'daemon waiting')
                 with self.docker_boundary(job, timeout, removal, ownership=False) as events:
                     result = jobs.run_job(job, 'container')
                     self.assertEqual(result['classification'], 'infrastructure-failure')
                     self.assertEqual(result['infrastructure'], 'failure')
                     self.assertNotIn('score', result)
                     self.assertIn('Outer Docker timeout', str(result.get('message')))
+                    self.assertEqual(result.get('diagnostics'), {'stage':'container','container.termination':'timeout','container.stdout':'before timeout','container.stderr':'daemon waiting'})
                     self.assertEqual(events, ['run', 'remove'])
                     stopped: object = getattr(job, '_containers_stopped')
                     self.assertIs(stopped, True)

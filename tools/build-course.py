@@ -157,13 +157,34 @@ def build_course(source: Path, book: str, instance: str, output: Path, runtime_r
         except (JobError,OSError,ValueError,KeyError,TypeError) as error:raise BuildError('Native package validation failed: '+str(error)) from error
         validate_uuids_and_assessments(native,delivery['questions'])
         # Приватные выбранные bytes находятся вне дерева, которое читает PL.
-        with checks_output.open('x') as stream:
-            os.chmod(checks_output,0o600);stream.write(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
-        try:publish_directory(native,output)
-        except BaseException:
-            if not output.exists():checks_output.unlink()
+        checks_identity: os.stat_result | None = None
+        try:
+            # Capture ownership before the first operation that can fail. Never
+            # remove a competing file when exclusive allocation itself fails.
+            with checks_output.open('x') as stream:
+                checks_identity=os.fstat(stream.fileno())
+                os.fchmod(stream.fileno(),0o600)
+                stream.write(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+                stream.flush()
+                publish_directory(native,output)
+        except BaseException as error:
+            if checks_identity is not None:
+                try:
+                    current=checks_output.lstat()
+                    if (current.st_dev,current.st_ino)==(checks_identity.st_dev,checks_identity.st_ino):
+                        checks_output.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError as cleanup_error:
+                    error.add_note(f'Private checks cleanup failed: {cleanup_error}')
             raise
-    finally:
+    except BaseException as error:
+        try:
+            shutil.rmtree(stage)
+        except OSError as cleanup_error:
+            error.add_note(f'Export stage cleanup failed: {cleanup_error}')
+        raise
+    else:
         shutil.rmtree(stage)
 
 def main() -> None:

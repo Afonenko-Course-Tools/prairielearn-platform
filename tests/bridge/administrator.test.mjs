@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
+import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
 import {parse} from 'pgsql-parser';
 import {pg,present} from '../helpers/pg-nodes.mjs';
 import {loadSql} from '../fixtures/native-postgres-upstream/loader.js';
 
 const sourceFlag = process.argv.find(value => value.startsWith('--sql-source='));
-const path = sourceFlag ? sourceFlag.slice('--sql-source='.length) : new URL('../../bridge/native.sql', import.meta.url).pathname;
+const path = sourceFlag ? sourceFlag.slice('--sql-source='.length) : fileURLToPath(new URL('../../bridge/native.sql', import.meta.url));
 const sql = loadSql(path);
 const pool = readFileSync(new URL('../fixtures/native-postgres-upstream/pool.js', import.meta.url), 'utf8');
 const context = vm.createContext({difference: (/** @type {string[]} */a, /** @type {string[]} */b) => a.filter(key => !b.includes(key))});

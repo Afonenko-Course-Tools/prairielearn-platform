@@ -45,17 +45,38 @@ Compiler errors студента дают student-compilation-failure. Ошиб�
 
 ## Отчёт JUnit
 
-Штатный `LegacyXmlReportGeneratingListener` JUnit производит XML; Python reader
-вычисляет статусы и долю из этих отчётов. Listener в существующем закрытом Java module сохраняет полезные
-assertion checks, public observations, объявленные JUnit points и происхождение
-исключения. Он проверяет фактический CodeSource student/console classes.
-JSON не задаёт счётчики или оценку: его закрытый event ledger используется для
-проверки аутентичности XML. Одноразовый ключ текущего запуска подписывает feedback;
-доступ student reflection к private listener state закрыт Java module, Unsafe
-memory access запрещён. Source/toolchain/artifact inventories для этого не нужны.
-Повреждённый или
-незавершённый отчёт не становится нулём студента.
+Небольшой адаптер публичных Launcher/Listener API сохраняет отдельные JUnit
+cases, их имена, статусы и диагностику OpenTest4J. Python decoder проверяет
+полноту зарегистрированных/начатых/завершённых cases до вычисления оценки.
+Действующий договор — [простой запуск Java/JUnit](../../docs/public-junit.md).
+Незавершённый или повреждённый отчёт означает инфраструктурный сбой без score.
 
-Локально проверены настоящий Gradle `jar/run/test` и JDK25. Новый Docker image
-не собран и не опубликован в этой сессии; наличие Dockerfile и указанных tags
-не подтверждает OCI/runtime квалификацию. Исторические image digests сохранены.
+В private verification report поле `diagnostics.stage` указывает последний
+процесс, а `<stage>.exitCode`, `<stage>.termination`, `<stage>.stdout` и
+`<stage>.stderr` сохраняют первичную диагностику. Потоки ограничены общим
+`max-output-bytes`; `output` остаётся совместимым объединённым выводом.
+Timeout, signal, operator interruption и отсутствие executable различаются.
+Уже завершённые `studentCompilation`/`trustedCompilation` не превращаются
+в `not-run` при последующем отказе JUnit. Native student feedback по-прежнему
+скрывает private диагностику, teacher trace и исходники trusted checks.
+
+## Накладные расходы
+
+Gradle client и build JVM используют одинаковые `-Xms64m -Xmx128m`,
+`-XX:ActiveProcessorCount=2`, `-XX:-UsePerfData`, `-XX:TieredStopAtLevel=1`.
+Это позволяет обычному `--no-daemon` выполнить сборку в текущем процессе;
+JDK compiler worker, если его выбирает Gradle, остаётся штатным процессом.
+Разделённые seed-файлы сохраняют быстрый доступ к энтропии внутри Landlock.
+Предварительных `gradle --version` и `clean` в grading job нет. Проект,
+HOME, user-cache, project-cache, classes и JAR остаются свежими в каждой попытке.
+Student build scripts не копируются в проект и не исполняются.
+
+Dockerfile заранее компилирует неизменный public adapter и API support из
+исходников того же image с `--release 25`. Grader копирует эти `.class` в
+прежний приватный каталог текущего job; каталоги и библиотеки получают
+прежние read-only права. Код студента никогда не входит в этот набор. Host
+без image по-прежнему компилирует adapter отдельно для каждого job.
+
+Сравнительные измерения и границы проверки описаны в
+[отчёте #31/#34](../../docs/grader-closure-20261111.md). Локальный image
+не подтверждает hosted публикацию или полноту проверки всех задач курса.

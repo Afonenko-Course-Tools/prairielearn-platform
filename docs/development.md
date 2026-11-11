@@ -1,61 +1,74 @@
-# Local development
+# Локальная разработка
 
-The current dev-PrairieLearn uses a pinned image, development identities and a
-loopback-only UI. Real Moodle and production authentication are later stages.
+## Текущий preview и обновление курса
 
-## Native course delivery and storage
+Полный exporter создаёт delivery v5 и отдельные private checks v3 из рабочего
+source. Прямые команды `build-course.py` и `check-course.py verify` приведены в
+[README](../README.md#поставка-курса) и [описании builder](qualified-launch.md).
+`submission.mode: editor` задаёт стандартный native редактор выбранного ответа;
+ZIP и готовый workspace предоставляет установленный producer, builder не меняет
+submission controls.
 
-Build from a clean source and builder checkout with `tools/build-course.py`.
-The builder calls the course's exact installed owner exporter and records
-source/builder commits, manifest hashes, content hashes and image refs.
-`submission.mode: editor` in the owner binding provides a standard native text
-editor. It sends accepted starter source as code, leaving full build files in
-the authoring repository. Offline archives and VSCode workspaces are separate
-scenarios. The builder does not add ZIPs or rewrite owner submission controls.
+Local объединяет подготовку и загрузку двумя командами из системного go-task:
 
-Commit generated native files into the public delivery repository, then choose
-that exact commit in a `pl-courses-v1` registry:
+```sh
+go-task --dir ../prairielearn-local prepare COURSE=java \
+  COURSE_ROOT=/absolute/Java PLATFORM_ROOT=/absolute/prairielearn-platform
+go-task --dir ../prairielearn-local up COURSE=java \
+  PLATFORM_ROOT=/absolute/prairielearn-platform
+```
+
+Для System Practice используйте `COURSE=system-practice` и соответствующий
+`COURSE_ROOT`. `prepare` собирает один комплект site/native/checks, `up` использует
+готовый результат и ждёт штатный native load server job. Checks остаются у
+controller. В preview курс находится по стабильному writable пути
+`/course/<course>/current`, а отдельные Compose project/state сохраняют accounts
+и ответы при повторном `up` и `down/up`. Статус контейнера и redirect сами по себе
+не означают успешную загрузку. Штатный dev-вход и роли проверяются в браузере;
+Moodle/LTI и production auth проходят отдельную приёмку.
+
+Полная проверка prepared delivery запускается явно:
+
+```sh
+go-task --dir ../prairielearn-local verify COURSE=java \
+  COURSE_ROOT=/absolute/Java PLATFORM_ROOT=/absolute/prairielearn-platform
+```
+
+Для production Git checkout должен быть writable: штатная
+[REST-синхронизация](../examples/course-cd/README.md) получает новый commit и
+ожидает `Success` без повторного POST после неопределённого исхода. Source ref,
+OCI digests, UUID и фактические Native numeric parents сохраняются; отдельные
+release receipts не заменяют проверку реального результата.
+
+## Ручной read-only снимок точного commit
+
+`stage_courses.py` остаётся отдельным CLI для проверки и размещения точного
+Git snapshot. Он не вызывается Local `prepare/up` и не служит обновлением
+существующего курса: путь `<storage>/<id>/<commit>` меняется при новом commit,
+а generated bind mount read-only не допускает штатный Git pull.
+Для такого снимка используется registry `pl-courses-v2`:
 
 ```json
 {"schema":"pl-courses-v2","courses":[{"id":"java-portal","institution":"bsu","repository":"https://github.com/BSU-RFCT-Afonenko-Courses/pl-course-java","commit":"<exact 40-hex commit>","mount":"/course"}]}
 ```
 
-The example placeholder is deliberately rejected. Registry validation rejects
-moving branches, duplicate IDs/mounts, credential-bearing URLs and missing image
-pins before checkout. Stage into an existing private absolute directory:
+Placeholder отвергается. CLI проверяет Git origin, exact HEAD, clean snapshot,
+безопасность путей, native metadata и текущий package contract. Он не создаёт
+provenance inventory и не импортирует курс. Повтор проверяет прежние bytes через
+действующие readers; новый commit размещается отдельно без удаления прежнего.
 
 ```sh
 python3 tools/check_registry.py /private/courses.json
 python3 tools/stage_courses.py /private/courses.json \
   --storage /private/native-courses --compose-output /private/course-mounts.json
-HOST_JOBS_DIR=/private/jobs DEV_TLS_DIR=/private/dev-tls \
-  docker compose -p prairielearn-local -f compose/compose.yml \
-  -f compose/compose.dev.yml -f /private/course-mounts.json \
-  -f compose/compose.proxy-dev.yml up -d
 ```
 
-Each checkout lives at `<storage>/<id>/<commit>`. Staging verifies Git origin,
-HEAD, cleanliness, native metadata and provenance hashes, refuses symlinks and
-unexpected payload, then publishes without replacing an existing directory.
-Repeated staging verifies existing content; an upgrade retains prior versions.
-Generated mounts are read-only and refuse absent host directories.
-
-Учреждение задано один раз в versioned [config/institutions.json](../config/institutions.json),
-контракт — [institutions.schema.json](../schemas/institutions.schema.json). Запись
-[pl-courses-v2](../schemas/courses-v2.schema.json) ссылается на ключ, не на ID БД.
-`check_registry.py` и `stage_courses.py` принимают `--institutions PATH` для
-другого проверяемого каталога. Неизвестный ключ, неоднозначное native короткое
-имя и неверный timezone отклоняются. Legacy `pl-courses-v1` сохранён только для
-прежнего staging; новый institution bootstrap требует v2, без fallback Default.
-Stage не создаёт учреждение и не импортирует курс. Для production новой поставки
-используйте [штатный локальный bootstrap](proxmox-pilot.md#учреждение-и-новый-native-курс).
-
-Staging files does not import a course. In the pinned PL dev UI open the navbar
-and click **Load from disk**, then wait for **Success** and `Course sync successful`
-for each mounted course. JSON changes need another sync; question HTML changes
-are loaded on page navigation. Course/instance/assessment/question UUIDs remain
-stable across rebuilds and sync. Course enrollment/publishing still need explicit
-configuration; staff override does not prove Student ACL or Moodle login.
+Storage должен быть существующим реальным абсолютным каталогом. Учреждение
+задаётся в [config/institutions.json](../config/institutions.json), registry
+ссылается на его ключ. `--institutions PATH` выбирает другой проверяемый каталог.
+Legacy `pl-courses-v1` сохранён для прежнего manual staging; bootstrap нового
+учреждения требует v2. Неизвестный ключ, неоднозначное native короткое имя,
+неверный timezone, symlinks и неожиданный payload дают отказ.
 
 ## HTTPS proxy
 
@@ -250,25 +263,20 @@ server. Proxy integration uses a separate synthetic upstream, without the PL
 DB, identities or Docker socket. Grading acceptance must also use real PL UI;
 unit tests and health checks alone do not establish it.
 
-The shared Java runner compiles its immutable official JUnit adapter once per job.
-Each mutation variant still independently compiles trusted fixtures and submitted
-tests into separate directories, then runs in a fresh JVM under the existing
-sbuser/Landlock boundary. No compiled submitted artifacts are reused across APIs.
-Each fresh execution JVM also uses level-one tiered compilation to reduce JUnit
-startup cost. Compilation invokes the standard JDK javac main class directly,
-with an explicit compiler-version preflight. This avoids the official image javac
-launcher module-property mismatch when loading dynamic CDS archives. No warning
-output is suppressed. The compiler JVM uses level-one tiered compilation and a job-private dynamic CDS
-archive of JDK compiler classes. The first compiler invocation creates that archive
-cold; later invocations load it. Annotation processing stays disabled, so submitted
-code is parsed rather than executed by the compiler. The supervisor owns the archive
-with mode0600 and compiled adapter/libraries with root-owned read-only files; all are
-removed at job end. Host uses the same runner and creates its own cold archive.
-No compiler process, adapter, or archive is reused across grading jobs. Outer30s,
-inner compilation/execution limits, Java25 release, official source and signatures,
-scoring policies and typed outcomes are unchanged. runnerCompilation duration is
-zero for variants that reuse the adapter; the first successful variant records its
-actual cold compilation cost.
+Docker recipe компилирует public Java/JUnit adapter и API support заранее из
+исходников того же образа. Каждый job получает отдельную read-only копию
+классов и JUnit libraries; submitted classes не переиспользуются между jobs.
+Host без image компилирует adapter один раз на job. Mutation variants отдельно
+компилируют trusted fixtures и submitted tests и запускаются в свежих JVM под
+прежней sbuser/Landlock границей.
+
+JDK javac и свежие execution JVM используют level-one tiered compilation.
+Обработчики аннотаций отключены (`-proc:none`), release остаётся25. Dynamic CDS
+archive собственным runner больше не создаётся. Native Gradle использует
+совместимые client/build JVM args и tier1, свежие HOME/cache/project и обычный
+встроенный recipe. Неизменённые лимиты и private diagnostics описаны в
+[runtime README](../runtime/gradle-jar-v1/README.md) и
+[измерениях #31/#34](grader-closure-20261111.md).
 
 Свежие student JVM, в том числе ProcessBuilder с static Scanner, наследуют
 RLIMIT_NOFILE hard≤4096 от supervisor. Soft limit сохраняется, если он ниже;

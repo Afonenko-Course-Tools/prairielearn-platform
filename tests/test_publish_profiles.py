@@ -15,7 +15,7 @@ class Publisher(Protocol):
 
 class PublishProfiles(unittest.TestCase):
     def test_each_runtime_uses_its_own_verified_image(self) -> None:
-        path=Path(__file__).parents[1]/'tools/publish-receipt.py'
+        path=Path(__file__).parents[1]/'tools/publish-metadata.py'
         self.assertTrue(path.exists(),'publisher receipt implementation missing')
         spec=importlib.util.spec_from_file_location('receipt',path)
         if spec is None or spec.loader is None:

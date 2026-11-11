@@ -1,4 +1,13 @@
-# Приватный source snapshot
+# Исторический приватный source snapshot
+
+Этот документ сохраняет маршрут прежних выпусков 2.3.x. Он не является
+инструкцией для текущего source: `prepare-private-source.py` удалён,
+`build-course.py` не принимает `--staging-receipt`, а exporter создаёт delivery v5
+и отдельные checks v3 непосредственно из рабочего source с установленными
+расширениями. Текущие команды приведены в [README](../README.md#поставка-курса)
+и [описании builder](qualified-launch.md). Закрытые bytes проверок остаются
+отдельно от student-site и публичной поставки. Ниже сохранено историческое
+описание без переноса его требований в текущий запуск.
 
 `tools/prepare-private-source.py` принимает clean публичный Git checkout,
 выбранный owner и точный grading stage Core. Он сохраняет QMD/config/extensions
