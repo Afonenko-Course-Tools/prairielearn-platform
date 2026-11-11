@@ -39,6 +39,7 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           node --test tests/bridge/*.test.mjs
+          node --test tests/integer-manual-points.test.mjs
           python3 -B tests/bridge/enrollment-schema.test.py
           python3 tests/bridge/cookie-domain.test.py
           python3 tests/bridge/grader-patch.test.py

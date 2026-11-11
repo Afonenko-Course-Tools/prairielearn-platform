@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from json_boundary import is_object, is_list, json_object, json_value
 from delivery_types import GradingMethod, NativeControl
 from grading_job import ROOT,JobError,safe
+from native_course_options import integer_manual_points_schema
 
 def relative_name(value: object) -> TypeGuard[str]:
  return isinstance(value,str) and bool(value) and not value.startswith('/') and not re.match(r'^[A-Za-z]:',value) and not re.search(r'[\x00-\x1f\x7f]',value) and '\\' not in value and not any(part in ('','.','..') for part in value.split('/'))
@@ -27,6 +28,7 @@ def native_schema(name: str, value: object) -> None:
  folder=ROOT/'schemas/native-upstream'
  try:
   schema=json_object(json.loads(file_bytes(folder,name)))
+  if name=='infoCourse.json':schema=integer_manual_points_schema(schema)
   validate_value: object=getattr(jsonschema.Draft7Validator(schema),'validate')
   if not isinstance(validate_value,_NativeSchemaValidate):raise JobError('Native JSON schema validator unavailable')
   validate_value(json_value(value))
