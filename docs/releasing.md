@@ -17,7 +17,7 @@ Docker; повторной проверки SHA каждого файла обр
 ```sh
 python3 -m unittest discover -s tests -p test_plain_runtime.py -v
 docker build -f images/java25-grader/Dockerfile -t local/platform-java:review .
-PL_TEST_IMAGE=local/platform-java:review python3 -m unittest discover -s tests -p test_plain_image.py -v
+PL_TEST_IMAGE="$(docker image inspect local/platform-java:review --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_plain_image.py -v
 ```
 
 Первый маршрут проверяет реальное публичное grader поведение на host JDK25.
@@ -38,7 +38,7 @@ image либо unit double. Права, отдельные роли и дост�
 До всех image checks выбранного режима pushes не выполняются. Публикация не
 входит в текущий локальный пакет; этот workflow здесь не запускался.
 
-Publisher получает фактические Java/Community/fish/Workspace OCI digests после
+Полный режим `all` получает фактические Java/Community/fish/Workspace OCI digests после
 push и pull и вызывает `tools/publish-metadata.py`. Команда создаёт два обычных
 JSON файла:
 
@@ -58,6 +58,27 @@ assembly не предоставляется. Git commit и OCI digest сохр�
 логи и digests. Повторное использование уже опубликованного номера и
 переключение deployment требуют отдельного решения. Обычный Docker context
 ограничивается `.dockerignore`; данные студентов и секреты не передаются builder.
+
+## Отдельный Java выпуск
+
+`components=java` требует точный independently reviewed commit уже в `main`,
+совпадение dispatch SHA, checkout HEAD и `reviewed_commit`, а также равенство
+`VERSION` выбранному новому semver. Существующий registry tag блокирует выпуск;
+ошибка сети или авторизации не считается доказательством отсутствия tag.
+
+Перед push выполняются Java grader source contracts с настоящим JDK25,
+отрицательные binding/diagnostic проверки и `test_plain_image.py` на immutable
+ID только что собранного образа. После push workflow делает настоящий pull
+полученного OCI digest. Прочитанные image ID, source URL и revision label должны
+совпадать с проверенным образом и reviewed source. Номер версии сам по себе
+не заменяет эти проверки.
+
+Artifact `platform-java-digest-<version>` содержит `java-image.json` с прежними
+полями `version`, `source_commit`, `repo_digest`, `image_config_id`, отдельный
+`java-image.txt` и полный `java-image-inspect.json`. Координатор читает эти
+assets из завершившегося hosted run до переключения deployment. Community,
+fish и Workspace этим режимом не пересобираются и не получают новые digests.
+Локальные проверки shell guards не подтверждают настоящий registry push/pull.
 
 ## Native delivery
 

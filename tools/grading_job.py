@@ -698,6 +698,20 @@ def _remove_container(name: str) -> None:
         raise JobError(cleanup.stderr)
 
 
+def _container_diagnostics(stdout: str | bytes | None, stderr: str | bytes | None,
+                           code: int | None, termination: str, maximum: JSONInteger) -> dict[str, str]:
+    observation = {"stage": "container", "container.termination": termination}
+    if code is not None:
+        observation["container.exitCode"] = str(code)
+    remaining = int(maximum)
+    for name, value in (("stdout", stdout), ("stderr", stderr)):
+        raw = value if isinstance(value, bytes) else (value or "").encode("utf-8")
+        text = raw.decode("utf-8", errors="replace").encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
+        observation["container." + name] = text
+        remaining -= len(text.encode("utf-8"))
+    return observation
+
+
 def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> CheckResult:
     if getattr(job, "_containers_stopped", True) is False:
         raise JobError("Grading retry requires stopped containers")
@@ -713,6 +727,7 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
     }
     native = payload["runtime"] == NATIVE_RUNTIME
     result: dict[str, JSONValue]
+    process_diagnostics: dict[str, str] = {}
     try:
         if backend == "host":
             profile = _runtime_profile(registry or load_runtime_registry(), payload["runtime"])
@@ -738,7 +753,10 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                         raise JobError("Runtime grader contract is unavailable")
                     result = json_object(grader.grade(job.root))
             except caught_errors as error:
-                raise JobError(str(error)) from error
+                observation: object = getattr(error, "outcome", None)
+                if observation is None:
+                    raise JobError(str(error)) from error
+                result = json_object(observation)
         elif backend == "container":
             if not payload["imageDigest"]:
                 raise JobError("Runtime production image has not been built/published")
@@ -770,7 +788,12 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                     text=True,
                     timeout=payload["grading"]["limits"]["outer-seconds"],
                 )
+            except OSError as error:
+                process_diagnostics = _container_diagnostics(None, str(error), None, "spawn-error", payload["grading"]["limits"]["max-output-bytes"])
+                raise
             except (KeyboardInterrupt, subprocess.TimeoutExpired) as error:
+                if isinstance(error, subprocess.TimeoutExpired):
+                    process_diagnostics = _container_diagnostics(error.stdout, error.stderr, None, "timeout", payload["grading"]["limits"]["max-output-bytes"])
                 message = "Outer Docker timeout" if isinstance(error, subprocess.TimeoutExpired) else "Docker run interrupted"
                 try:
                     _remove_container(job.containerName)
@@ -786,8 +809,9 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                 if isinstance(error, KeyboardInterrupt):
                     raise
                 raise JobError(message + "; container removed") from error
+            process_diagnostics = _container_diagnostics(p.stdout, p.stderr, p.returncode, "signal" if p.returncode < 0 else "exit", payload["grading"]["limits"]["max-output-bytes"])
             if p.returncode not in (0, 2):
-                raise JobError("Docker infrastructure failure: " + p.stderr)
+                raise JobError("Docker infrastructure failure (exit " + str(p.returncode) + "): " + process_diagnostics["container.stderr"])
             job.mark_containers_stopped(True)
             result = json_object(json.loads(
                 (job.root / "results/results.json").read_text(),
@@ -803,6 +827,8 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
             "grading_error": True,
             "message": str(error),
         }
+        if process_diagnostics:
+            result["diagnostics"] = json_value(process_diagnostics)
     if native:
         if "buildEvidence" not in result and result.get("infrastructure") == "failure":
             result["buildEvidence"] = {

@@ -263,25 +263,20 @@ server. Proxy integration uses a separate synthetic upstream, without the PL
 DB, identities or Docker socket. Grading acceptance must also use real PL UI;
 unit tests and health checks alone do not establish it.
 
-The shared Java runner compiles its immutable official JUnit adapter once per job.
-Each mutation variant still independently compiles trusted fixtures and submitted
-tests into separate directories, then runs in a fresh JVM under the existing
-sbuser/Landlock boundary. No compiled submitted artifacts are reused across APIs.
-Each fresh execution JVM also uses level-one tiered compilation to reduce JUnit
-startup cost. Compilation invokes the standard JDK javac main class directly,
-with an explicit compiler-version preflight. This avoids the official image javac
-launcher module-property mismatch when loading dynamic CDS archives. No warning
-output is suppressed. The compiler JVM uses level-one tiered compilation and a job-private dynamic CDS
-archive of JDK compiler classes. The first compiler invocation creates that archive
-cold; later invocations load it. Annotation processing stays disabled, so submitted
-code is parsed rather than executed by the compiler. The supervisor owns the archive
-with mode0600 and compiled adapter/libraries with root-owned read-only files; all are
-removed at job end. Host uses the same runner and creates its own cold archive.
-No compiler process, adapter, or archive is reused across grading jobs. Outer30s,
-inner compilation/execution limits, Java25 release, official source and signatures,
-scoring policies and typed outcomes are unchanged. runnerCompilation duration is
-zero for variants that reuse the adapter; the first successful variant records its
-actual cold compilation cost.
+Docker recipe компилирует public Java/JUnit adapter и API support заранее из
+исходников того же образа. Каждый job получает отдельную read-only копию
+классов и JUnit libraries; submitted classes не переиспользуются между jobs.
+Host без image компилирует adapter один раз на job. Mutation variants отдельно
+компилируют trusted fixtures и submitted tests и запускаются в свежих JVM под
+прежней sbuser/Landlock границей.
+
+JDK javac и свежие execution JVM используют level-one tiered compilation.
+Обработчики аннотаций отключены (`-proc:none`), release остаётся25. Dynamic CDS
+archive собственным runner больше не создаётся. Native Gradle использует
+совместимые client/build JVM args и tier1, свежие HOME/cache/project и обычный
+встроенный recipe. Неизменённые лимиты и private diagnostics описаны в
+[runtime README](../runtime/gradle-jar-v1/README.md) и
+[измерениях #31/#34](grader-closure-20261111.md).
 
 Свежие student JVM, в том числе ProcessBuilder с static Scanner, наследуют
 RLIMIT_NOFILE hard≤4096 от supervisor. Soft limit сохраняется, если он ниже;

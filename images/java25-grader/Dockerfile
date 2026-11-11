@@ -18,6 +18,12 @@ ENV JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64
 ENV PATH=/usr/lib/jvm/java-25-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WORKDIR /platform
 COPY runtime /platform/runtime
+RUN /opt/native-jdk/bin/javac --release 25 -encoding UTF-8 -proc:none \
+    -cp '/platform/runtime/java25-junit-v1/*' \
+    -d /platform/runtime/java25-junit-v1/classes \
+    /platform/runtime/java25-junit-v1/PlatformApiPrecheck.java \
+    /platform/runtime/java25-junit-v1/PlatformJUnitAdapter.java \
+    /platform/runtime/java25-junit-v1/upstream/org/prairielearn/autograder/AutograderInfo.java
 COPY runtime-profiles.json /platform/runtime-profiles.json
 COPY images/java25-grader/grade.py /platform/images/java25-grader/grade.py
 RUN chmod 700 /platform /javagrader

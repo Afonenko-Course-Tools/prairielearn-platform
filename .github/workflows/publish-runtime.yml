@@ -155,6 +155,20 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$GITHUB_SHA" == "$REVIEWED_COMMIT" ]] || exit 1
           [[ "$(cat VERSION)" == "$VERSION" ]] || exit 1
           echo "RUNTIME_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/java25-grader:${VERSION}" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
+        with:
+          python-version: '3.14.0'
+      - name: Проверить Java source и отрицательные grading contracts
+        run: |
+          python3 -m pip install --requirement requirements.txt
+          java -version
+          javac -version
+          python3 -m unittest discover -s tests -p 'test_grader*.py' -v
+          python3 -m unittest discover -s tests -p test_binding_compilation_stages.py -v
       - name: Авторизоваться в registry для Java
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -166,6 +180,7 @@ jobs:
           docker build --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" -f images/java25-grader/Dockerfile -t "$RUNTIME_IMAGE" .
           TEST_IMAGE_ID="$(docker image inspect "$RUNTIME_IMAGE" --format '{{.Id}}')"
           PL_TEST_IMAGE="$TEST_IMAGE_ID" python3 -m unittest discover -s tests -p test_plain_image.py -v
+          echo "TESTED_JAVA_IMAGE_ID=$TEST_IMAGE_ID" >> "$GITHUB_ENV"
       - name: Опубликовать Java
         run: docker push "$RUNTIME_IMAGE"
       - name: Сохранить Java digest и image config ID
@@ -176,13 +191,23 @@ jobs:
           [[ "$JAVA_DIGEST" == "$PREFIX"* ]] || exit 1
           HEX="${JAVA_DIGEST#"$PREFIX"}"
           [[ "$HEX" =~ ^[a-f0-9]{64}$ && "$IMAGE_ID" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          [[ "$IMAGE_ID" == "$TESTED_JAVA_IMAGE_ID" ]] || exit 1
+          docker pull "$JAVA_DIGEST"
+          [[ "$(docker image inspect "$JAVA_DIGEST" --format '{{.Id}}')" == "$TESTED_JAVA_IMAGE_ID" ]] || exit 1
+          [[ "$(docker image inspect "$JAVA_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == "$GITHUB_SHA" ]] || exit 1
+          [[ "$(docker image inspect "$JAVA_DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" == "https://github.com/$GITHUB_REPOSITORY" ]] || exit 1
+          printf '%s\n' "$JAVA_DIGEST" > java-image.txt
+          docker image inspect "$JAVA_DIGEST" > java-image-inspect.json
           export JAVA_DIGEST IMAGE_ID
           python3 -c 'import json, os; print(json.dumps({"version": os.environ["RUNTIME_IMAGE"].rsplit(":", 1)[1], "source_commit": os.environ["GITHUB_SHA"], "repo_digest": os.environ["JAVA_DIGEST"], "image_config_id": os.environ["IMAGE_ID"]}, indent=2))' > java-image.json
           cat java-image.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: platform-java-digest-${{ inputs.version }}
-          path: java-image.json
+          path: |
+            java-image.json
+            java-image.txt
+            java-image-inspect.json
           if-no-files-found: error
 
   community:

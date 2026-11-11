@@ -11,7 +11,7 @@ import test_grading_job as fixtures
 
 @runtime_checkable
 class _Run(Protocol):
- def __call__(self, command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]: ...
+ def __call__(self, command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None, diagnostics: dict[str, str] | None = None, stage: str = "process") -> tuple[int, str, Literal['timeout', 'output_limit'] | None]: ...
 
 @runtime_checkable
 class _StudentResult(Protocol):
@@ -53,9 +53,9 @@ class BindingStages(unittest.TestCase):
   self.assertNotIn('CLOSED_BINDING_CANARY',json.dumps(native));self.assertEqual(native['classification'],'infrastructure-failure');self.assertNotIn('studentCompilation',native)
  def test_trusted_compiler_limit_remains_infrastructure_not_completed_binding(self):
   original=_private_run(getattr(grader,'_run',None))
-  def limit(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None) -> tuple[int, str, Literal['timeout', 'output_limit'] | None]:
+  def limit(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 65536, *, env: Mapping[str, str] | None = None, diagnostics: dict[str, str] | None = None, stage: str = "process") -> tuple[int, str, Literal['timeout', 'output_limit'] | None]:
    if any(x.endswith('/tests/AnswerTest.java') for x in command):return -1,'PRIVATE_LIMIT_CANARY','timeout'
-   return original(command,cwd,timeout,output_limit,env=env)
+   return original(command,cwd,timeout,output_limit,env=env,diagnostics=diagnostics,stage=stage)
   with patch.object(grader,'_run',side_effect=limit),self.assertRaises(grader.GraderError):self.run_job()
  def test_student_tests_trusted_failure_never_claims_student_success(self):
   self.cfg.update(mode='student-tests',runtime='java25-mutation-v1',sourceFiles=['AnswerTest.java'],testFiles=['variants/correct/Student.java','variants/wrong/Student.java'],variants={'correct':['correct'],'mutants':['wrong']},scoring={'mode':'all-pass'})
