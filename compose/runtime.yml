@@ -1,0 +1,6 @@
+# Общий producer-owned default Community; grader и Workspace images выбирает курс.
+# Fragment предназначен для стандартного Compose extends, сам сервис не запускается.
+services:
+  community:
+    image: ${PL_IMAGE:-ghcr.io/afonenko-course-tools/prairielearn-community-gateway@sha256:34f40dd37e26daee8c63212657d6a02601c7f1610bc8abe55ca133ec2dfde897}
+    platform: linux/amd64

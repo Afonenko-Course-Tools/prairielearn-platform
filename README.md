@@ -70,3 +70,17 @@ Workspace читает `{schema,files:string[]}` и реальный Git seed. �
 в удалённый собственный contentproof. Старые документы о receipt допуска и
 delivery v3/v4 описывают прежнюю реализацию; текущий договор изложен здесь и в
 схемах `native-checks`, `grading-job-v3`, `grading-descriptor` и `gateway-*`.
+
+## Зависимости и default Community image
+
+`compose/runtime.yml` предоставляет producer-owned Community default для
+стандартного `extends` в Local. `PL_IMAGE` явно переопределяет этот default;
+это роль приложения и native Workspace host, а не grader или Workspace-сессия.
+Опубликованные image identities остаются в release outputs `runtime-image.json`
+и runtime profiles. Их обновление — явная операция producer, без source registry.
+
+Native schemas входят в runtime bundle `schemas/native-upstream/`: controller
+и production не скачивают исходники экспортёра. Разработчик обновляет bundle
+через `python tools/vendor-native-schemas.py --exporter /absolute/exporter-checkout`
+и проверяет `--check`. Helper читает committed upstream files непосредственно
+из выбранного Git checkout, без второго manifest source SHA.

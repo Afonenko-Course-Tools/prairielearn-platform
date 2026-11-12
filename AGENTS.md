@@ -62,3 +62,7 @@ public/full, полномочий, capability/token/currentness/expiry и физ
 Новые README, документацию и описания PR пишите по-русски по
 [общему языковому правилу](https://github.com/Afonenko-Course-Tools/quarto-course/blob/main/docs/russian-language-policy.md).
 Команды, идентификаторы API, пути, имена пакетов и URL сохраняйте буквально.
+
+Зависимости исходников оформляйте стандартными Git submodules, packages — штатными
+менеджерами (например, `quarto add`). Не создавайте собственные установщики
+пакетов, SHA manifests или матрицы lock-версий поверх этих механизмов.
