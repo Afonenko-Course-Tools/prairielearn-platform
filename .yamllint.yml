@@ -1,0 +1,18 @@
+extends: default
+rules:
+  document-start: disable
+  truthy:
+    check-keys: false
+  # Переносами управляет Prettier; неразрывные команды и JSON-style maps допустимы.
+  line-length: disable
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    max-spaces-inside-empty: 0
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

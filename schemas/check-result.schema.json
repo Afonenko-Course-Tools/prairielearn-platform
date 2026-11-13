@@ -7,10 +7,7 @@
       "const": 1
     },
     "scope": {
-      "enum": [
-        "declared",
-        "delivery"
-      ]
+      "enum": ["declared", "delivery"]
     },
     "qualifiedId": {
       "type": "string"
@@ -39,24 +36,13 @@
       "type": "boolean"
     },
     "studentCompilation": {
-      "enum": [
-        "success",
-        "failure",
-        "not-run"
-      ]
+      "enum": ["success", "failure", "not-run"]
     },
     "trustedCompilation": {
-      "enum": [
-        "success",
-        "failure",
-        "not-run"
-      ]
+      "enum": ["success", "failure", "not-run"]
     },
     "infrastructure": {
-      "enum": [
-        "complete",
-        "failure"
-      ]
+      "enum": ["complete", "failure"]
     },
     "classification": {
       "enum": [
@@ -106,12 +92,7 @@
         "outcomes": {
           "type": "object",
           "additionalProperties": {
-            "enum": [
-              "successful",
-              "failed",
-              "aborted",
-              "skipped"
-            ]
+            "enum": ["successful", "failed", "aborted", "skipped"]
           }
         },
         "failureKinds": {
@@ -157,10 +138,7 @@
         },
         "feedbackProtocolVersion": {
           "type": "integer",
-          "enum": [
-            1,
-            2
-          ]
+          "enum": [1, 2]
         },
         "containerDiagnostics": {
           "type": "array",
@@ -291,9 +269,7 @@
               "const": "weighted"
             }
           },
-          "required": [
-            "mode"
-          ],
+          "required": ["mode"],
           "additionalProperties": false
         },
         {
@@ -303,9 +279,7 @@
               "const": "all-pass"
             }
           },
-          "required": [
-            "mode"
-          ],
+          "required": ["mode"],
           "additionalProperties": false
         },
         {
@@ -334,20 +308,13 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "id",
-                  "weight",
-                  "tests"
-                ],
+                "required": ["id", "weight", "tests"],
                 "additionalProperties": false
               },
               "minItems": 1
             }
           },
-          "required": [
-            "mode",
-            "groups"
-          ],
+          "required": ["mode", "groups"],
           "additionalProperties": false
         },
         {
@@ -357,21 +324,14 @@
               "const": "threshold"
             },
             "basis": {
-              "enum": [
-                "score",
-                "passed-tests"
-              ]
+              "enum": ["score", "passed-tests"]
             },
             "value": {
               "type": "number",
               "minimum": 0
             }
           },
-          "required": [
-            "mode",
-            "basis",
-            "value"
-          ],
+          "required": ["mode", "basis", "value"],
           "additionalProperties": false
         }
       ]
@@ -398,41 +358,25 @@
       }
     },
     "backend": {
-      "enum": [
-        "host",
-        "container"
-      ]
+      "enum": ["host", "container"]
     },
     "publicResult": {
       "$ref": "#/$defs/outcome"
     },
     "containment": {
-      "enum": [
-        "official-landlock-sbuser",
-        "host-diagnostic"
-      ]
+      "enum": ["official-landlock-sbuser", "host-diagnostic"]
     },
     "tests": {
       "$ref": "#/properties/rawResult/properties/tests"
     },
     "apiPrecheck": {
-      "enum": [
-        "success",
-        "failure",
-        "not-run"
-      ]
+      "enum": ["success", "failure", "not-run"]
     },
     "dependentExecution": {
-      "enum": [
-        "complete",
-        "not-run"
-      ]
+      "enum": ["complete", "not-run"]
     },
     "apiContainment": {
-      "enum": [
-        "host-diagnostic",
-        "official-landlock-sbuser"
-      ]
+      "enum": ["host-diagnostic", "official-landlock-sbuser"]
     },
     "apiDiagnostic": {
       "type": "object",
@@ -446,10 +390,7 @@
           "minLength": 1
         }
       },
-      "required": [
-        "expected",
-        "observed"
-      ],
+      "required": ["expected", "observed"],
       "additionalProperties": false
     },
     "additionalSources": {
@@ -475,18 +416,12 @@
                 "maximum": 1048576
               }
             },
-            "required": [
-              "path",
-              "bytes"
-            ],
+            "required": ["path", "bytes"],
             "additionalProperties": false
           }
         }
       },
-      "required": [
-        "archive",
-        "files"
-      ],
+      "required": ["archive", "files"],
       "additionalProperties": false
     },
     "buildEvidence": {
@@ -499,11 +434,7 @@
           "const": "gradle-jar-v1"
         },
         "status": {
-          "enum": [
-            "success",
-            "not-run",
-            "failure"
-          ]
+          "enum": ["success", "not-run", "failure"]
         },
         "durationSeconds": {
           "type": "number",
@@ -521,10 +452,7 @@
               "minimum": 1
             }
           },
-          "required": [
-            "path",
-            "bytes"
-          ],
+          "required": ["path", "bytes"],
           "additionalProperties": false
         },
         "reason": {
@@ -541,11 +469,7 @@
           ]
         }
       },
-      "required": [
-        "schemaVersion",
-        "kind",
-        "status"
-      ],
+      "required": ["schemaVersion", "kind", "status"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -557,20 +481,14 @@
             }
           },
           "then": {
-            "required": [
-              "artifact"
-            ],
+            "required": ["artifact"],
             "not": {
-              "required": [
-                "reason"
-              ]
+              "required": ["reason"]
             }
           },
           "else": {
             "not": {
-              "required": [
-                "artifact"
-              ]
+              "required": ["artifact"]
             }
           }
         }
@@ -604,24 +522,13 @@
           "type": "boolean"
         },
         "studentCompilation": {
-          "enum": [
-            "success",
-            "failure",
-            "not-run"
-          ]
+          "enum": ["success", "failure", "not-run"]
         },
         "trustedCompilation": {
-          "enum": [
-            "success",
-            "failure",
-            "not-run"
-          ]
+          "enum": ["success", "failure", "not-run"]
         },
         "infrastructure": {
-          "enum": [
-            "complete",
-            "failure"
-          ]
+          "enum": ["complete", "failure"]
         },
         "classification": {
           "enum": [
@@ -671,12 +578,7 @@
             "outcomes": {
               "type": "object",
               "additionalProperties": {
-                "enum": [
-                  "successful",
-                  "failed",
-                  "aborted",
-                  "skipped"
-                ]
+                "enum": ["successful", "failed", "aborted", "skipped"]
               }
             },
             "failureKinds": {
@@ -722,10 +624,7 @@
             },
             "feedbackProtocolVersion": {
               "type": "integer",
-              "enum": [
-                1,
-                2
-              ]
+              "enum": [1, 2]
             },
             "containerDiagnostics": {
               "type": "array",
@@ -856,9 +755,7 @@
                   "const": "weighted"
                 }
               },
-              "required": [
-                "mode"
-              ],
+              "required": ["mode"],
               "additionalProperties": false
             },
             {
@@ -868,9 +765,7 @@
                   "const": "all-pass"
                 }
               },
-              "required": [
-                "mode"
-              ],
+              "required": ["mode"],
               "additionalProperties": false
             },
             {
@@ -899,20 +794,13 @@
                         "minItems": 1
                       }
                     },
-                    "required": [
-                      "id",
-                      "weight",
-                      "tests"
-                    ],
+                    "required": ["id", "weight", "tests"],
                     "additionalProperties": false
                   },
                   "minItems": 1
                 }
               },
-              "required": [
-                "mode",
-                "groups"
-              ],
+              "required": ["mode", "groups"],
               "additionalProperties": false
             },
             {
@@ -922,21 +810,14 @@
                   "const": "threshold"
                 },
                 "basis": {
-                  "enum": [
-                    "score",
-                    "passed-tests"
-                  ]
+                  "enum": ["score", "passed-tests"]
                 },
                 "value": {
                   "type": "number",
                   "minimum": 0
                 }
               },
-              "required": [
-                "mode",
-                "basis",
-                "value"
-              ],
+              "required": ["mode", "basis", "value"],
               "additionalProperties": false
             }
           ]
@@ -957,32 +838,19 @@
           "type": "boolean"
         },
         "containment": {
-          "enum": [
-            "official-landlock-sbuser",
-            "host-diagnostic"
-          ]
+          "enum": ["official-landlock-sbuser", "host-diagnostic"]
         },
         "tests": {
           "$ref": "#/properties/rawResult/properties/tests"
         },
         "apiPrecheck": {
-          "enum": [
-            "success",
-            "failure",
-            "not-run"
-          ]
+          "enum": ["success", "failure", "not-run"]
         },
         "dependentExecution": {
-          "enum": [
-            "complete",
-            "not-run"
-          ]
+          "enum": ["complete", "not-run"]
         },
         "apiContainment": {
-          "enum": [
-            "host-diagnostic",
-            "official-landlock-sbuser"
-          ]
+          "enum": ["host-diagnostic", "official-landlock-sbuser"]
         },
         "apiDiagnostic": {
           "type": "object",
@@ -996,10 +864,7 @@
               "minLength": 1
             }
           },
-          "required": [
-            "expected",
-            "observed"
-          ],
+          "required": ["expected", "observed"],
           "additionalProperties": false
         },
         "additionalSources": {
@@ -1025,18 +890,12 @@
                     "maximum": 1048576
                   }
                 },
-                "required": [
-                  "path",
-                  "bytes"
-                ],
+                "required": ["path", "bytes"],
                 "additionalProperties": false
               }
             }
           },
-          "required": [
-            "archive",
-            "files"
-          ],
+          "required": ["archive", "files"],
           "additionalProperties": false
         },
         "buildEvidence": {
@@ -1049,11 +908,7 @@
               "const": "gradle-jar-v1"
             },
             "status": {
-              "enum": [
-                "success",
-                "not-run",
-                "failure"
-              ]
+              "enum": ["success", "not-run", "failure"]
             },
             "durationSeconds": {
               "type": "number",
@@ -1071,10 +926,7 @@
                   "minimum": 1
                 }
               },
-              "required": [
-                "path",
-                "bytes"
-              ],
+              "required": ["path", "bytes"],
               "additionalProperties": false
             },
             "reason": {
@@ -1091,11 +943,7 @@
               ]
             }
           },
-          "required": [
-            "schemaVersion",
-            "kind",
-            "status"
-          ],
+          "required": ["schemaVersion", "kind", "status"],
           "additionalProperties": false,
           "allOf": [
             {
@@ -1107,20 +955,14 @@
                 }
               },
               "then": {
-                "required": [
-                  "artifact"
-                ],
+                "required": ["artifact"],
                 "not": {
-                  "required": [
-                    "reason"
-                  ]
+                  "required": ["reason"]
                 }
               },
               "else": {
                 "not": {
-                  "required": [
-                    "artifact"
-                  ]
+                  "required": ["artifact"]
                 }
               }
             }
@@ -1137,9 +979,7 @@
         },
         {
           "if": {
-            "required": [
-              "apiPrecheck"
-            ],
+            "required": ["apiPrecheck"],
             "properties": {
               "apiPrecheck": {
                 "const": "failure"
@@ -1156,9 +996,7 @@
         },
         {
           "if": {
-            "required": [
-              "apiPrecheck"
-            ],
+            "required": ["apiPrecheck"],
             "properties": {
               "apiPrecheck": {
                 "const": "success"
@@ -1194,10 +1032,7 @@
                       "const": "not-run"
                     },
                     "durations": {
-                      "required": [
-                        "apiCompilation",
-                        "apiExecution"
-                      ]
+                      "required": ["apiCompilation", "apiExecution"]
                     }
                   }
                 },
@@ -1214,9 +1049,7 @@
         },
         {
           "if": {
-            "required": [
-              "apiPrecheck"
-            ],
+            "required": ["apiPrecheck"],
             "properties": {
               "apiPrecheck": {
                 "const": "not-run"
@@ -1230,16 +1063,11 @@
               },
               "durations": {
                 "not": {
-                  "required": [
-                    "apiExecution"
-                  ]
+                  "required": ["apiExecution"]
                 }
               }
             },
-            "required": [
-              "studentCompilation",
-              "dependentExecution"
-            ],
+            "required": ["studentCompilation", "dependentExecution"],
             "allOf": [
               {
                 "if": {
@@ -1252,10 +1080,7 @@
                 "then": {
                   "properties": {
                     "studentCompilation": {
-                      "enum": [
-                        "failure",
-                        "success"
-                      ]
+                      "enum": ["failure", "success"]
                     }
                   }
                 },
@@ -1273,11 +1098,7 @@
       ]
     },
     "outcomePolicy": {
-      "required": [
-        "classification",
-        "infrastructure",
-        "gradable"
-      ],
+      "required": ["classification", "infrastructure", "gradable"],
       "oneOf": [
         {
           "allOf": [
@@ -1307,14 +1128,10 @@
               "not": {
                 "anyOf": [
                   {
-                    "required": [
-                      "grading_error"
-                    ]
+                    "required": ["grading_error"]
                   },
                   {
-                    "required": [
-                      "format_errors"
-                    ]
+                    "required": ["format_errors"]
                   }
                 ]
               }
@@ -1340,17 +1157,13 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "variants"
-                        ]
+                        "required": ["variants"]
                       }
                     ]
                   }
                 },
                 {
-                  "required": [
-                    "variants"
-                  ],
+                  "required": ["variants"],
                   "properties": {
                     "variants": {
                       "minProperties": 2
@@ -1359,14 +1172,10 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "counts"
-                        ]
+                        "required": ["counts"]
                       },
                       {
-                        "required": [
-                          "rawResult"
-                        ]
+                        "required": ["rawResult"]
                       }
                     ]
                   }
@@ -1375,9 +1184,7 @@
             },
             {
               "if": {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               "then": {
                 "properties": {
@@ -1446,14 +1253,10 @@
               "not": {
                 "anyOf": [
                   {
-                    "required": [
-                      "grading_error"
-                    ]
+                    "required": ["grading_error"]
                   },
                   {
-                    "required": [
-                      "format_errors"
-                    ]
+                    "required": ["format_errors"]
                   }
                 ]
               }
@@ -1461,10 +1264,7 @@
             {
               "properties": {
                 "classification": {
-                  "enum": [
-                    "behavior-failure",
-                    "student-runtime-failure"
-                  ]
+                  "enum": ["behavior-failure", "student-runtime-failure"]
                 }
               }
             },
@@ -1482,17 +1282,13 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "variants"
-                        ]
+                        "required": ["variants"]
                       }
                     ]
                   }
                 },
                 {
-                  "required": [
-                    "variants"
-                  ],
+                  "required": ["variants"],
                   "properties": {
                     "variants": {
                       "minProperties": 2
@@ -1501,14 +1297,10 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "counts"
-                        ]
+                        "required": ["counts"]
                       },
                       {
-                        "required": [
-                          "rawResult"
-                        ]
+                        "required": ["rawResult"]
                       }
                     ]
                   }
@@ -1517,9 +1309,7 @@
             },
             {
               "if": {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               "then": {
                 "properties": {
@@ -1572,14 +1362,10 @@
               "not": {
                 "anyOf": [
                   {
-                    "required": [
-                      "grading_error"
-                    ]
+                    "required": ["grading_error"]
                   },
                   {
-                    "required": [
-                      "format_errors"
-                    ]
+                    "required": ["format_errors"]
                   }
                 ]
               }
@@ -1605,17 +1391,13 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "variants"
-                        ]
+                        "required": ["variants"]
                       }
                     ]
                   }
                 },
                 {
-                  "required": [
-                    "variants"
-                  ],
+                  "required": ["variants"],
                   "properties": {
                     "variants": {
                       "minProperties": 2
@@ -1624,14 +1406,10 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "counts"
-                        ]
+                        "required": ["counts"]
                       },
                       {
-                        "required": [
-                          "rawResult"
-                        ]
+                        "required": ["rawResult"]
                       }
                     ]
                   }
@@ -1665,48 +1443,33 @@
               "const": "failure"
             },
             "trustedCompilation": {
-              "enum": [
-                "not-run",
-                "success"
-              ]
+              "enum": ["not-run", "success"]
             },
             "dependentExecution": {
               "const": "not-run"
             },
             "durations": {
               "not": {
-                "required": [
-                  "execution"
-                ]
+                "required": ["execution"]
               }
             }
           },
           "not": {
             "anyOf": [
               {
-                "required": [
-                  "maxPoints"
-                ]
+                "required": ["maxPoints"]
               },
               {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               {
-                "required": [
-                  "rawResult"
-                ]
+                "required": ["rawResult"]
               },
               {
-                "required": [
-                  "variants"
-                ]
+                "required": ["variants"]
               },
               {
-                "required": [
-                  "grading_error"
-                ]
+                "required": ["grading_error"]
               }
             ]
           },
@@ -1720,26 +1483,17 @@
                 }
               },
               "then": {
-                "required": [
-                  "durations",
-                  "diagnostics",
-                  "toolchain"
-                ],
+                "required": ["durations", "diagnostics", "toolchain"],
                 "properties": {
                   "runtime": {
                     "const": "java25-mutation-v1"
                   },
                   "durations": {
-                    "required": [
-                      "studentCompilation",
-                      "trustedCompilation"
-                    ]
+                    "required": ["studentCompilation", "trustedCompilation"]
                   }
                 },
                 "not": {
-                  "required": [
-                    "apiPrecheck"
-                  ]
+                  "required": ["apiPrecheck"]
                 }
               }
             },
@@ -1754,9 +1508,7 @@
                       "const": 0
                     }
                   },
-                  "required": [
-                    "score"
-                  ]
+                  "required": ["score"]
                 },
                 {
                   "properties": {
@@ -1765,9 +1517,7 @@
                     }
                   },
                   "not": {
-                    "required": [
-                      "score"
-                    ]
+                    "required": ["score"]
                   }
                 }
               ]
@@ -1796,43 +1546,29 @@
             },
             "durations": {
               "not": {
-                "required": [
-                  "execution"
-                ]
+                "required": ["execution"]
               }
             }
           },
           "not": {
             "anyOf": [
               {
-                "required": [
-                  "score"
-                ]
+                "required": ["score"]
               },
               {
-                "required": [
-                  "maxPoints"
-                ]
+                "required": ["maxPoints"]
               },
               {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               {
-                "required": [
-                  "rawResult"
-                ]
+                "required": ["rawResult"]
               },
               {
-                "required": [
-                  "variants"
-                ]
+                "required": ["variants"]
               },
               {
-                "required": [
-                  "grading_error"
-                ]
+                "required": ["grading_error"]
               }
             ]
           },
@@ -1859,22 +1595,15 @@
                   "const": "success"
                 },
                 "trustedCompilation": {
-                  "enum": [
-                    "not-run",
-                    "success"
-                  ]
+                  "enum": ["not-run", "success"]
                 },
                 "dependentExecution": {
                   "const": "not-run"
                 },
                 "durations": {
-                  "required": [
-                    "studentCompilation"
-                  ],
+                  "required": ["studentCompilation"],
                   "not": {
-                    "required": [
-                      "execution"
-                    ]
+                    "required": ["execution"]
                   }
                 }
               },
@@ -1890,18 +1619,14 @@
                   "then": {
                     "properties": {
                       "durations": {
-                        "required": [
-                          "trustedCompilation"
-                        ]
+                        "required": ["trustedCompilation"]
                       }
                     }
                   }
                 },
                 {
                   "if": {
-                    "required": [
-                      "apiPrecheck"
-                    ],
+                    "required": ["apiPrecheck"],
                     "properties": {
                       "apiPrecheck": {
                         "const": "not-run"
@@ -1915,9 +1640,7 @@
                       },
                       "durations": {
                         "not": {
-                          "required": [
-                            "apiExecution"
-                          ]
+                          "required": ["apiExecution"]
                         }
                       }
                     }
@@ -1978,44 +1701,28 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "grading_error"
-                        ]
+                        "required": ["grading_error"]
                       },
                       {
-                        "required": [
-                          "rawResult"
-                        ]
+                        "required": ["rawResult"]
                       },
                       {
-                        "required": [
-                          "counts"
-                        ]
+                        "required": ["counts"]
                       },
                       {
-                        "required": [
-                          "variants"
-                        ]
+                        "required": ["variants"]
                       }
                     ]
                   }
                 },
                 {
-                  "required": [
-                    "counts",
-                    "rawResult",
-                    "maxPoints"
-                  ],
+                  "required": ["counts", "rawResult", "maxPoints"],
                   "not": {
-                    "required": [
-                      "variants"
-                    ]
+                    "required": ["variants"]
                   },
                   "properties": {
                     "counts": {
-                      "required": [
-                        "failureKinds"
-                      ],
+                      "required": ["failureKinds"],
                       "properties": {
                         "executed": {
                           "minimum": 1
@@ -2109,44 +1816,28 @@
                   "not": {
                     "anyOf": [
                       {
-                        "required": [
-                          "grading_error"
-                        ]
+                        "required": ["grading_error"]
                       },
                       {
-                        "required": [
-                          "rawResult"
-                        ]
+                        "required": ["rawResult"]
                       },
                       {
-                        "required": [
-                          "counts"
-                        ]
+                        "required": ["counts"]
                       },
                       {
-                        "required": [
-                          "variants"
-                        ]
+                        "required": ["variants"]
                       }
                     ]
                   }
                 },
                 {
-                  "required": [
-                    "counts",
-                    "rawResult",
-                    "maxPoints"
-                  ],
+                  "required": ["counts", "rawResult", "maxPoints"],
                   "not": {
-                    "required": [
-                      "variants"
-                    ]
+                    "required": ["variants"]
                   },
                   "properties": {
                     "counts": {
-                      "required": [
-                        "failureKinds"
-                      ],
+                      "required": ["failureKinds"],
                       "properties": {
                         "executed": {
                           "minimum": 1
@@ -2165,11 +1856,7 @@
                             }
                           },
                           "additionalProperties": {
-                            "enum": [
-                              "wrong-answer",
-                              "runtime",
-                              "output-limit"
-                            ]
+                            "enum": ["wrong-answer", "runtime", "output-limit"]
                           }
                         },
                         "containerDiagnostics": {
@@ -2211,36 +1898,23 @@
               "const": true
             }
           },
-          "required": [
-            "grading_error",
-            "message"
-          ],
+          "required": ["grading_error", "message"],
           "not": {
             "anyOf": [
               {
-                "required": [
-                  "score"
-                ]
+                "required": ["score"]
               },
               {
-                "required": [
-                  "maxPoints"
-                ]
+                "required": ["maxPoints"]
               },
               {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               {
-                "required": [
-                  "rawResult"
-                ]
+                "required": ["rawResult"]
               },
               {
-                "required": [
-                  "variants"
-                ]
+                "required": ["variants"]
               }
             ]
           }
@@ -2280,34 +1954,22 @@
           "not": {
             "anyOf": [
               {
-                "required": [
-                  "maxPoints"
-                ]
+                "required": ["maxPoints"]
               },
               {
-                "required": [
-                  "counts"
-                ]
+                "required": ["counts"]
               },
               {
-                "required": [
-                  "rawResult"
-                ]
+                "required": ["rawResult"]
               },
               {
-                "required": [
-                  "variants"
-                ]
+                "required": ["variants"]
               },
               {
-                "required": [
-                  "grading_error"
-                ]
+                "required": ["grading_error"]
               },
               {
-                "required": [
-                  "format_errors"
-                ]
+                "required": ["format_errors"]
               }
             ]
           },
@@ -2323,9 +1985,7 @@
                       "const": 0
                     }
                   },
-                  "required": [
-                    "score"
-                  ]
+                  "required": ["score"]
                 },
                 {
                   "properties": {
@@ -2334,9 +1994,7 @@
                     }
                   },
                   "not": {
-                    "required": [
-                      "score"
-                    ]
+                    "required": ["score"]
                   }
                 }
               ]
@@ -2359,12 +2017,7 @@
           "maxLength": 8192
         },
         "status": {
-          "enum": [
-            "passed",
-            "failed",
-            "skipped",
-            "aborted"
-          ]
+          "enum": ["passed", "failed", "skipped", "aborted"]
         },
         "expected": {
           "type": "string",
@@ -2396,26 +2049,17 @@
           "maxLength": 32768
         }
       },
-      "required": [
-        "id",
-        "name",
-        "status"
-      ],
+      "required": ["id", "name", "status"],
       "additionalProperties": false
     },
     "javaAdmissionZero": {
       "if": {
         "properties": {
           "classification": {
-            "enum": [
-              "student-compilation-failure",
-              "student-api-mismatch"
-            ]
+            "enum": ["student-compilation-failure", "student-api-mismatch"]
           }
         },
-        "required": [
-          "classification"
-        ]
+        "required": ["classification"]
       },
       "then": {
         "properties": {
@@ -2426,9 +2070,7 @@
             "const": 0
           }
         },
-        "required": [
-          "score"
-        ]
+        "required": ["score"]
       }
     }
   },
@@ -2458,9 +2100,7 @@
     },
     {
       "if": {
-        "required": [
-          "counts"
-        ],
+        "required": ["counts"],
         "properties": {
           "backend": {
             "const": "container"
@@ -2477,9 +2117,7 @@
     },
     {
       "if": {
-        "required": [
-          "counts"
-        ],
+        "required": ["counts"],
         "properties": {
           "backend": {
             "const": "host"
@@ -2506,9 +2144,7 @@
     },
     {
       "if": {
-        "required": [
-          "apiPrecheck"
-        ],
+        "required": ["apiPrecheck"],
         "properties": {
           "apiPrecheck": {
             "const": "failure"
@@ -2525,9 +2161,7 @@
     },
     {
       "if": {
-        "required": [
-          "apiPrecheck"
-        ],
+        "required": ["apiPrecheck"],
         "properties": {
           "apiPrecheck": {
             "const": "success"
@@ -2563,10 +2197,7 @@
                   "const": "not-run"
                 },
                 "durations": {
-                  "required": [
-                    "apiCompilation",
-                    "apiExecution"
-                  ]
+                  "required": ["apiCompilation", "apiExecution"]
                 }
               }
             },
@@ -2583,9 +2214,7 @@
     },
     {
       "if": {
-        "required": [
-          "apiPrecheck"
-        ],
+        "required": ["apiPrecheck"],
         "properties": {
           "apiPrecheck": {
             "const": "not-run"
@@ -2599,16 +2228,11 @@
           },
           "durations": {
             "not": {
-              "required": [
-                "apiExecution"
-              ]
+              "required": ["apiExecution"]
             }
           }
         },
-        "required": [
-          "studentCompilation",
-          "dependentExecution"
-        ],
+        "required": ["studentCompilation", "dependentExecution"],
         "allOf": [
           {
             "if": {
@@ -2621,10 +2245,7 @@
             "then": {
               "properties": {
                 "studentCompilation": {
-                  "enum": [
-                    "failure",
-                    "success"
-                  ]
+                  "enum": ["failure", "success"]
                 }
               }
             },
@@ -2646,27 +2267,19 @@
             "const": "java25-gradle-junit-v1"
           }
         },
-        "required": [
-          "runtime"
-        ]
+        "required": ["runtime"]
       },
       "then": {
-        "required": [
-          "buildEvidence"
-        ],
+        "required": ["buildEvidence"],
         "properties": {
           "publicResult": {
-            "required": [
-              "buildEvidence"
-            ]
+            "required": ["buildEvidence"]
           }
         }
       },
       "else": {
         "not": {
-          "required": [
-            "buildEvidence"
-          ]
+          "required": ["buildEvidence"]
         }
       }
     },
@@ -2681,9 +2294,7 @@
             ]
           }
         },
-        "required": [
-          "runtime"
-        ]
+        "required": ["runtime"]
       },
       "then": {
         "allOf": [

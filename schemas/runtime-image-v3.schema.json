@@ -32,11 +32,7 @@
               "pattern": "^ghcr\\.io/[a-z0-9-]+/prairielearn-community-gateway@sha256:[a-f0-9]{64}$"
             }
           },
-          "required": [
-            "java",
-            "fish",
-            "community"
-          ],
+          "required": ["java", "fish", "community"],
           "additionalProperties": false
         },
         {
@@ -59,12 +55,7 @@
               "pattern": "^ghcr\\.io/[a-z0-9-]+/sp-git-workspace@sha256:[a-f0-9]{64}$"
             }
           },
-          "required": [
-            "java",
-            "fish",
-            "community",
-            "workspace"
-          ],
+          "required": ["java", "fish", "community", "workspace"],
           "additionalProperties": false
         }
       ]

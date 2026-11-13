@@ -1,10 +1,20 @@
+"""Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Protocol, TypeAlias, runtime_checkable
 import base64
-from selected_job_fixture import GradingJobs, fixture_list, fixture_record, fixture_run_job, fixture_set_up, fixture_text, native_manifest
-"""Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
+from selected_job_fixture import (
+    GradingJobs,
+    fixture_list,
+    fixture_record,
+    fixture_run_job,
+    fixture_set_up,
+    fixture_text,
+    native_manifest,
+)
+
 
 import hashlib
 import io
@@ -42,7 +52,9 @@ def validate_config(value: object) -> None:
     validate(value)
 
 
-def archive(entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED) -> bytes:
+def archive(
+    entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED
+) -> bytes:
     out = io.BytesIO()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -61,7 +73,9 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
     def policy(self, **overrides: object) -> None:
         self.cfg["additionalJavaSources"] = {**POLICY, **overrides}
 
-    def zip(self, entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED) -> bytes:
+    def zip(
+        self, entries: Iterable[ZipEntry], compression: int = zipfile.ZIP_DEFLATED
+    ) -> bytes:
         data = archive(entries, compression)
         (self.job / "student/additional-sources.zip").write_bytes(data)
         return data
@@ -149,7 +163,14 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         (self.job / "student/Student.java").unlink()
         for required in [None, True]:
             self.policy(**({} if required is None else {"primaryRequired": required}))
-            self.zip([("Student.java", "public class Student {public static int answer(){return 42;}}")])
+            self.zip(
+                [
+                    (
+                        "Student.java",
+                        "public class Student {public static int answer(){return 42;}}",
+                    )
+                ]
+            )
             r = self.run_job()
             self.assertEqual(r["classification"], "success", r)
             self.assertEqual(r["score"], 1)
@@ -173,7 +194,9 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
             self.assertNotIn("score", r)
             self.assertNotEqual(r["classification"], "success")
 
-    def test_optional_duplicate_present_primary_and_trusted_paths_are_refused(self) -> None:
+    def test_optional_duplicate_present_primary_and_trusted_paths_are_refused(
+        self,
+    ) -> None:
         self.policy(primaryRequired=False)
         for name in [
             "Student.java",
@@ -320,13 +343,36 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.assertEqual(r["score"], 1)
         evidence = fixture_record(r["additionalSources"])
         self.assertNotIn("archiveSha256", evidence)
-        self.assertEqual([x["bytes"] for item in fixture_list(evidence["files"]) for x in [fixture_record(item)]], [len(text.encode("utf-8")) for _, text in [
-            ("base/Base.java", "package base; public class Base {public static int answer(){return left.Helper.value()+right.Helper.value();}}"),
-            ("left/Helper.java", "package left; public class Helper {public static int value(){return 17;}}"),
-            ("right/Helper.java", "package right; public class Helper {public static int value(){return 25;}}"),
-        ]])
         self.assertEqual(
-            [x["path"] for item in fixture_list(evidence["files"]) for x in [fixture_record(item)]],
+            [
+                x["bytes"]
+                for item in fixture_list(evidence["files"])
+                for x in [fixture_record(item)]
+            ],
+            [
+                len(text.encode("utf-8"))
+                for _, text in [
+                    (
+                        "base/Base.java",
+                        "package base; public class Base {public static int answer(){return left.Helper.value()+right.Helper.value();}}",
+                    ),
+                    (
+                        "left/Helper.java",
+                        "package left; public class Helper {public static int value(){return 17;}}",
+                    ),
+                    (
+                        "right/Helper.java",
+                        "package right; public class Helper {public static int value(){return 25;}}",
+                    ),
+                ]
+            ],
+        )
+        self.assertEqual(
+            [
+                x["path"]
+                for item in fixture_list(evidence["files"])
+                for x in [fixture_record(item)]
+            ],
             ["base/Base.java", "left/Helper.java", "right/Helper.java"],
         )
         self.assertFalse((self.job / "student/base").exists())
@@ -594,7 +640,9 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
         self.zip([(f"Extra{i}.java", f"class Extra{i} {{}}") for i in range(128)])
         r = self.run_job()
         self.assertEqual(r["score"], 1)
-        self.assertEqual(len(fixture_list(fixture_record(r["additionalSources"])["files"])), 128)
+        self.assertEqual(
+            len(fixture_list(fixture_record(r["additionalSources"])["files"])), 128
+        )
 
     def test_closed_policy_rejects_bad_config_and_mutation(self) -> None:
         invalid_policies: list[dict[str, object]] = [
@@ -619,7 +667,9 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
 
 class OptionalPreparationTests(unittest.TestCase):
     def test_reference_and_contract_materialize_and_run_actual_sources(self) -> None:
-        import importlib.util, shutil, tempfile
+        import importlib.util
+        import shutil
+        import tempfile
         from gradle_unit_fixtures import registry
 
         spec = importlib.util.spec_from_file_location(
@@ -672,7 +722,9 @@ class OptionalPreparationTests(unittest.TestCase):
 
             def selected(name: str, out: str) -> dict[str, str]:
                 return {
-                    "name":out,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
+                    "name": out,
+                    "target": name,
+                    "data": base64.b64encode((project / name).read_bytes()).decode(),
                 }
 
             check: dict[str, object] = {
@@ -714,7 +766,13 @@ class OptionalPreparationTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
+                "contractCases": {
+                    "name": "cases.json",
+                    "target": "tests/cases.json",
+                    "data": base64.b64encode(
+                        (project / "tests/cases.json").read_bytes()
+                    ).decode(),
+                },
                 "contractFixtures": [
                     selected("tests/fixtures/only.zip", "additional-sources.zip")
                 ],

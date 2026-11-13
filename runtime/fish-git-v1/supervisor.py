@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """One explicit JDK25/official JUnit runner for host and /grade jobs."""
+
 import os
 from pathlib import Path
 import selectors
 import signal
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import time
 from collections.abc import Sequence
 from typing import Literal
@@ -23,23 +24,36 @@ def _protect_input_identity(job: Path) -> None:
     # host owner has the same numeric UID as the official container's sbuser.
     # Remap only the container account; never chown the caller's mounted tree.
     import pwd
-    owners={path.stat().st_uid for path in (job,job/'student',job/'tests')}
-    if pwd.getpwnam('sbuser').pw_uid not in owners:return
-    if not Path('/.dockerenv').is_file():
-        raise GraderError('Sandbox UID remapping requires the supported Docker container')
-    allocated={entry.pw_uid for entry in pwd.getpwall()}
-    candidate=next((uid for uid in range(60000,60100) if uid not in owners|allocated),None)
-    if candidate is None:raise GraderError('No isolated sandbox UID is available')
-    code,_text,reason=_run(['usermod','--uid',str(candidate),'sbuser'],job,5)
-    if code or reason or pwd.getpwnam('sbuser').pw_uid in owners:
-        raise GraderError('Cannot isolate sandbox UID from mounted input owners')
+
+    owners = {path.stat().st_uid for path in (job, job / "student", job / "tests")}
+    if pwd.getpwnam("sbuser").pw_uid not in owners:
+        return
+    if not Path("/.dockerenv").is_file():
+        raise GraderError(
+            "Sandbox UID remapping requires the supported Docker container"
+        )
+    allocated = {entry.pw_uid for entry in pwd.getpwall()}
+    candidate = next(
+        (uid for uid in range(60000, 60100) if uid not in owners | allocated), None
+    )
+    if candidate is None:
+        raise GraderError("No isolated sandbox UID is available")
+    code, _text, reason = _run(["usermod", "--uid", str(candidate), "sbuser"], job, 5)
+    if code or reason or pwd.getpwnam("sbuser").pw_uid in owners:
+        raise GraderError("Cannot isolate sandbox UID from mounted input owners")
 
 
-def _run(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
+def _run(
+    command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT
+) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
     try:
-        process = subprocess.Popen(
-            command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL, start_new_session=True,
+        process = subprocess.Popen(  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except OSError as exc:
         raise GraderError("Required grading executable is unavailable") from exc
@@ -84,4 +98,3 @@ def _run(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 
     text = bytes(output).decode("utf-8", errors="replace")
     text = text.encode("utf-8")[:output_limit].decode("utf-8", errors="ignore")
     return returncode, text, reason
-

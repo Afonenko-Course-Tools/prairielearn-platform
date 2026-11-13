@@ -6,9 +6,9 @@ node "${pl_root}/apps/prairielearn/bridge/preflight.mjs"
 pl_pid=$!
 trap 'kill "${pl_pid}" "${bridge_pid:-${pl_pid}}" 2>/dev/null || true' EXIT TERM INT
 for ((attempt = 1; attempt <= 180; attempt++)); do
-  if curl -fsS http://127.0.0.1:3000/pl/webhooks/ping >/dev/null; then break; fi
-  kill -0 "${pl_pid}"
-  sleep 1
+	if curl -fsS http://127.0.0.1:3000/pl/webhooks/ping >/dev/null; then break; fi
+	kill -0 "${pl_pid}"
+	sleep 1
 done
 curl -fsS http://127.0.0.1:3000/pl/webhooks/ping >/dev/null
 cd "${pl_root}"

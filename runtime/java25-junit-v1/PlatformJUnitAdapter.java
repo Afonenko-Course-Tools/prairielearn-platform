@@ -1,8 +1,7 @@
 package org.prairielearn.feedback;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
 import org.json.simple.*;
 import org.json.simple.parser.JSONParser;
 import org.junit.platform.engine.TestExecutionResult;
@@ -13,7 +12,10 @@ import org.junit.platform.launcher.*;
 import org.junit.platform.launcher.core.*;
 import org.opentest4j.AssertionFailedError;
 import org.prairielearn.autograder.AutograderInfo;
-import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
 /** Результаты и диагностика через публичные события JUnit и OpenTest4J. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
@@ -69,9 +71,10 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         }
         if (!Double.isFinite(weight) || weight < 0)
             throw new IllegalArgumentException("Invalid JUnit points");
-        TestIdentifier owner = plan.getParent(test).orElse(null);
+        TestPlan activePlan = Objects.requireNonNull(plan, "JUnit plan has not started");
+        TestIdentifier owner = activePlan.getParent(test).orElse(null);
         while (owner != null && !(owner.getSource().orElse(null) instanceof ClassSource))
-            owner = plan.getParent(owner).orElse(null);
+            owner = activePlan.getParent(owner).orElse(null);
         grading.put(
                 test.getUniqueId(),
                 Map.of(
@@ -120,7 +123,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     public synchronized void executionSkipped(TestIdentifier test, String reason) {
         List<TestIdentifier> nodes = new ArrayList<>();
         nodes.add(test);
-        nodes.addAll(plan.getDescendants(test));
+        TestPlan activePlan = Objects.requireNonNull(plan, "JUnit plan has not started");
+        nodes.addAll(activePlan.getDescendants(test));
         for (TestIdentifier child : nodes)
             if (child.isTest()) {
                 outcomes.put(child.getUniqueId(), "skipped");
@@ -241,7 +245,7 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         complete = true;
     }
 
-    private Map<String, Object> result() {
+    private synchronized Map<String, Object> result() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("complete", complete);
         result.put("registered", List.copyOf(registered));
@@ -256,7 +260,8 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         return result;
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args)
+            throws IOException, org.json.simple.parser.ParseException {
         JSONObject params;
         try (Reader reader = Files.newBufferedReader(Path.of(args[0]))) {
             params = (JSONObject) new JSONParser().parse(reader);
@@ -264,9 +269,9 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         List<String> students = new ArrayList<>();
         for (Object name : (JSONArray) params.get("student_classes")) students.add((String) name);
         PlatformJUnitAdapter listener = new PlatformJUnitAdapter(students);
-        var selectors =
-                ((JSONArray) params.get("test_classes"))
-                        .stream().map(name -> selectClass((String) name)).toList();
+        List<org.junit.platform.engine.discovery.ClassSelector> selectors = new ArrayList<>();
+        for (Object name : (JSONArray) params.get("test_classes"))
+            selectors.add(selectClass((String) name));
         Launcher launcher = LauncherFactory.create();
         launcher.execute(
                 LauncherDiscoveryRequestBuilder.request()

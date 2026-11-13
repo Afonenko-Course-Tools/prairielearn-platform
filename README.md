@@ -60,6 +60,9 @@ Workspace читает `{schema,files:string[]}` и реальный Git seed. �
 
 ## Проверки и границы среды
 
+Подготовка среды разработки на Arch Linux и установка инструментов описаны в
+[общем руководстве](https://github.com/Afonenko-Course-Tools/quarto-course/blob/main/docs/development-arch.md).
+
 Тесты используют вымышленные аккаунты, отдельные временные каталоги и
 изолированные локальные контейнеры. Старые БД, студенческие тома и история не
 мигрируются. Проверки Source, локального grader и Native-пакета различаются;
@@ -84,3 +87,7 @@ Native schemas входят в runtime bundle `schemas/native-upstream/`: contro
 через `python tools/vendor-native-schemas.py --exporter /absolute/exporter-checkout`
 и проверяет `--check`. Helper читает committed upstream files непосредственно
 из выбранного Git checkout, без второго manifest source SHA.
+
+Локальный статический gate и его отрицательные контроли: `npm run quality`,
+`npm run quality:controls`. Подготовка штатных инструментов, границы анализа
+и точные рассмотренные контексты описаны в [docs/quality.md](docs/quality.md).

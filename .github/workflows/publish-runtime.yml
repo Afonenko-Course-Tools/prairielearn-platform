@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: "25"
       - name: Resolve immutable version
         env:
           VERSION: ${{ inputs.version }}
@@ -67,7 +67,7 @@ jobs:
           for IMAGE in "$RUNTIME_IMAGE" "$COMMUNITY_IMAGE" "$FISH_IMAGE" "$WORKSPACE_IMAGE"; do bash tools/require-absent-image.sh "$IMAGE"; done
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
-          python-version: '3.14.0'
+          python-version: "3.14.0"
       - name: Установить fish из официального зеркала Ubuntu
         timeout-minutes: 5
         shell: bash
@@ -159,10 +159,10 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: "25"
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
-          python-version: '3.14.0'
+          python-version: "3.14.0"
       - name: Проверить Java source и отрицательные grading contracts
         run: |
           python3 -m pip install --requirement requirements.txt
@@ -221,7 +221,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
-          python-version: '3.14.0'
+          python-version: "3.14.0"
       - name: Зафиксировать reviewed Community source
         env:
           VERSION: ${{ inputs.version }}
