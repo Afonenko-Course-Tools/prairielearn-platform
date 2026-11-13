@@ -236,9 +236,9 @@ const server = createServer(async (req, res) => {
     )
       throw new BridgeError(401, "Service authentication required");
     const url = new URL(/** @type {string} */ (req.url), "http://bridge");
-    if (
-      !(req.method === "PUT" && url.pathname === "/internal/gateway/enrollment")
-    )
+    if (!(
+      req.method === "PUT" && url.pathname === "/internal/gateway/enrollment"
+    ))
       throw new BridgeError(404, "Unknown route");
     if (/** @type {string} */ (req.url).includes("?"))
       throw new BridgeError(400, "Unexpected enrollment query");

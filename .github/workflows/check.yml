@@ -80,6 +80,10 @@ jobs:
           PL_TEST_IMAGE="$(docker image inspect local/platform-java:ci --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_plain_image.py -v
 
   quality:
+    env:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: ${{ github.workspace }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: archlinux@sha256:97119fd9e21219b02b3c14ba256c9d3c0d031d07fc26c836c41ed793beeb5b74
