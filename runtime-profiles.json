@@ -21,9 +21,7 @@
     },
     "fish-git-v1": {
       "mode": "implementation",
-      "sourceExtensions": [
-        ".fish"
-      ],
+      "sourceExtensions": [".fish"],
       "baseImage": "docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e",
       "image": "ghcr.io/afonenko-course-tools/fish-git-grader@sha256:021adbbb5bb413f39b3e5e6c575dd989509998d89a8fe0cf470217e311a0c3d4",
       "bundle": "runtime/fish-git-v1",

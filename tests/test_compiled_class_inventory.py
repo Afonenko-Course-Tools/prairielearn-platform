@@ -9,6 +9,8 @@ from grading_types import JavaGradingDescriptor
 from json_boundary import JSONObject, JSONValue, json_object
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
 @dataclass
 class InventoryCase:
     name: str
@@ -50,12 +52,24 @@ CASES: list[InventoryCase] = []
 
 
 def case(
-    name: str, *, student: dict[str, str], apiClient: bool = False,
-    trustedTail: str = "", trustedBody: str = "", testName: str = "TrustedTest",
+    name: str,
+    *,
+    student: dict[str, str],
+    apiClient: bool = False,
+    trustedTail: str = "",
+    trustedBody: str = "",
+    testName: str = "TrustedTest",
 ) -> None:
-    CASES.append(InventoryCase(name=name, student=student, apiClient=apiClient,
-                              trustedTail=trustedTail, trustedBody=trustedBody,
-                              testName=testName))
+    CASES.append(
+        InventoryCase(
+            name=name,
+            student=student,
+            apiClient=apiClient,
+            trustedTail=trustedTail,
+            trustedBody=trustedBody,
+            testName=testName,
+        )
+    )
 
 
 # Удаление regex-догадки должно разрешить все эти законные binary inventories.
@@ -221,22 +235,58 @@ CASES.append(
     )
 )
 # student-tests компилирует trusted fixture первым, guard сохраняет этот факт.
-CASES.extend([
-    InventoryCase("student-tests-comment", api=False, mutation=True,
-                  trusted="success", apiRan=False, testTail="// class Impl {}"),
-    InventoryCase("student-tests-nested", api=False, mutation=True,
-                  trusted="success", apiRan=False, testBody="static class Nested{}",
-                  fixtureBody="static class Nested{}"),
-    InventoryCase("student-tests-actual-binary", expected="unsafe-submission",
-                  api=False, mutation=True, trusted="success", apiRan=False,
-                  student={"Impl.java": "public class Impl{CANARY public static int value(){return 42;}}"}),
-    InventoryCase("student-tests-reserved", expected="unsafe-submission",
-                  api=False, mutation=True, trusted="success", apiRan=False,
-                  student={"org/prairielearn/Evil.java": "package org.prairielearn;public class Evil{CANARY}"}),
-    InventoryCase("student-tests-compile-failure", expected="student-compilation-failure",
-                  api=False, mutation=True, trusted="success", apiRan=False,
-                  testSource="/* class Impl{} */ public class StudentSuite { this is not Java; }"),
-])
+CASES.extend(
+    [
+        InventoryCase(
+            "student-tests-comment",
+            api=False,
+            mutation=True,
+            trusted="success",
+            apiRan=False,
+            testTail="// class Impl {}",
+        ),
+        InventoryCase(
+            "student-tests-nested",
+            api=False,
+            mutation=True,
+            trusted="success",
+            apiRan=False,
+            testBody="static class Nested{}",
+            fixtureBody="static class Nested{}",
+        ),
+        InventoryCase(
+            "student-tests-actual-binary",
+            expected="unsafe-submission",
+            api=False,
+            mutation=True,
+            trusted="success",
+            apiRan=False,
+            student={
+                "Impl.java": "public class Impl{CANARY public static int value(){return 42;}}"
+            },
+        ),
+        InventoryCase(
+            "student-tests-reserved",
+            expected="unsafe-submission",
+            api=False,
+            mutation=True,
+            trusted="success",
+            apiRan=False,
+            student={
+                "org/prairielearn/Evil.java": "package org.prairielearn;public class Evil{CANARY}"
+            },
+        ),
+        InventoryCase(
+            "student-tests-compile-failure",
+            expected="student-compilation-failure",
+            api=False,
+            mutation=True,
+            trusted="success",
+            apiRan=False,
+            testSource="/* class Impl{} */ public class StudentSuite { this is not Java; }",
+        ),
+    ]
+)
 
 
 def execute(c: InventoryCase, platform: Path, output: Path) -> InventoryReport:
@@ -256,7 +306,9 @@ def execute(c: InventoryCase, platform: Path, output: Path) -> InventoryReport:
     mode = "student-tests" if c.mutation else "implementation"
     if c.mutation:
         source = {
-            "StudentSuite.java": c.testSource if c.testSource is not None else (
+            "StudentSuite.java": c.testSource
+            if c.testSource is not None
+            else (
                 "import org.junit.jupiter.api.Test;import static org.junit.jupiter.api.Assertions.*;public class StudentSuite{"
                 + c.testBody
                 + "@Test void actual(){assertEquals(42,Impl.value());}}"
@@ -287,11 +339,7 @@ def execute(c: InventoryCase, platform: Path, output: Path) -> InventoryReport:
                 "import org.prairielearn.api.PlatformApiPrecheck;public class PublishedApi{static{try{java.nio.file.Files.writeString(java.nio.file.Path.of("
                 + json.dumps(str(apiMarker))
                 + '),"RUN");}catch(java.io.IOException e){throw new AssertionError(e);}}public static void check(PlatformApiPrecheck.Api api)throws Exception{api.type("Answer");'
-                + (
-                    'api.compiles("Probe","class Probe{}",true);'
-                    if c.apiClient
-                    else ""
-                )
+                + ('api.compiles("Probe","class Probe{}",true);' if c.apiClient else "")
                 + "}}"
                 + c.apiExtra
             )
@@ -370,9 +418,7 @@ def execute(c: InventoryCase, platform: Path, output: Path) -> InventoryReport:
             raise ValueError("Некорректная форма durations в результате grader")
         if "execution" in durations:
             errors.append("behavior ran before rejection")
-        if c.api and r.get("apiPrecheck") != (
-            "success" if c.apiRan else "not-run"
-        ):
+        if c.api and r.get("apiPrecheck") != ("success" if c.apiRan else "not-run"):
             errors.append("wrong API execution stage")
         if c.api and r.get("dependentExecution") != "not-run":
             errors.append("dependent execution must be not-run")
@@ -384,11 +430,7 @@ def execute(c: InventoryCase, platform: Path, output: Path) -> InventoryReport:
             errors.append("wrong actual API canary execution")
         if c.apiRan and r.get("apiContainment") != "host-diagnostic":
             errors.append("completed API phase lost actual host containment")
-        if (
-            c.expected == "unsafe-submission"
-            and not c.apiRan
-            and "apiContainment" in r
-        ):
+        if c.expected == "unsafe-submission" and not c.apiRan and "apiContainment" in r:
             errors.append("containment claimed for API phase not executed")
     if c.expected != "success" and junitMarker.exists():
         errors.append("JUnit executed before rejection")
@@ -440,9 +482,7 @@ def install_case(case: InventoryCase) -> None:
         )
 
     check.__doc__ = case.name
-    setattr(
-        CompiledClassInventoryTests, "test_" + case.name.replace("-", "_"), check
-    )
+    setattr(CompiledClassInventoryTests, "test_" + case.name.replace("-", "_"), check)
 
 
 for item in CASES:

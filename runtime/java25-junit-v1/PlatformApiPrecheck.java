@@ -1,14 +1,16 @@
 package org.prairielearn.api;
 
+import org.json.simple.JSONObject;
+import org.json.simple.JSONValue;
+import org.json.simple.parser.JSONParser;
+
 import java.io.Reader;
 import java.lang.reflect.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+
 import javax.tools.*;
-import org.json.simple.JSONObject;
-import org.json.simple.JSONValue;
-import org.json.simple.parser.JSONParser;
 
 /** Узкая граница опубликованного Java API; условия и клиенты задаёт курс. */
 public final class PlatformApiPrecheck {
@@ -38,9 +40,9 @@ public final class PlatformApiPrecheck {
         }
 
         /**
-         * Имена кандидатов из compiled student directory/JAR, без loading/initialization.
-         * Для member classes binary name содержит '$'; точный getSimpleName и API
-         * проверяет вызывающий после отдельного type(name). Classpath не сканируется.
+         * Имена кандидатов из compiled student directory/JAR, без loading/initialization. Для
+         * member classes binary name содержит '$'; точный getSimpleName и API проверяет вызывающий
+         * после отдельного type(name). Classpath не сканируется.
          */
         public List<String> typeNames(String simpleName) throws java.io.IOException {
             if (simpleName == null

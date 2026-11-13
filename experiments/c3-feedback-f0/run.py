@@ -245,9 +245,9 @@ def main():
             work / "candidate", HERE / "fixtures/TypedTest.java", not args.baseline_red
         )
         assert baseline["outcomes"] == candidate["outcomes"]
-        assert any(
-            case.get("checks") for case in candidate["cases"]
-        ), "F0-1: отсутствуют наблюдения обычных assertions"
+        assert any(case.get("checks") for case in candidate["cases"]), (
+            "F0-1: отсутствуют наблюдения обычных assertions"
+        )
         receipt["groups"]["F0-1"] = {"status": "PASS"}
     except AssertionError as error:
         receipt["failure"] = str(error)

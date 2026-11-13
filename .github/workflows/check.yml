@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: "25"
       - name: Установить fish для проверки текстового runtime
         timeout-minutes: 5
         run: |
@@ -63,7 +63,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
-          python-version: '3.14.0'
+          python-version: "3.14.0"
       - name: Собрать обычный Dockerfile Java grader
         run: docker build -f images/java25-grader/Dockerfile -t local/platform-java:ci .
       - name: Проверить публичный результат grader в собранном образе

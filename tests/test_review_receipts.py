@@ -71,7 +71,6 @@ def result(scenario: str = "starter", image: str = IMAGE) -> dict[str, object]:
 
 
 class ReviewReceipts(unittest.TestCase):
-
     def test_starter_only_cannot_claim_complete_scenario_coverage(self) -> None:
         receipt = g.verify_results([result()], {}, registry=unit_registry())
         self.assertEqual(receipt.get("coverage"), "partial")
@@ -141,7 +140,6 @@ class ReviewReceipts(unittest.TestCase):
         with self.assertRaises(g.JobError):
             g.validate("check-result", r)
 
-
     def test_success_cannot_contain_infrastructure_error(self) -> None:
         r = result()
         r["grading_error"] = True
@@ -184,7 +182,6 @@ class ReviewReceipts(unittest.TestCase):
         )
         self.assertEqual(receipt["coverage"], "complete")
         self.assertEqual(receipt["unavailableReferences"], unavailable)
-
 
     def test_nested_variant_outcome_cannot_omit_compilation_counts_and_raw_results(
         self,
@@ -232,10 +229,6 @@ class ReviewReceipts(unittest.TestCase):
         b["runtime"] = "java25-mutation-v1"
         with self.assertRaises(g.JobError):
             g.verify_results([a, b], {}, registry=unit_registry())
-
-
-
-
 
     def test_invalid_starter_cannot_bypass_compilation_gate_with_negative_expectation(
         self,

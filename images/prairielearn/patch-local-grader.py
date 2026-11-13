@@ -1,4 +1,5 @@
 """Ограничить pinned локальный grader и освободить слот после очистки контейнера."""
+
 from pathlib import Path
 import re
 import sys
@@ -6,25 +7,37 @@ import sys
 
 def patch(source: str) -> str:
     markers = [
-        '(async () => {', '})()',
-        'Memory: (1 << 30) * 2', 'MemorySwap: (1 << 30) * 2',
-        'const container = await docker.createContainer({',
-        'const timeoutId = setTimeout(() => {',
+        "(async () => {",
+        "})()",
+        "Memory: (1 << 30) * 2",
+        "MemorySwap: (1 << 30) * 2",
+        "const container = await docker.createContainer({",
+        "const timeoutId = setTimeout(() => {",
     ]
-    removal = r'(?m)^\s*await container\.remove\(\{\s*// Remove any volumes associated with this container\s*v: true,\s*\}\);'
-    if any(source.count(value) != 1 for value in markers) or len(re.findall(removal, source)) != 1:
-        raise ValueError('Pinned local grader differs; review upstream')
-    source = source.replace(markers[0], markers[0] + '''
+    removal = r"(?m)^\s*await container\.remove\(\{\s*// Remove any volumes associated with this container\s*v: true,\s*\}\);"
+    if (
+        any(source.count(value) != 1 for value in markers)
+        or len(re.findall(removal, source)) != 1
+    ):
+        raise ValueError("Pinned local grader differs; review upstream")
+    source = source.replace(
+        markers[0],
+        markers[0]
+        + """
 const releaseLocalGrader = await acquireLocalGrader();
 let container;
 let timeoutId;
 let gradingFailure;
 let gradingFailed = false;
-try {''', 1)
-    source = source.replace(markers[4], 'container = await docker.createContainer({', 1)
-    source = source.replace(markers[5], 'timeoutId = setTimeout(() => {', 1)
-    source = re.sub(removal, '', source, count=1)
-    source = source.replace(markers[1], '''} catch (error) {
+try {""",
+        1,
+    )
+    source = source.replace(markers[4], "container = await docker.createContainer({", 1)
+    source = source.replace(markers[5], "timeoutId = setTimeout(() => {", 1)
+    source = re.sub(removal, "", source, count=1)
+    source = source.replace(
+        markers[1],
+        """} catch (error) {
   gradingFailed = true;
   gradingFailure = error;
   throw error;
@@ -69,13 +82,17 @@ try {''', 1)
       'Local grader container cleanup failed');
   }
 }
-})()''', 1)
+})()""",
+        1,
+    )
     for value in markers[2:4]:
-        source = source.replace(value, value.split(':')[0] + ': 512 * 1024 * 1024')
-    return "import { acquireLocalGrader } from '../../bridge/grader-pool.mjs';\n" + source
+        source = source.replace(value, value.split(":")[0] + ": 512 * 1024 * 1024")
+    return (
+        "import { acquireLocalGrader } from '../../bridge/grader-pool.mjs';\n" + source
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     for name in sys.argv[1:]:
         path = Path(name)
         path.write_text(patch(path.read_text()))

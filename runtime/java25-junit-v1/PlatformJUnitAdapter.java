@@ -1,8 +1,7 @@
 package org.prairielearn.feedback;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
 import org.json.simple.*;
 import org.json.simple.parser.JSONParser;
 import org.junit.platform.engine.TestExecutionResult;
@@ -13,7 +12,10 @@ import org.junit.platform.launcher.*;
 import org.junit.platform.launcher.core.*;
 import org.opentest4j.AssertionFailedError;
 import org.prairielearn.autograder.AutograderInfo;
-import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
 /** Результаты и диагностика через публичные события JUnit и OpenTest4J. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {

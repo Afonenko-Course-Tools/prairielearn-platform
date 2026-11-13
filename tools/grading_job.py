@@ -19,7 +19,33 @@ import jsonschema
 from collections.abc import Collection, Mapping, Sequence
 from typing import Literal, Protocol, TypeGuard, TypedDict, runtime_checkable
 from json_boundary import JSONValue, is_object, is_list, json_object, json_value
-from grading_types import (ApiPrecheck, AdditionalSourcePolicy, BuildEvidence, BuildReceipt, BuildStageFacts, CheckResult, ContractCases, Discovery, Expectations, ExpectationResult, GradingJobPayload, JavaConfig, JavaBuild, JSONInteger, JobBindings, NativeChecks, NativeProject, Outcome, QuestionBinding, ResultCounts, RunLimits, Scenario, SelectedFile, UnavailableReference, VerificationReceipt)
+from grading_types import (
+    ApiPrecheck,
+    AdditionalSourcePolicy,
+    BuildEvidence,
+    BuildReceipt,
+    BuildStageFacts,
+    CheckResult,
+    ContractCases,
+    Discovery,
+    Expectations,
+    ExpectationResult,
+    GradingJobPayload,
+    JavaConfig,
+    JavaBuild,
+    JSONInteger,
+    JobBindings,
+    NativeChecks,
+    NativeProject,
+    Outcome,
+    QuestionBinding,
+    ResultCounts,
+    RunLimits,
+    Scenario,
+    SelectedFile,
+    UnavailableReference,
+    VerificationReceipt,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_VERSION = "2.1.0"
@@ -45,7 +71,14 @@ class GradingJob(dict[str, object]):
         """Связать приватный scratch с его фактической файловой идентичностью."""
         self.root = root
         scratch = root.lstat()
-        self._scratch = (root, scratch.st_dev, scratch.st_ino, os.getuid(), os.getgid(), image)
+        self._scratch = (
+            root,
+            scratch.st_dev,
+            scratch.st_ino,
+            os.getuid(),
+            os.getgid(),
+            image,
+        )
         self._containers_stopped = True
 
     def mark_containers_stopped(self, stopped: bool) -> None:
@@ -66,7 +99,7 @@ def safe(root: str | Path, name: object) -> Path:
         or "\\" in name
         or Path(name).is_absolute()
         or re.match(r"^[A-Za-z]:", name)
-        or any(ord(c)<32 or ord(c)==127 for c in name)
+        or any(ord(c) < 32 or ord(c) == 127 for c in name)
         or any(p in ("", ".", "..") for p in name.split("/"))
     ):
         raise JobError("Unsafe relative path: " + repr(name))
@@ -100,8 +133,13 @@ def _junit_result_helpers() -> _JUnitHelpers:
     import runpy
 
     helpers: dict[str, object] = runpy.run_path(str(ROOT / "runtime/junit_result.py"))
-    validator, unique = helpers.get("validate_outcome"), helpers.get("unique_json_object")
-    if not isinstance(validator, _OutcomeValidator) or not isinstance(unique, _UniqueObject):
+    validator, unique = (
+        helpers.get("validate_outcome"),
+        helpers.get("unique_json_object"),
+    )
+    if not isinstance(validator, _OutcomeValidator) or not isinstance(
+        unique, _UniqueObject
+    ):
         raise JobError("Канонический JUnit decoder недоступен")
     return {"validate_outcome": validator, "unique_json_object": unique}
 
@@ -121,13 +159,20 @@ def validate(name: str, value: object) -> None:
     if name == "grading-job":
         name = "grading-job-v3"
     try:
-        schema = json_object(json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text()))
+        schema = json_object(
+            json.loads((ROOT / "schemas" / f"{name}.schema.json").read_text())
+        )
         validator = _schema_validator(jsonschema.Draft202012Validator(schema))
         validator.validate(json_value(value))
-        if name == "check-result" and is_object(value) and value.get("runtime") in (
-            "java25-junit-v1",
-            "java25-gradle-junit-v1",
-            "java25-mutation-v1",
+        if (
+            name == "check-result"
+            and is_object(value)
+            and value.get("runtime")
+            in (
+                "java25-junit-v1",
+                "java25-gradle-junit-v1",
+                "java25-mutation-v1",
+            )
         ):
             _junit_result_helpers()["validate_outcome"](
                 value, student_tests=value["runtime"] == "java25-mutation-v1"
@@ -174,8 +219,11 @@ def _runtime_profile(registry: object, runtime: str) -> dict[str, object]:
 
 
 def _selected_file(value: object) -> TypeGuard[SelectedFile]:
-    return (is_object(value) and set(value) == {"name", "target", "data"}
-            and all(isinstance(item, str) for item in value.values()))
+    return (
+        is_object(value)
+        and set(value) == {"name", "target", "data"}
+        and all(isinstance(item, str) for item in value.values())
+    )
 
 
 def inventory(manifest: object) -> list[NativeProject]:
@@ -208,15 +256,22 @@ def selected_bytes(item: SelectedFile) -> bytes:
 def _selection(items: object) -> list[SelectedFile]:
     if not is_list(items) or len(items) > 4096:
         raise JobError("Selected file count limit")
-    names: set[str] = set(); targets: set[str] = set(); total = 0
+    names: set[str] = set()
+    targets: set[str] = set()
+    total = 0
     selected: list[SelectedFile] = []
     for item in items:
         if not _selected_file(item):
             raise JobError("Closed selected file required")
-        name = item["name"]; target = item["target"]
-        safe(Path("/selected"), name); safe(Path("/selected"), target)
+        name = item["name"]
+        target = item["target"]
+        safe(Path("/selected"), name)
+        safe(Path("/selected"), target)
         for value, seen in ((name, names), (target, targets)):
-            if any(value == n or value.startswith(n + "/") or n.startswith(value + "/") for n in seen):
+            if any(
+                value == n or value.startswith(n + "/") or n.startswith(value + "/")
+                for n in seen
+            ):
                 raise JobError("Duplicate or colliding selected target")
             seen.add(value)
         total += len(selected_bytes(item))
@@ -227,19 +282,22 @@ def _selection(items: object) -> list[SelectedFile]:
 
 
 def _fixture_selection(items: object) -> list[SelectedFile]:
-    if not is_list(items) or len(items)>4096:
+    if not is_list(items) or len(items) > 4096:
         raise JobError("Selected fixture count limit")
-    selected: dict[tuple[str, str], SelectedFile]={};total=0
+    selected: dict[tuple[str, str], SelectedFile] = {}
+    total = 0
     for item in items:
-        row=_selection([item])[0];key=(row["target"],row["name"])
-        data=selected_bytes(row)
+        row = _selection([item])[0]
+        key = (row["target"], row["name"])
+        data = selected_bytes(row)
         if key in selected:
             if selected_bytes(selected[key]) != data:
                 raise JobError("Conflicting selected fixture bytes")
             continue
-        total+=len(data)
-        if total>64*1024**2:raise JobError("Selected fixture total size limit")
-        selected[key]=row
+        total += len(data)
+        if total > 64 * 1024**2:
+            raise JobError("Selected fixture total size limit")
+        selected[key] = row
     return list(selected.values())
 
 
@@ -248,8 +306,10 @@ def _cases(project: NativeProject) -> ContractCases:
     if not record:
         raise JobError("Missing selected contract cases")
     _selection([record])
-    try: cases: object = json.loads(selected_bytes(record))
-    except (ValueError, UnicodeError) as error: raise JobError("Invalid contract cases JSON") from error
+    try:
+        cases: object = json.loads(selected_bytes(record))
+    except (ValueError, UnicodeError) as error:
+        raise JobError("Invalid contract cases JSON") from error
     if not _contract_cases(cases):
         raise JobError("Invalid contract cases")
     if len({c["id"] for c in cases["cases"]}) != len(cases["cases"]):
@@ -257,23 +317,43 @@ def _cases(project: NativeProject) -> ContractCases:
     return cases
 
 
-def scenario_inventory(manifest: object, snapshot: Path | None = None, ids: Collection[str] | None = None) -> list[Scenario]:
+def scenario_inventory(
+    manifest: object, snapshot: Path | None = None, ids: Collection[str] | None = None
+) -> list[Scenario]:
     records: list[Scenario] = []
     for project in inventory(manifest):
         q = project["qualifiedId"]
-        if ids is not None and q not in ids: continue
+        if ids is not None and q not in ids:
+            continue
         records.append({"qualifiedId": q, "scenario": "starter", "optional": False})
         for ref in project["check"].get("references", []):
-            records.append({"qualifiedId": q, "scenario": "reference:" + ref["name"], "optional": ref.get("optional", False)})
+            records.append(
+                {
+                    "qualifiedId": q,
+                    "scenario": "reference:" + ref["name"],
+                    "optional": ref.get("optional", False),
+                }
+            )
         if project["check"].get("contract-cases"):
             for case in _cases(project)["cases"]:
-                records.append({"qualifiedId": q, "scenario": "contract:" + case["id"], "optional": False})
+                records.append(
+                    {
+                        "qualifiedId": q,
+                        "scenario": "contract:" + case["id"],
+                        "optional": False,
+                    }
+                )
     return sorted(records, key=lambda row: (row["qualifiedId"], row["scenario"]))
 
 
 def prepare_job(
-    manifest: object, snapshot: str | Path | None, id: str, scenario: str,
-    scope: str = "declared", delivery: object = None, registry: object = None,
+    manifest: object,
+    snapshot: str | Path | None,
+    id: str,
+    scenario: str,
+    scope: str = "declared",
+    delivery: object = None,
+    registry: object = None,
 ) -> GradingJob:
     projects = [p for p in inventory(manifest) if p["qualifiedId"] == id]
     if len(projects) != 1:
@@ -328,26 +408,27 @@ def prepare_job(
             raise JobError("reference-unavailable:" + name)
         selected = _selection(declared[0].get("sources", []))
         reference_names = {x["name"] for x in selected}
-        complete_java_reference = (
-            not extra_policy
-            and check["runtime"] in ("java25-junit-v1", "java25-gradle-junit-v1")
+        complete_java_reference = not extra_policy and check["runtime"] in (
+            "java25-junit-v1",
+            "java25-gradle-junit-v1",
         )
         if complete_java_reference:
             # Только exact named reference; публичная student policy не меняется.
             contents = [selected_bytes(x) for x in selected]
-            if (not selected or len(selected) > 128
+            if (
+                not selected
+                or len(selected) > 128
                 or any(not x["name"].endswith(".java") for x in selected)
                 or any(len(data) > 1048576 for data in contents)
-                or sum(len(data) for data in contents) > 4194304):
+                or sum(len(data) for data in contents) > 4194304
+            ):
                 raise JobError("Reference Java source count/type/size limit")
             reference_source_names = sorted(reference_names)
         elif (not extra_policy and reference_names != primary_names) or (
             not optional_primary and not primary_names <= reference_names
         ):
             raise JobError("Reference source mapping differs from student source names")
-        extras = [
-            x for x in selected if x["name"] not in primary_names
-        ]
+        extras = [x for x in selected if x["name"] not in primary_names]
         if extras and not complete_java_reference:
             if any(not x["name"].endswith(".java") for x in extras):
                 raise JobError("Reference extras must be Java sources")
@@ -356,15 +437,11 @@ def prepare_job(
                 buffer, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
             ) as archive:
                 for x in sorted(extras, key=lambda x: x["name"]):
-                    info = zipfile.ZipInfo(
-                        x["name"], date_time=(1980, 1, 1, 0, 0, 0)
-                    )
+                    info = zipfile.ZipInfo(x["name"], date_time=(1980, 1, 1, 0, 0, 0))
                     info.create_system = 3
                     info.external_attr = (stat.S_IFREG | 0o644) << 16
                     info.compress_type = zipfile.ZIP_DEFLATED
-                    archive.writestr(
-                        info, selected_bytes(x)
-                    )
+                    archive.writestr(info, selected_bytes(x))
             generated_archive = buffer.getvalue()
     elif scenario.startswith("contract:"):
         path = check.get("contract-cases")
@@ -380,7 +457,11 @@ def prepare_job(
                 "submission"
             ] not in primary_names | ({archive_name} if archive_name else set()):
                 raise JobError("Unauthorized contract fixture/submission")
-            bound = [f for f in fixtures if f["target"] == x["fixture"] and f["name"] == x["submission"]]
+            bound = [
+                f
+                for f in fixtures
+                if f["target"] == x["fixture"] and f["name"] == x["submission"]
+            ]
             if len(bound) != 1:
                 raise JobError("Selected contract fixture missing/ambiguous")
             if x["submission"] in replacements:
@@ -391,7 +472,11 @@ def prepare_job(
             if optional_primary
             else [replacements.get(x["name"], x) for x in sources]
         )
-        if not optional_primary and archive_name is not None and archive_name in replacements:
+        if (
+            not optional_primary
+            and archive_name is not None
+            and archive_name in replacements
+        ):
             selected.append(replacements[archive_name])
         expected_case = case[0]["expected"]
     elif scenario != "starter":
@@ -426,7 +511,10 @@ def prepare_job(
         "discovery": discovery,
     }
 
-    def api_selection(field: Literal["apiPrecheck", "verificationApiPrecheck"], selection: Sequence[SelectedFile]) -> ApiPrecheck | None:
+    def api_selection(
+        field: Literal["apiPrecheck", "verificationApiPrecheck"],
+        selection: Sequence[SelectedFile],
+    ) -> ApiPrecheck | None:
         value = p.get(field)
         if value is None:
             return None
@@ -461,8 +549,10 @@ def prepare_job(
         grading["apiPrecheck"] = api
     if extra_policy:
         translated: AdditionalSourcePolicy = {
-            "archive": extra_policy["archive"], "maxFiles": extra_policy["max-files"],
-            "maxFileBytes": extra_policy["max-file-bytes"], "maxTotalBytes": extra_policy["max-total-bytes"],
+            "archive": extra_policy["archive"],
+            "maxFiles": extra_policy["max-files"],
+            "maxFileBytes": extra_policy["max-file-bytes"],
+            "maxTotalBytes": extra_policy["max-total-bytes"],
             "maxArchiveBytes": extra_policy["max-archive-bytes"],
         }
         if "primary-required" in extra_policy:
@@ -472,7 +562,10 @@ def prepare_job(
         grading["additionalJavaSources"] = translated
     if "java-build" in check:
         build = check["java-build"]
-        translated_build: JavaBuild = {"kind": build["kind"], "artifact": build["artifact"]}
+        translated_build: JavaBuild = {
+            "kind": build["kind"],
+            "artifact": build["artifact"],
+        }
         if "main-class" in build:
             translated_build["mainClass"] = build["main-class"]
         grading["javaBuild"] = translated_build
@@ -504,7 +597,10 @@ def prepare_job(
     if scope == "delivery":
         from delivery4 import code_ids
         from delivery_verification import file_bytes
-        if not is_object(delivery) or id not in code_ids({k:v for k,v in delivery.items() if k != "_root"}):
+
+        if not is_object(delivery) or id not in code_ids(
+            {k: v for k, v in delivery.items() if k != "_root"}
+        ):
             raise JobError("ID absent from automatic delivery")
         delivery_root = delivery.get("_root", "")
         if not isinstance(delivery_root, str):
@@ -513,13 +609,24 @@ def prepare_job(
         question = "questions/" + id + "/"
         info = json_object(json.loads(file_bytes(native, question + "info.json")))
         external = info.get("externalGradingOptions", {})
-        if not isinstance(external, dict) or external.get("image") != job["imageDigest"]:
+        if (
+            not isinstance(external, dict)
+            or external.get("image") != job["imageDigest"]
+        ):
             raise JobError("Exported runtime image differs from selected image")
-        if json.loads(file_bytes(native, question + "tests/grading-job.json")) != grading:
+        if (
+            json.loads(file_bytes(native, question + "tests/grading-job.json"))
+            != grading
+        ):
             raise JobError("Exported grading descriptor differs from selected check")
-        for rows, prefix in ((tests, "tests/"), (sources, "serverFilesQuestion/starter/")):
+        for rows, prefix in (
+            (tests, "tests/"),
+            (sources, "serverFilesQuestion/starter/"),
+        ):
             for row in rows:
-                if file_bytes(native, question + prefix + row["name"]) != selected_bytes(row):
+                if file_bytes(
+                    native, question + prefix + row["name"]
+                ) != selected_bytes(row):
                     raise JobError("Exported selected file differs from grading input")
     if reference_source_names is not None:
         # Exported student descriptor сравнен выше; это только private reference job.
@@ -528,7 +635,9 @@ def prepare_job(
     payload: object = job
     if not _job_payload(payload):
         raise JobError("Invalid prepared job payload")
-    job.initialize_scratch(Path(tempfile.mkdtemp(prefix="grading-job-")), payload["imageDigest"])
+    job.initialize_scratch(
+        Path(tempfile.mkdtemp(prefix="grading-job-")), payload["imageDigest"]
+    )
     for folder, selection in [("student", selected), ("tests", tests)]:
         (job.root / folder).mkdir(exist_ok=True)
         for x in selection:
@@ -574,27 +683,34 @@ def prepare_job(
 NATIVE_RUNTIME = "java25-gradle-junit-v1"
 
 
-
-
 def _build_evidence(value: object) -> TypeGuard[BuildEvidence]:
-    if not is_object(value) or type(value.get("schemaVersion")) is not int or any(
-        not isinstance(value.get(key), str) for key in ("kind", "status")
+    if (
+        not is_object(value)
+        or type(value.get("schemaVersion")) is not int
+        or any(not isinstance(value.get(key), str) for key in ("kind", "status"))
     ):
         return False
     if "reason" in value and not isinstance(value["reason"], str):
         return False
     if "durationSeconds" in value and (
-        isinstance(value["durationSeconds"], bool) or not isinstance(value["durationSeconds"], (int, float))
+        isinstance(value["durationSeconds"], bool)
+        or not isinstance(value["durationSeconds"], (int, float))
     ):
         return False
     if "artifact" in value:
         artifact = value["artifact"]
-        if not is_object(artifact) or not isinstance(artifact.get("path"), str) or type(artifact.get("bytes")) is not int:
+        if (
+            not is_object(artifact)
+            or not isinstance(artifact.get("path"), str)
+            or type(artifact.get("bytes")) is not int
+        ):
             return False
     return True
 
 
-def _validate_build_observation(result: object, artifact: str | None = None) -> BuildEvidence:
+def _validate_build_observation(
+    result: object, artifact: str | None = None
+) -> BuildEvidence:
     if not is_object(result):
         raise JobError("Native build outcome is missing")
     proof = result.get("buildEvidence")
@@ -673,7 +789,9 @@ def _validate_build_observation(result: object, artifact: str | None = None) -> 
                 "Successful native build requires successful student compilation"
             )
         produced = proof.get("artifact")
-        if artifact is not None and (produced is None or produced["path"] != "build/libs/" + artifact):
+        if artifact is not None and (
+            produced is None or produced["path"] != "build/libs/" + artifact
+        ):
             raise JobError("Build artifact differs from descriptor")
     return proof
 
@@ -692,27 +810,40 @@ def _remove_container(name: str) -> None:
     """Подтвердить удаление только собственного заранее выбранного контейнера."""
     cleanup = subprocess.run(
         ["docker", "rm", "--force", name],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     if cleanup.returncode and "No such container" not in cleanup.stderr:
         raise JobError(cleanup.stderr)
 
 
-def _container_diagnostics(stdout: str | bytes | None, stderr: str | bytes | None,
-                           code: int | None, termination: str, maximum: JSONInteger) -> dict[str, str]:
+def _container_diagnostics(
+    stdout: str | bytes | None,
+    stderr: str | bytes | None,
+    code: int | None,
+    termination: str,
+    maximum: JSONInteger,
+) -> dict[str, str]:
     observation = {"stage": "container", "container.termination": termination}
     if code is not None:
         observation["container.exitCode"] = str(code)
     remaining = int(maximum)
     for name, value in (("stdout", stdout), ("stderr", stderr)):
         raw = value if isinstance(value, bytes) else (value or "").encode("utf-8")
-        text = raw.decode("utf-8", errors="replace").encode("utf-8")[:remaining].decode("utf-8", errors="ignore")
+        text = (
+            raw.decode("utf-8", errors="replace")
+            .encode("utf-8")[:remaining]
+            .decode("utf-8", errors="ignore")
+        )
         observation["container." + name] = text
         remaining -= len(text.encode("utf-8"))
     return observation
 
 
-def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> CheckResult:
+def run_job(
+    job: GradingJob, backend: str = "host", registry: object = None
+) -> CheckResult:
     if getattr(job, "_containers_stopped", True) is False:
         raise JobError("Grading retry requires stopped containers")
     raw_payload: object = job
@@ -722,15 +853,20 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
     if not getattr(job, "root", None):
         raise JobError("Prepared private job root required")
     common: JobBindings = {
-        "scope": payload["scope"], "qualifiedId": payload["qualifiedId"],
-        "scenario": payload["scenario"], "runtime": payload["runtime"], "imageDigest": payload["imageDigest"],
+        "scope": payload["scope"],
+        "qualifiedId": payload["qualifiedId"],
+        "scenario": payload["scenario"],
+        "runtime": payload["runtime"],
+        "imageDigest": payload["imageDigest"],
     }
     native = payload["runtime"] == NATIVE_RUNTIME
     result: dict[str, JSONValue]
     process_diagnostics: dict[str, str] = {}
     try:
         if backend == "host":
-            profile = _runtime_profile(registry or load_runtime_registry(), payload["runtime"])
+            profile = _runtime_profile(
+                registry or load_runtime_registry(), payload["runtime"]
+            )
             spec = importlib.util.spec_from_file_location(
                 "platform_grader",
                 safe(ROOT, profile.get("runner", "images/java25-grader/grade.py")),
@@ -789,15 +925,36 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                     timeout=payload["grading"]["limits"]["outer-seconds"],
                 )
             except OSError as error:
-                process_diagnostics = _container_diagnostics(None, str(error), None, "spawn-error", payload["grading"]["limits"]["max-output-bytes"])
+                process_diagnostics = _container_diagnostics(
+                    None,
+                    str(error),
+                    None,
+                    "spawn-error",
+                    payload["grading"]["limits"]["max-output-bytes"],
+                )
                 raise
             except (KeyboardInterrupt, subprocess.TimeoutExpired) as error:
                 if isinstance(error, subprocess.TimeoutExpired):
-                    process_diagnostics = _container_diagnostics(error.stdout, error.stderr, None, "timeout", payload["grading"]["limits"]["max-output-bytes"])
-                message = "Outer Docker timeout" if isinstance(error, subprocess.TimeoutExpired) else "Docker run interrupted"
+                    process_diagnostics = _container_diagnostics(
+                        error.stdout,
+                        error.stderr,
+                        None,
+                        "timeout",
+                        payload["grading"]["limits"]["max-output-bytes"],
+                    )
+                message = (
+                    "Outer Docker timeout"
+                    if isinstance(error, subprocess.TimeoutExpired)
+                    else "Docker run interrupted"
+                )
                 try:
                     _remove_container(job.containerName)
-                except (JobError, OSError, subprocess.TimeoutExpired, KeyboardInterrupt) as cleanup_error:
+                except (
+                    JobError,
+                    OSError,
+                    subprocess.TimeoutExpired,
+                    KeyboardInterrupt,
+                ) as cleanup_error:
                     if isinstance(error, KeyboardInterrupt):
                         raise error from cleanup_error
                     if isinstance(cleanup_error, KeyboardInterrupt):
@@ -809,14 +966,27 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                 if isinstance(error, KeyboardInterrupt):
                     raise
                 raise JobError(message + "; container removed") from error
-            process_diagnostics = _container_diagnostics(p.stdout, p.stderr, p.returncode, "signal" if p.returncode < 0 else "exit", payload["grading"]["limits"]["max-output-bytes"])
+            process_diagnostics = _container_diagnostics(
+                p.stdout,
+                p.stderr,
+                p.returncode,
+                "signal" if p.returncode < 0 else "exit",
+                payload["grading"]["limits"]["max-output-bytes"],
+            )
             if p.returncode not in (0, 2):
-                raise JobError("Docker infrastructure failure (exit " + str(p.returncode) + "): " + process_diagnostics["container.stderr"])
+                raise JobError(
+                    "Docker infrastructure failure (exit "
+                    + str(p.returncode)
+                    + "): "
+                    + process_diagnostics["container.stderr"]
+                )
             job.mark_containers_stopped(True)
-            result = json_object(json.loads(
-                (job.root / "results/results.json").read_text(),
-                object_pairs_hook=_junit_result_helpers()["unique_json_object"],
-            ))
+            result = json_object(
+                json.loads(
+                    (job.root / "results/results.json").read_text(),
+                    object_pairs_hook=_junit_result_helpers()["unique_json_object"],
+                )
+            )
         else:
             raise JobError("Unknown backend")
     except (JobError, OSError, ValueError, subprocess.TimeoutExpired) as error:
@@ -852,7 +1022,9 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
         try:
             publicresult = run_job(publicjob, backend, registry)
         finally:
-            job.mark_containers_stopped(primary_stopped and getattr(publicjob, "_containers_stopped", False))
+            job.mark_containers_stopped(
+                primary_stopped and getattr(publicjob, "_containers_stopped", False)
+            )
         result["publicResult"] = {
             k: v
             for k, v in json_object(publicresult).items()
@@ -862,9 +1034,9 @@ def run_job(job: GradingJob, backend: str = "host", registry: object = None) -> 
                 "scope",
                 "qualifiedId",
                 "scenario",
-                            "runtime",
+                "runtime",
                 "imageDigest",
-                                "backend",
+                "backend",
             }
         }
         if publicresult.get("infrastructure") != "complete":
@@ -903,10 +1075,16 @@ def _tuple(value: object) -> TypeGuard[tuple[object, ...]]:
     return isinstance(value, tuple)
 
 
-def _scratch_record(value: object) -> TypeGuard[tuple[Path, int, int, int, int, str | None]]:
-    return (_tuple(value) and len(value) == 6 and isinstance(value[0], Path)
-            and all(type(item) is int for item in value[1:5])
-            and (value[5] is None or isinstance(value[5], str)))
+def _scratch_record(
+    value: object,
+) -> TypeGuard[tuple[Path, int, int, int, int, str | None]]:
+    return (
+        _tuple(value)
+        and len(value) == 6
+        and isinstance(value[0], Path)
+        and all(type(item) is int for item in value[1:5])
+        and (value[5] is None or isinstance(value[5], str))
+    )
 
 
 def cleanup_job(job: object, backend: str) -> None:
@@ -915,18 +1093,22 @@ def cleanup_job(job: object, backend: str) -> None:
     if not _scratch_record(prepared) or not getattr(job, "_containers_stopped", False):
         raise JobError("Scratch cleanup requires prepared root and stopped containers")
     root, device, inode, uid, gid, image = prepared
+
     def check_root() -> None:
         job_root: object = getattr(job, "root", None)
         if not isinstance(job_root, Path):
             raise JobError("Scratch cleanup identity changed")
         current = job_root.lstat()
         if (
-            job_root != root or stat.S_ISLNK(current.st_mode)
-            or not stat.S_ISDIR(current.st_mode) or job_root.resolve() != root
+            job_root != root
+            or stat.S_ISLNK(current.st_mode)
+            or not stat.S_ISDIR(current.st_mode)
+            or job_root.resolve() != root
             or (current.st_dev, current.st_ino, current.st_uid) != (device, inode, uid)
             or (os.getuid(), os.getgid()) != (uid, gid)
         ):
             raise JobError("Scratch cleanup identity changed")
+
     check_root()
     try:
         shutil.rmtree(root)
@@ -936,25 +1118,52 @@ def cleanup_job(job: object, backend: str) -> None:
             raise
     check_root()
     if (
-        not image or not is_object(job) or job.get("imageDigest") != image
-        or any(c in str(root) for c in ",\"\r\n")
+        not image
+        or not is_object(job)
+        or job.get("imageDigest") != image
+        or any(c in str(root) for c in ',"\r\n')
     ):
         raise JobError("Scratch cleanup identity changed")
     cleanup_name = "plcleanup-" + secrets.token_hex(12)
     setattr(job, "_containers_stopped", False)
     try:
         result = subprocess.run(
-            ["docker", "run", "--rm", "--name", cleanup_name, "--network", "none", "--read-only",
-             "--entrypoint", "/bin/chown", "--mount",
-             f"type=bind,src={root},dst=/grade,bind-recursive=disabled",
-             image, "-Rh", f"{uid}:{gid}", "/grade"],
-            capture_output=True, text=True, timeout=10,
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--name",
+                cleanup_name,
+                "--network",
+                "none",
+                "--read-only",
+                "--entrypoint",
+                "/bin/chown",
+                "--mount",
+                f"type=bind,src={root},dst=/grade,bind-recursive=disabled",
+                image,
+                "-Rh",
+                f"{uid}:{gid}",
+                "/grade",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except (KeyboardInterrupt, subprocess.TimeoutExpired) as error:
-        message = "Scratch ownership cleanup timed out" if isinstance(error, subprocess.TimeoutExpired) else "Scratch ownership cleanup interrupted"
+        message = (
+            "Scratch ownership cleanup timed out"
+            if isinstance(error, subprocess.TimeoutExpired)
+            else "Scratch ownership cleanup interrupted"
+        )
         try:
             _remove_container(cleanup_name)
-        except (JobError, OSError, subprocess.TimeoutExpired, KeyboardInterrupt) as cleanup_error:
+        except (
+            JobError,
+            OSError,
+            subprocess.TimeoutExpired,
+            KeyboardInterrupt,
+        ) as cleanup_error:
             if isinstance(error, KeyboardInterrupt):
                 raise error from cleanup_error
             if isinstance(cleanup_error, KeyboardInterrupt):
@@ -979,7 +1188,11 @@ def preserve_build_logs(job: object, output: str | Path) -> Path | None:
         return None
     job_root: object = getattr(job, "root", None)
     qualified_id, scenario = job.get("qualifiedId"), job.get("scenario")
-    if not isinstance(job_root, Path) or not isinstance(qualified_id, str) or not isinstance(scenario, str):
+    if (
+        not isinstance(job_root, Path)
+        or not isinstance(qualified_id, str)
+        or not isinstance(scenario, str)
+    ):
         raise JobError("Prepared native build job identity required")
     areas = [
         ("", job_root / ".native-build-private"),
@@ -996,9 +1209,7 @@ def preserve_build_logs(job: object, output: str | Path) -> Path | None:
     base.mkdir(mode=0o700, exist_ok=True)
     if not base.is_dir() or base.stat().st_mode & 0o077:
         raise JobError("Private build evidence destination is not private")
-    destination = safe(
-        base, qualified_id + "/" + scenario.replace(":", "-")
-    )
+    destination = safe(base, qualified_id + "/" + scenario.replace(":", "-"))
     destination.mkdir(mode=0o700, parents=True)
     files: list[str] = []
     for label, source in present:
@@ -1030,43 +1241,90 @@ def preserve_build_logs(job: object, output: str | Path) -> Path | None:
     return destination
 
 
-def _count(counts: ResultCounts | None, key: Literal["executed", "failed", "skipped", "aborted"]) -> JSONInteger:
+def _count(
+    counts: ResultCounts | None,
+    key: Literal["executed", "failed", "skipped", "aborted"],
+) -> JSONInteger:
     return counts[key] if counts is not None else 0
 
 
-def _range_matches(actual: float | None, minimum: float | None, exactly: float | None, below: float | None = None) -> bool:
-    return (actual is not None and (minimum is None or actual >= minimum)
-            and (exactly is None or actual == exactly) and (below is None or actual < below))
+def _range_matches(
+    actual: float | None,
+    minimum: float | None,
+    exactly: float | None,
+    below: float | None = None,
+) -> bool:
+    return (
+        actual is not None
+        and (minimum is None or actual >= minimum)
+        and (exactly is None or actual == exactly)
+        and (below is None or actual < below)
+    )
 
 
 def _matches(result: Outcome[ResultCounts], expected: Expectations) -> tuple[bool, str]:
-    if "student-compilation" in expected and result.get("studentCompilation") != expected["student-compilation"]:
+    if (
+        "student-compilation" in expected
+        and result.get("studentCompilation") != expected["student-compilation"]
+    ):
         return False, "student-compilation"
-    if "classification" in expected and result["classification"] != expected["classification"]:
+    if (
+        "classification" in expected
+        and result["classification"] != expected["classification"]
+    ):
         return False, "classification"
-    if "job" in expected and ("complete" if result["infrastructure"] == "complete" else "failure") != expected["job"]:
+    if (
+        "job" in expected
+        and ("complete" if result["infrastructure"] == "complete" else "failure")
+        != expected["job"]
+    ):
         return False, "job"
     counts = result.get("counts")
     public = result.get("publicResult")
     if expected.get("required-tests") == "all-pass" and public:
         public_counts = public.get("counts")
-        if (_count(public_counts, "executed") < 1 or _count(public_counts, "failed")
-            or _count(public_counts, "skipped") or _count(public_counts, "aborted")):
+        if (
+            _count(public_counts, "executed") < 1
+            or _count(public_counts, "failed")
+            or _count(public_counts, "skipped")
+            or _count(public_counts, "aborted")
+        ):
             return False, "public-required-tests"
-    if expected.get("required-tests") == "all-pass" and result.get("variants") and result["classification"] != "success":
+    if (
+        expected.get("required-tests") == "all-pass"
+        and result.get("variants")
+        and result["classification"] != "success"
+    ):
         return False, "mutation-contracts"
-    if expected.get("required-tests") == "all-pass" and not result.get("variants") and (
-        _count(counts, "executed") < 1 or _count(counts, "failed")
-        or _count(counts, "skipped") or _count(counts, "aborted")
+    if (
+        expected.get("required-tests") == "all-pass"
+        and not result.get("variants")
+        and (
+            _count(counts, "executed") < 1
+            or _count(counts, "failed")
+            or _count(counts, "skipped")
+            or _count(counts, "aborted")
+        )
     ):
         return False, "required-tests"
     for name in ("failed-tests", "executed-tests"):
-        bound = expected.get("failed-tests") if name == "failed-tests" else expected.get("executed-tests")
+        bound = (
+            expected.get("failed-tests")
+            if name == "failed-tests"
+            else expected.get("executed-tests")
+        )
         actual = _count(counts, "failed" if name == "failed-tests" else "executed")
-        if bound is not None and not _range_matches(actual, bound.get("at-least"), bound.get("exactly")):
+        if bound is not None and not _range_matches(
+            actual, bound.get("at-least"), bound.get("exactly")
+        ):
             return False, name
     score = expected.get("score")
-    if score is not None and not _range_matches(result.get("score"), score.get("at-least"), score.get("exactly"), score.get("less-than")):
+    if score is not None and not _range_matches(
+        result.get("score"),
+        score.get("at-least"),
+        score.get("exactly"),
+        score.get("less-than"),
+    ):
         return False, "score"
     outcomes: dict[str, str] = counts["outcomes"] if counts is not None else {}
     if "test-ids" in expected and not set(expected["test-ids"]).issubset(outcomes):
@@ -1081,7 +1339,8 @@ def _student_compilation(result: CheckResult) -> str:
 
 
 def verify_results(
-    results: Sequence[object], expectations: Mapping[str, Expectations],
+    results: Sequence[object],
+    expectations: Mapping[str, Expectations],
     required_scenarios: Sequence[Scenario] | None = None,
     unavailable: Sequence[UnavailableReference] | None = None,
     registry: object = None,
@@ -1113,7 +1372,9 @@ def verify_results(
         key = (q, r["scenario"])
         if expected_jobs is not None:
             expected = expected_jobs.get(key)
-            if expected is None or any(r.get(field) != expected[field] for field in expected):
+            if expected is None or any(
+                r.get(field) != expected[field] for field in expected
+            ):
                 raise JobError("Result opaque maps differ from prepared Job")
         if key in observed:
             raise JobError("Duplicate scenario result")
@@ -1125,11 +1386,20 @@ def verify_results(
             primary_build = _validate_build_observation(r)
             if "publicResult" in r:
                 public_build = _validate_build_observation(r["publicResult"])
-                primary_artifact, public_artifact = primary_build.get("artifact"), public_build.get("artifact")
-                if (primary_build["status"] == "success" and public_build["status"] == "success"
-                    and primary_artifact is not None and public_artifact is not None
-                    and public_artifact["path"] != primary_artifact["path"]):
-                    raise JobError("Public build artifact differs from primary descriptor")
+                primary_artifact, public_artifact = (
+                    primary_build.get("artifact"),
+                    public_build.get("artifact"),
+                )
+                if (
+                    primary_build["status"] == "success"
+                    and public_build["status"] == "success"
+                    and primary_artifact is not None
+                    and public_artifact is not None
+                    and public_artifact["path"] != primary_artifact["path"]
+                ):
+                    raise JobError(
+                        "Public build artifact differs from primary descriptor"
+                    )
         binding: QuestionBinding = {
             "qualifiedId": q,
             "runtime": rid,
@@ -1186,7 +1456,7 @@ def verify_results(
     unavailable = sorted(
         unavailable or [], key=lambda r: (r["qualifiedId"], r["scenario"])
     )
-    absent: set[tuple[str,str]] = set()
+    absent: set[tuple[str, str]] = set()
     for entry in unavailable:
         key = (entry["qualifiedId"], entry["scenario"])
         if (
@@ -1221,7 +1491,10 @@ def verify_results(
         if result["runtime"] != NATIVE_RUNTIME:
             continue
         proof = _validate_build_observation(result)
-        stages: BuildStageFacts = {"classification": result["classification"], "infrastructure": result["infrastructure"]}
+        stages: BuildStageFacts = {
+            "classification": result["classification"],
+            "infrastructure": result["infrastructure"],
+        }
         if "studentCompilation" in result:
             stages["studentCompilation"] = result["studentCompilation"]
         if "trustedCompilation" in result:
@@ -1230,7 +1503,14 @@ def verify_results(
             stages["apiPrecheck"] = result["apiPrecheck"]
         if "dependentExecution" in result:
             stages["dependentExecution"] = result["dependentExecution"]
-        native_builds.append({**proof, "qualifiedId": result["qualifiedId"], "scenario": result["scenario"], "outcome": stages})
+        native_builds.append(
+            {
+                **proof,
+                "qualifiedId": result["qualifiedId"],
+                "scenario": result["scenario"],
+                "outcome": stages,
+            }
+        )
     if native_builds:
         summary["buildEvidence"] = sorted(
             native_builds, key=lambda r: (r["qualifiedId"], r["scenario"])

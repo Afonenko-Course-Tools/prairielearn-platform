@@ -204,7 +204,7 @@ def provenance_bounds(work):
         True,
         policy_edit=lambda p: p.replace("id\\:I", "other\\:I"),
         expected_rejection="Stale projection schema",
-        **options
+        **options,
     )
 
     def mutate(trusted):
@@ -219,7 +219,7 @@ def provenance_bounds(work):
         True,
         trusted_edit=mutate,
         expected_rejection="Stale trusted class",
-        **options
+        **options,
     )
     collision = work / "CollisionTest.java"
     collision.write_text(
@@ -233,9 +233,9 @@ def provenance_bounds(work):
             projection_types=["CollisionTest$Value"],
         )
     except AssertionError:
-        assert (
-            "Reserved projection collision" in base.PROCESSES[-1]["stderr"]
-        ), base.PROCESSES[-1]
+        assert "Reserved projection collision" in base.PROCESSES[-1]["stderr"], (
+            base.PROCESSES[-1]
+        )
         assert not (work / "collision/counts.json").exists()
     else:
         raise AssertionError("collision admitted")
@@ -246,9 +246,9 @@ def provenance_bounds(work):
         student_source=base.HERE / "fixtures/ControlStudent.java",
         helpers=[base.HERE / "fixtures/TrustedHelper.java"],
     )
-    assert (
-        controls["passed"] == 1 and len(controls["cases"][0]["checks"]) == 2
-    ), controls
+    assert controls["passed"] == 1 and len(controls["cases"][0]["checks"]) == 2, (
+        controls
+    )
     return {
         "status": "PASS",
         "quota16": first,
@@ -320,13 +320,13 @@ def preemptive(work):
         work / "preemptive-baseline",
         base.HERE / "fixtures/PreemptiveTest.java",
         False,
-        **options
+        **options,
     )
     right, raw = base.execute(
         work / "preemptive-candidate",
         base.HERE / "fixtures/PreemptiveTest.java",
         True,
-        **options
+        **options,
     )
     assert left["outcomes"] == right["outcomes"] and right["failed"] == 0, (left, right)
     restore = base.case(right, "parentRestore")["checks"]

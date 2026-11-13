@@ -46,19 +46,13 @@
             ]
           },
           "statementVisibility": {
-            "enum": [
-              "open",
-              "restricted"
-            ]
+            "enum": ["open", "restricted"]
           },
           "artifactPolicy": {
             "type": "object",
             "properties": {
               "student": {
-                "enum": [
-                  "starter",
-                  "full"
-                ]
+                "enum": ["starter", "full"]
               },
               "full": {
                 "const": "full"
@@ -67,10 +61,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "full",
-              "conditions"
-            ],
+            "required": ["full", "conditions"],
             "additionalProperties": false
           },
           "materialization": {
@@ -92,17 +83,10 @@
                       "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(/|$))(?!.*//)(?!.*[\\u0000-\\u001f\\u007f]).+$"
                     },
                     "audience": {
-                      "enum": [
-                        "student",
-                        "grading"
-                      ]
+                      "enum": ["student", "grading"]
                     }
                   },
-                  "required": [
-                    "source",
-                    "target",
-                    "audience"
-                  ],
+                  "required": ["source", "target", "audience"],
                   "additionalProperties": false
                 }
               },
@@ -111,9 +95,7 @@
               }
             },
             "additionalProperties": false,
-            "required": [
-              "commonFiles"
-            ]
+            "required": ["commonFiles"]
           },
           "qualifiedId": {
             "type": "string",
@@ -134,10 +116,7 @@
                 "type": "object",
                 "properties": {
                   "mode": {
-                    "enum": [
-                      "implementation",
-                      "student-tests"
-                    ]
+                    "enum": ["implementation", "student-tests"]
                   },
                   "root": {
                     "type": "string",
@@ -151,18 +130,11 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "mode",
-                  "root",
-                  "include"
-                ],
+                "required": ["mode", "root", "include"],
                 "additionalProperties": false
               },
               "mode": {
-                "enum": [
-                  "implementation",
-                  "student-tests"
-                ]
+                "enum": ["implementation", "student-tests"]
               },
               "runtime": {
                 "enum": [
@@ -182,11 +154,7 @@
                     "const": "UTF-8"
                   },
                   "compiler-options": {
-                    "const": [
-                      "-proc:none",
-                      "-Xmaxerrs",
-                      "5"
-                    ]
+                    "const": ["-proc:none", "-Xmaxerrs", "5"]
                   }
                 },
                 "required": [],
@@ -228,9 +196,7 @@
                         "const": "weighted"
                       }
                     },
-                    "required": [
-                      "mode"
-                    ],
+                    "required": ["mode"],
                     "additionalProperties": false
                   },
                   {
@@ -240,9 +206,7 @@
                         "const": "all-pass"
                       }
                     },
-                    "required": [
-                      "mode"
-                    ],
+                    "required": ["mode"],
                     "additionalProperties": false
                   },
                   {
@@ -271,20 +235,13 @@
                               "minItems": 1
                             }
                           },
-                          "required": [
-                            "id",
-                            "weight",
-                            "tests"
-                          ],
+                          "required": ["id", "weight", "tests"],
                           "additionalProperties": false
                         },
                         "minItems": 1
                       }
                     },
-                    "required": [
-                      "mode",
-                      "groups"
-                    ],
+                    "required": ["mode", "groups"],
                     "additionalProperties": false
                   },
                   {
@@ -294,21 +251,14 @@
                         "const": "threshold"
                       },
                       "basis": {
-                        "enum": [
-                          "score",
-                          "passed-tests"
-                        ]
+                        "enum": ["score", "passed-tests"]
                       },
                       "value": {
                         "type": "number",
                         "minimum": 0
                       }
                     },
-                    "required": [
-                      "mode",
-                      "basis",
-                      "value"
-                    ],
+                    "required": ["mode", "basis", "value"],
                     "additionalProperties": false
                   }
                 ]
@@ -343,10 +293,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "name",
-                    "root"
-                  ],
+                  "required": ["name", "root"],
                   "additionalProperties": false
                 },
                 "minItems": 0
@@ -378,16 +325,10 @@
                     "type": "object",
                     "properties": {
                       "student-compilation": {
-                        "enum": [
-                          "success",
-                          "failure"
-                        ]
+                        "enum": ["success", "failure"]
                       },
                       "job": {
-                        "enum": [
-                          "complete",
-                          "failure"
-                        ]
+                        "enum": ["complete", "failure"]
                       },
                       "classification": {
                         "enum": [
@@ -470,16 +411,10 @@
                     "type": "object",
                     "properties": {
                       "student-compilation": {
-                        "enum": [
-                          "success",
-                          "failure"
-                        ]
+                        "enum": ["success", "failure"]
                       },
                       "job": {
-                        "enum": [
-                          "complete",
-                          "failure"
-                        ]
+                        "enum": ["complete", "failure"]
                       },
                       "classification": {
                         "enum": [
@@ -580,10 +515,7 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "correct",
-                  "mutants"
-                ],
+                "required": ["correct", "mutants"],
                 "additionalProperties": false
               },
               "api-precheck": {
@@ -604,10 +536,7 @@
                     "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
                   }
                 },
-                "required": [
-                  "files",
-                  "entry"
-                ],
+                "required": ["files", "entry"],
                 "additionalProperties": false
               },
               "verification-api-precheck": {
@@ -628,10 +557,7 @@
                     "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
                   }
                 },
-                "required": [
-                  "files",
-                  "entry"
-                ],
+                "required": ["files", "entry"],
                 "additionalProperties": false
               },
               "additional-java-sources": {
@@ -692,40 +618,28 @@
                     "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$(?![\\s\\S])"
                   }
                 },
-                "required": [
-                  "kind",
-                  "artifact"
-                ],
+                "required": ["kind", "artifact"],
                 "additionalProperties": false
               }
             },
-            "required": [
-              "runtime"
-            ],
+            "required": ["runtime"],
             "additionalProperties": false,
             "allOf": [
               {
                 "if": {
                   "anyOf": [
                     {
-                      "required": [
-                        "api-precheck"
-                      ]
+                      "required": ["api-precheck"]
                     },
                     {
-                      "required": [
-                        "verification-api-precheck"
-                      ]
+                      "required": ["verification-api-precheck"]
                     }
                   ]
                 },
                 "then": {
                   "properties": {
                     "runtime": {
-                      "enum": [
-                        "java25-junit-v1",
-                        "java25-gradle-junit-v1"
-                      ]
+                      "enum": ["java25-junit-v1", "java25-gradle-junit-v1"]
                     },
                     "mode": {
                       "const": "implementation"
@@ -735,17 +649,12 @@
               },
               {
                 "if": {
-                  "required": [
-                    "additional-java-sources"
-                  ]
+                  "required": ["additional-java-sources"]
                 },
                 "then": {
                   "properties": {
                     "runtime": {
-                      "enum": [
-                        "java25-junit-v1",
-                        "java25-gradle-junit-v1"
-                      ]
+                      "enum": ["java25-junit-v1", "java25-gradle-junit-v1"]
                     },
                     "sourceProfile": {
                       "properties": {
@@ -767,15 +676,10 @@
                       "const": "java25-gradle-junit-v1"
                     }
                   },
-                  "required": [
-                    "runtime"
-                  ]
+                  "required": ["runtime"]
                 },
                 "then": {
-                  "required": [
-                    "java-build",
-                    "sourceProfile"
-                  ],
+                  "required": ["java-build", "sourceProfile"],
                   "properties": {
                     "mode": {
                       "const": "implementation"
@@ -786,17 +690,13 @@
                           "const": "implementation"
                         }
                       },
-                      "required": [
-                        "mode"
-                      ]
+                      "required": ["mode"]
                     }
                   }
                 },
                 "else": {
                   "not": {
-                    "required": [
-                      "java-build"
-                    ]
+                    "required": ["java-build"]
                   }
                 }
               }
@@ -822,11 +722,7 @@
                   "maxLength": 1400000
                 }
               },
-              "required": [
-                "name",
-                "target",
-                "data"
-              ],
+              "required": ["name", "target", "data"],
               "additionalProperties": false
             },
             "maxItems": 4096
@@ -851,11 +747,7 @@
                   "maxLength": 1400000
                 }
               },
-              "required": [
-                "name",
-                "target",
-                "data"
-              ],
+              "required": ["name", "target", "data"],
               "additionalProperties": false
             },
             "maxItems": 4096
@@ -880,11 +772,7 @@
                   "maxLength": 1400000
                 }
               },
-              "required": [
-                "name",
-                "target",
-                "data"
-              ],
+              "required": ["name", "target", "data"],
               "additionalProperties": false
             },
             "maxItems": 4096
@@ -942,11 +830,7 @@
                         "maxLength": 1400000
                       }
                     },
-                    "required": [
-                      "name",
-                      "target",
-                      "data"
-                    ],
+                    "required": ["name", "target", "data"],
                     "additionalProperties": false
                   },
                   "maxItems": 128
@@ -984,11 +868,7 @@
                   "maxLength": 1400000
                 }
               },
-              "required": [
-                "name",
-                "target",
-                "data"
-              ],
+              "required": ["name", "target", "data"],
               "additionalProperties": false
             },
             "maxItems": 4096
@@ -1006,10 +886,7 @@
                 }
               }
             },
-            "required": [
-              "ready",
-              "missing"
-            ],
+            "required": ["ready", "missing"],
             "additionalProperties": false
           },
           "apiPrecheck": {
@@ -1029,10 +906,7 @@
                 "uniqueItems": true
               }
             },
-            "required": [
-              "entry",
-              "files"
-            ],
+            "required": ["entry", "files"],
             "additionalProperties": false
           },
           "verificationApiPrecheck": {
@@ -1052,10 +926,7 @@
                 "uniqueItems": true
               }
             },
-            "required": [
-              "entry",
-              "files"
-            ],
+            "required": ["entry", "files"],
             "additionalProperties": false
           },
           "contractCases": {
@@ -1076,11 +947,7 @@
                 "maxLength": 1400000
               }
             },
-            "required": [
-              "name",
-              "target",
-              "data"
-            ],
+            "required": ["name", "target", "data"],
             "additionalProperties": false
           }
         },
@@ -1101,11 +968,6 @@
       }
     }
   },
-  "required": [
-    "schemaVersion",
-    "courseId",
-    "bookRoot",
-    "projects"
-  ],
+  "required": ["schemaVersion", "courseId", "bookRoot", "projects"],
   "additionalProperties": false
 }

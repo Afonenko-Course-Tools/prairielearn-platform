@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import base64
-from selected_job_fixture import GradingJobs, fixture_list, fixture_record, fixture_run_job, fixture_set_up, native_manifest
+from selected_job_fixture import (
+    GradingJobs,
+    fixture_list,
+    fixture_record,
+    fixture_run_job,
+    fixture_set_up,
+    native_manifest,
+)
+
 """Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -54,7 +62,9 @@ class ApiPrecheckTests(unittest.TestCase):
         self.assertNotIn("trustedCompilation", fixture_record(r["durations"]))
         return r
 
-    def test_missing_class_method_access_static_and_return_stop_dependent_compile(self) -> None:
+    def test_missing_class_method_access_static_and_return_stop_dependent_compile(
+        self,
+    ) -> None:
         for source in [
             "class Other {}",
             "public class Student {}",
@@ -101,7 +111,9 @@ class ApiPrecheckTests(unittest.TestCase):
             + 'api.expect(method.getDeclaringClass()==api.type("Student"),"объявление в Student",method.getDeclaringClass().getName());'
         )
         r = self.mismatch("public class Student extends Base {}")
-        self.assertEqual(fixture_record(r["apiDiagnostic"])["expected"], "объявление в Student")
+        self.assertEqual(
+            fixture_record(r["apiDiagnostic"])["expected"], "объявление в Student"
+        )
 
     def test_malformed_student_never_compiles_precheck(self) -> None:
         (self.job / "student/Student.java").write_text("not Java")
@@ -289,7 +301,9 @@ class ApiDeliveryTests(unittest.TestCase):
         with self.assertRaises(m.JobError):
             m.validate("check-result", value)
 
-    def test_prepare_maps_private_public_prechecks_and_validates_mismatch_result(self) -> None:
+    def test_prepare_maps_private_public_prechecks_and_validates_mismatch_result(
+        self,
+    ) -> None:
         import tempfile
         import sys
         from unittest.mock import patch
@@ -305,7 +319,10 @@ class ApiDeliveryTests(unittest.TestCase):
         if not isinstance(m, GradingJobs):
             raise AssertionError("Контракт grading_job недоступен")
         # Загруженный по пути tool получает тот же sibling search path, что и CLI.
-        with patch.object(sys, "path", [str(root / "tools"), *sys.path]), tempfile.TemporaryDirectory() as directory:
+        with (
+            patch.object(sys, "path", [str(root / "tools"), *sys.path]),
+            tempfile.TemporaryDirectory() as directory,
+        ):
             snapshot = Path(directory)
             p = snapshot / "tasks/p"
             files = {
@@ -322,7 +339,9 @@ class ApiDeliveryTests(unittest.TestCase):
 
             def s(name: str, target: str) -> dict[str, str]:
                 return {
-                    "name":target,"target":name,"data":base64.b64encode((p/name).read_bytes()).decode(),
+                    "name": target,
+                    "target": name,
+                    "data": base64.b64encode((p / name).read_bytes()).decode(),
                 }
 
             fact: dict[str, object] = {
@@ -363,17 +382,21 @@ class ApiDeliveryTests(unittest.TestCase):
                     fixture_record(job["grading"])["apiPrecheck"],
                     {"files": ["ApiContract.java"], "entry": "ApiContract"},
                 )
-                public = fixture_record(json.loads(
-                    (
-                        job.root / "public-verification/tests/grading-job.json"
-                    ).read_text()
-                ))
+                public = fixture_record(
+                    json.loads(
+                        (
+                            job.root / "public-verification/tests/grading-job.json"
+                        ).read_text()
+                    )
+                )
                 self.assertEqual(
                     public["apiPrecheck"],
                     {"files": ["public/PublicApi.java"], "entry": "PublicApi"},
                 )
                 saved_public = fact.pop("verificationApiPrecheck")
-                saved_declaration = fixture_record(fact["check"]).pop("verification-api-precheck")
+                saved_declaration = fixture_record(fact["check"]).pop(
+                    "verification-api-precheck"
+                )
                 try:
                     with self.assertRaises(m.JobError):
                         omitted = m.prepare_job(
@@ -386,12 +409,17 @@ class ApiDeliveryTests(unittest.TestCase):
                         shutil.rmtree(omitted.root)
                 finally:
                     fact["verificationApiPrecheck"] = saved_public
-                    fixture_record(fact["check"])["verification-api-precheck"] = saved_declaration
-                result = fixture_record(m.run_job(job, "host", registry=unit_registry()))
+                    fixture_record(fact["check"])["verification-api-precheck"] = (
+                        saved_declaration
+                    )
+                result = fixture_record(
+                    m.run_job(job, "host", registry=unit_registry())
+                )
                 self.assertEqual(result["classification"], "student-api-mismatch")
                 m.validate("check-result", result)
                 self.assertEqual(
-                    fixture_record(result["publicResult"])["classification"], "student-api-mismatch"
+                    fixture_record(result["publicResult"])["classification"],
+                    "student-api-mismatch",
                 )
                 wrong = {**result, "score": 1}
                 with self.assertRaises(m.JobError):
@@ -408,7 +436,11 @@ class ApiDeliveryTests(unittest.TestCase):
                 shutil.copytree(
                     job.root / "student", question / "serverFilesQuestion/starter"
                 )
-                native_files = sorted(f.relative_to(native).as_posix() for f in native.rglob("*") if f.is_file())
+                native_files = sorted(
+                    f.relative_to(native).as_posix()
+                    for f in native.rglob("*")
+                    if f.is_file()
+                )
                 delivery = {
                     "schemaVersion": 5,
                     "courseId": "demo",
@@ -417,13 +449,21 @@ class ApiDeliveryTests(unittest.TestCase):
                     "instances": {"unit": {"works": ["sec-api"]}},
                     "gradingPayloads": {
                         "demo/exr-api": {
-                            "kind":"project","uuid": "00000000-0000-4000-8000-000000000001",
+                            "kind": "project",
+                            "uuid": "00000000-0000-4000-8000-000000000001",
                             "grading": {"method": "external"},
                             "submission": {"mode": "upload"},
                             "sourceRoot": fact["projectRoot"],
                             "projectCheck": "unit-api",
                             "runtime": fixture_record(fact["check"])["runtime"],
-                            "sources": [{"projectRelativePath":r["target"],"submissionRelativePath":r["name"]} for row in fixture_list(fact["sources"]) for r in [fixture_record(row)]],
+                            "sources": [
+                                {
+                                    "projectRelativePath": r["target"],
+                                    "submissionRelativePath": r["name"],
+                                }
+                                for row in fixture_list(fact["sources"])
+                                for r in [fixture_record(row)]
+                            ],
                         }
                     },
                     "questions": ["demo/exr-api"],
@@ -473,6 +513,12 @@ class ApiDeliveryTests(unittest.TestCase):
                 )
             fixture_record(fact["apiPrecheck"])["files"] = ["ApiContract.java"]
             (p / "tests/ApiContract.java").write_text("tampered")
-            retained=m.prepare_job(manifest,snapshot,"demo/exr-api","starter",registry=unit_registry())
-            try:self.assertNotEqual((retained.root/"tests/ApiContract.java").read_text(),"tampered")
-            finally:shutil.rmtree(retained.root)
+            retained = m.prepare_job(
+                manifest, snapshot, "demo/exr-api", "starter", registry=unit_registry()
+            )
+            try:
+                self.assertNotEqual(
+                    (retained.root / "tests/ApiContract.java").read_text(), "tampered"
+                )
+            finally:
+                shutil.rmtree(retained.root)

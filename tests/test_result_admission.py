@@ -8,13 +8,15 @@ from selected_job_fixture import fixture_record
 import copy, json, os, unittest, jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = fixture_record(json.loads(
-    Path(
-        os.environ.get(
-            "RESULT_ADMISSION_SCHEMA", ROOT / "schemas/check-result.schema.json"
-        )
-    ).read_text()
-))
+SCHEMA = fixture_record(
+    json.loads(
+        Path(
+            os.environ.get(
+                "RESULT_ADMISSION_SCHEMA", ROOT / "schemas/check-result.schema.json"
+            )
+        ).read_text()
+    )
+)
 
 
 @runtime_checkable
@@ -29,8 +31,10 @@ def _validator(value: object) -> _Validator:
 
 
 def outcome(
-    student: str = "success", trusted: str = "not-run", api: str | None = None,
-    classification: str = "unsafe-submission"
+    student: str = "success",
+    trusted: str = "not-run",
+    api: str | None = None,
+    classification: str = "unsafe-submission",
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "classification": classification,
@@ -56,11 +60,15 @@ def outcome(
     if api is not None:
         value.update(apiPrecheck=api, dependentExecution="not-run")
         if api == "success":
-            fixture_record(value["durations"]).update(apiCompilation=0.1, apiExecution=0.1)
+            fixture_record(value["durations"]).update(
+                apiCompilation=0.1, apiExecution=0.1
+            )
     return value
 
 
-def envelope(value: Mapping[str, object], runtime: str = "java25-junit-v1") -> dict[str, object]:
+def envelope(
+    value: Mapping[str, object], runtime: str = "java25-junit-v1"
+) -> dict[str, object]:
     return dict(
         schemaVersion=1,
         scope="declared",
@@ -69,12 +77,14 @@ def envelope(value: Mapping[str, object], runtime: str = "java25-junit-v1") -> d
         scenario="contract:guard",
         runtime=runtime,
         imageDigest=None,
-        **value
+        **value,
     )
 
 
 class ResultAdmissionTests(unittest.TestCase):
-    def check_both(self, value: dict[str, object], valid: bool, runtime: str = "java25-junit-v1") -> None:
+    def check_both(
+        self, value: dict[str, object], valid: bool, runtime: str = "java25-junit-v1"
+    ) -> None:
         root = envelope(value, runtime)
         nested = copy.deepcopy(value)
         validators: list[tuple[str, object, dict[str, object]]] = [

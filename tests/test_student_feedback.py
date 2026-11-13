@@ -19,6 +19,7 @@ def _case_schema(value: object) -> _CaseSchema:
         raise AssertionError("Канонический case schema validator недоступен")
     return value
 
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
     "student_feedback", ROOT / "runtime/student_feedback.py"
@@ -31,25 +32,45 @@ spec.loader.exec_module(feedback)
 
 class StudentFeedback(unittest.TestCase):
     def test_infrastructure_has_no_score(self):
-        value = feedback.student_result({'classification': 'infrastructure-failure', 'score': 0}, {})
-        self.assertFalse(value['gradable'])
-        self.assertTrue(value['grading_error'])
-        self.assertNotIn('score', value)
+        value = feedback.student_result(
+            {"classification": "infrastructure-failure", "score": 0}, {}
+        )
+        self.assertFalse(value["gradable"])
+        self.assertTrue(value["grading_error"])
+        self.assertNotIn("score", value)
 
     def test_compile_error_preserves_file_line_and_message(self):
-        value = feedback.student_result({'classification': 'student-compilation-failure',
-            'gradable': True, 'score': 0,
-            'diagnostics': {'studentCompilation': '/grade/student/demo/A.java:3: error: incompatible types: int cannot be converted to String'}},
-            {'sourceFiles': ['demo/A.java']})
-        error = value['feedback']['compileErrors'][0]
-        self.assertEqual((error['file'], error['line']), ('demo/A.java', 3))
-        self.assertIn('int cannot be converted to String', error['message'])
+        value = feedback.student_result(
+            {
+                "classification": "student-compilation-failure",
+                "gradable": True,
+                "score": 0,
+                "diagnostics": {
+                    "studentCompilation": "/grade/student/demo/A.java:3: error: incompatible types: int cannot be converted to String"
+                },
+            },
+            {"sourceFiles": ["demo/A.java"]},
+        )
+        error = value["feedback"]["compileErrors"][0]
+        self.assertEqual((error["file"], error["line"]), ("demo/A.java", 3))
+        self.assertIn("int cannot be converted to String", error["message"])
 
     def test_api_mismatch_preserves_declared_contract(self):
-        value = feedback.student_result({'classification': 'student-api-mismatch', 'gradable': True,
-            'score': 0, 'apiDiagnostic': {'expected': 'public static int answer()', 'observed': 'missing method'}}, {})
-        self.assertEqual(value['score'], 0)
-        self.assertEqual(value['feedback']['api']['actual'], 'missing method')
+        value = feedback.student_result(
+            {
+                "classification": "student-api-mismatch",
+                "gradable": True,
+                "score": 0,
+                "apiDiagnostic": {
+                    "expected": "public static int answer()",
+                    "observed": "missing method",
+                },
+            },
+            {},
+        )
+        self.assertEqual(value["score"], 0)
+        self.assertEqual(value["feedback"]["api"]["actual"], "missing method")
+
 
 class ActualFishFeedback(unittest.TestCase):
     def test_fish_score_and_runtime_class_without_description_metadata(self):
@@ -90,8 +111,8 @@ class ActualFishFeedback(unittest.TestCase):
             source.write_text("cat input.txt > out.txt\n")
             value = feedback.student_result(grader.grade(job), cfg)
             self.assertNotIn("CLOSED_", json.dumps(value))
-            self.assertEqual(value['score'], 1)
-            self.assertNotIn('publicCases', value['feedback'])
+            self.assertEqual(value["score"], 1)
+            self.assertNotIn("publicCases", value["feedback"])
             source.write_text("echo CLOSED_FISH_RUNTIME >&2\nexit 3\n")
             value = feedback.student_result(grader.grade(job), cfg)
             self.assertEqual(value["feedback"]["kind"], "runtime")
@@ -164,5 +185,5 @@ class NativeFishContainerFeedback(unittest.TestCase):
                     self.assertEqual(result["containment"], "official-landlock-sbuser")
                 else:
                     self.assertNotIn("CLOSED_", json.dumps(result) + run.stderr)
-                    self.assertEqual(result['score'], 1)
-                    self.assertNotIn('publicCases', result['feedback'])
+                    self.assertEqual(result["score"], 1)
+                    self.assertNotIn("publicCases", result["feedback"])

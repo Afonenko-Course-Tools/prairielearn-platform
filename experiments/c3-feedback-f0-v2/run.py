@@ -638,7 +638,7 @@ def main():
     evidence = X / ("c3-f0-v2-final-evidence-" + str(time.time_ns()))
     active = None
     try:
-        for n in ([args.group] if args.group else range(1, 7)):
+        for n in [args.group] if args.group else range(1, 7):
             active = n
             group_work = work / str(n)
             group_work.mkdir()

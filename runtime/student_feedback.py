@@ -8,7 +8,13 @@ import textwrap
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 if TYPE_CHECKING:
-    from grading_types import CompileError, PublicCase, PublicFeedback, PublicTest, StudentResult
+    from grading_types import (
+        CompileError,
+        PublicCase,
+        PublicFeedback,
+        PublicTest,
+        StudentResult,
+    )
     from junit_result import JUnitCounts
 
 
@@ -37,7 +43,9 @@ def _checked_counts(value: object, *, require_cases: bool) -> TypeGuard[JUnitCou
     import runpy
     from pathlib import Path
 
-    helpers: dict[str, object] = runpy.run_path(str(Path(__file__).with_name("junit_result.py")))
+    helpers: dict[str, object] = runpy.run_path(
+        str(Path(__file__).with_name("junit_result.py"))
+    )
     validator = helpers.get("validate_counts")
     if not isinstance(validator, _CountsValidator):
         raise RuntimeError("Каноническая проверка JUnit недоступна")
@@ -46,7 +54,10 @@ def _checked_counts(value: object, *, require_cases: bool) -> TypeGuard[JUnitCou
 
 
 def _prose(value: str) -> str:
-    return textwrap.fill(value, width=50, break_long_words=False, break_on_hyphens=False)
+    return textwrap.fill(
+        value, width=50, break_long_words=False, break_on_hyphens=False
+    )
+
 
 _EXPLANATIONS = {
     "compile": (
@@ -113,7 +124,11 @@ def student_result(result: object, descriptor: object) -> StudentResult:
     if not _object(result):
         raise ValueError("Ожидается объект результата проверки")
     classification = result.get("classification")
-    kind = _KINDS.get(classification, "infrastructure") if isinstance(classification, str) else "infrastructure"
+    kind = (
+        _KINDS.get(classification, "infrastructure")
+        if isinstance(classification, str)
+        else "infrastructure"
+    )
     if result.get("infrastructure") == "failure" or result.get("grading_error"):
         kind = "infrastructure"
     if not _object(descriptor):
@@ -126,16 +141,18 @@ def student_result(result: object, descriptor: object) -> StudentResult:
         limit = limits.get("run-seconds") if _object(limits) else None
         try:
             valid_limit = (
-                isinstance(limit, (int, float)) and not isinstance(limit, bool)
-                and math.isfinite(limit) and limit > 0
+                isinstance(limit, (int, float))
+                and not isinstance(limit, bool)
+                and math.isfinite(limit)
+                and limit > 0
             )
         except OverflowError:
             valid_limit = False
         reason = "Превышен общий лимит выполнения проверок."
         observed = (
             f"Проверки остановлены по лимиту {limit:g} с. Достоверная оценка не получена."
-            if valid_limit and isinstance(limit, (int, float)) else
-            "Проверки остановлены по общему пределу времени. Достоверная оценка не получена."
+            if valid_limit and isinstance(limit, (int, float))
+            else "Проверки остановлены по общему пределу времени. Достоверная оценка не получена."
         )
         what_check = "Сохраните ответ и повторите отправку; при повторении сообщите преподавателю."
     feedback: PublicFeedback = {
@@ -177,12 +194,17 @@ def student_result(result: object, descriptor: object) -> StudentResult:
             native["score"] = max(0, min(1, score))
     raw_counts = result.get("counts", {})
     counts: JUnitCounts | None = None
-    if _object(raw_counts) and ("cases" in raw_counts or "feedbackProtocolVersion" in raw_counts):
+    if _object(raw_counts) and (
+        "cases" in raw_counts or "feedbackProtocolVersion" in raw_counts
+    ):
         # Перед чтением JUnit cases выполняется прежняя каноническая проверка.
-        if _checked_counts(raw_counts, require_cases=not (
-            descriptor.get("mode") == "student-tests"
-            and raw_counts.get("feedbackProtocolVersion", 1) == 1
-        )):
+        if _checked_counts(
+            raw_counts,
+            require_cases=not (
+                descriptor.get("mode") == "student-tests"
+                and raw_counts.get("feedbackProtocolVersion", 1) == 1
+            ),
+        ):
             counts = raw_counts
     if kind != "infrastructure" and counts is not None and counts["complete"]:
         public_cases: list[PublicCase] = []
@@ -192,27 +214,43 @@ def student_result(result: object, descriptor: object) -> StudentResult:
         for original in counts["cases"]:
             case: PublicCase = {"name": original["name"], "status": original["status"]}
             lines: list[str] = []
-            for key, label in (("message", "Сообщение"), ("expected", "Ожидается"),
-                               ("actual", "Получено"), ("exceptionType", "Исключение"),
-                               ("stackTrace", "Трассировка")):
+            for key, label in (
+                ("message", "Сообщение"),
+                ("expected", "Ожидается"),
+                ("actual", "Получено"),
+                ("exceptionType", "Исключение"),
+                ("stackTrace", "Трассировка"),
+            ):
                 if key in original:
                     case[key] = original[key]
                     lines.append(label + ": " + original[key])
             public_cases.append(case)
-            summary = "Проверка пройдена." if case["status"] == "passed" else "Проверка не пройдена."
-            public_tests.append({"name": case["name"], "description": summary,
-                                 "message": "\n".join([summary, *lines]),
-                                 "points": int(case["status"] == "passed"), "max_points": 1})
+            summary = (
+                "Проверка пройдена."
+                if case["status"] == "passed"
+                else "Проверка не пройдена."
+            )
+            public_tests.append(
+                {
+                    "name": case["name"],
+                    "description": summary,
+                    "message": "\n".join([summary, *lines]),
+                    "points": int(case["status"] == "passed"),
+                    "max_points": 1,
+                }
+            )
     output = result.get("output")
-    if isinstance(output, str) and output and (counts is not None or str(descriptor.get("runtime", "")).startswith("java")):
+    if (
+        isinstance(output, str)
+        and output
+        and (
+            counts is not None or str(descriptor.get("runtime", "")).startswith("java")
+        )
+    ):
         native["output"] = output[:65536]
     if kind == "compile":
         diagnostics = result.get("diagnostics", {})
-        text = (
-            diagnostics.get("studentCompilation", "")
-            if _object(diagnostics)
-            else ""
-        )
+        text = diagnostics.get("studentCompilation", "") if _object(diagnostics) else ""
         errors: list[CompileError] = []
         if isinstance(text, str):
             for match in re.finditer(
@@ -274,14 +312,21 @@ def student_result(result: object, descriptor: object) -> StudentResult:
                 elif "is public, should be declared in a file named" in detail:
                     reason = "Имя файла не соответствует открытому типу."
                 errors.append(
-                    {"file": filename, "line": int(match[2]), "reason": reason, "message": detail}
+                    {
+                        "file": filename,
+                        "line": int(match[2]),
+                        "reason": reason,
+                        "message": detail,
+                    }
                 )
                 if len(errors) == 5:
                     break
         if errors:
             feedback["compileErrors"] = errors
             native["message"] += "\n\n" + "\n".join(
-                _prose(error["file"] + ":" + str(error["line"]) + ": " + error["reason"])
+                _prose(
+                    error["file"] + ":" + str(error["line"]) + ": " + error["reason"]
+                )
                 for error in errors
             )
     if result.get("classification") == "student-api-mismatch":

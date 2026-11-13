@@ -1,6 +1,7 @@
 import base64
 import importlib.util
 from selected_job_fixture import native_manifest
+
 """Real JUnit jobs expose discovery, isolation and policy mistakes."""
 
 from gradle_unit_fixtures import registry as unit_registry
@@ -16,7 +17,7 @@ from json_boundary import is_object
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["PATH"] = "/usr/lib/jvm/java-25-openjdk/bin:" + os.environ["PATH"]
-grader = load_java_grader(ROOT / 'images/java25-grader/grade.py')
+grader = load_java_grader(ROOT / "images/java25-grader/grade.py")
 TEST = """import org.junit.jupiter.api.Test; import static org.junit.jupiter.api.Assertions.*;
 public class AnswerTest { @Test void right() throws Exception { assertEquals(42,Class.forName("Student").getMethod("answer").invoke(null)); } }"""
 
@@ -27,13 +28,14 @@ def _is_record(value: object) -> TypeGuard[dict[str, object]]:
 
 def _record(value: object) -> dict[str, object]:
     if not _is_record(value):
-        raise AssertionError('Ожидался изменяемый объект fixture')
+        raise AssertionError("Ожидался изменяемый объект fixture")
     return value
 
 
 class JUnitJob(unittest.TestCase):
     job: Path
     cfg: JavaGradingDescriptor
+
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -73,7 +75,8 @@ class JUnitJob(unittest.TestCase):
     def test_existing_junit_suite_runs_without_course_main(self) -> None:
         r = self.run_job()
         self.assertEqual(r.get("score"), 1)
-        counts=r.get("counts");assert counts is not None
+        counts = r.get("counts")
+        assert counts is not None
         self.assertEqual(counts["executed"], 1)
 
     def test_trusted_zero_tests_is_infrastructure(self) -> None:
@@ -137,7 +140,8 @@ class JUnitJob(unittest.TestCase):
         self.cfg["scoring"] = {"mode": "all-pass"}
         r = self.run_job()
         self.assertEqual(r.get("score"), 0)
-        counts=r.get("counts");assert counts is not None
+        counts = r.get("counts")
+        assert counts is not None
         self.assertEqual(counts["passed"], 1)
         self.assertEqual(r.get("maxPoints"), 2)
 
@@ -205,8 +209,10 @@ class MutationJob(unittest.TestCase):
         self.setup_mutation()
         r = self.run_job()
         self.assertEqual(r.get("score"), 1)
-        variants=r.get("variants");assert variants is not None
-        counts=variants["wrong"].get("counts");assert counts is not None
+        variants = r.get("variants")
+        assert variants is not None
+        counts = variants["wrong"].get("counts")
+        assert counts is not None
         self.assertEqual(counts["failed"], 1)
 
     def test_submitted_zero_tests_is_quality_failure(self) -> None:
@@ -263,7 +269,8 @@ class ScoringTests(unittest.TestCase):
         }
         r = self.run_job()
         self.assertEqual(r.get("score"), 0.75)
-        raw=r.get("rawResult");assert raw is not None
+        raw = r.get("rawResult")
+        assert raw is not None
         self.assertEqual(raw["score"], 0.5)
 
     def test_threshold_uses_declared_basis(self) -> None:
@@ -280,8 +287,6 @@ class ScoringTests(unittest.TestCase):
         }
         with self.assertRaises(grader.GraderError):
             self.run_job()
-
-
 
 
 class AdditionalSourceDeliveryTests(unittest.TestCase):
@@ -356,7 +361,9 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
 
             def select(name: str, target: str) -> dict[str, str]:
                 return {
-                    "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
+                    "name": target,
+                    "target": name,
+                    "data": base64.b64encode((project / name).read_bytes()).decode(),
                 }
 
             fact: dict[str, object] = {
@@ -389,7 +396,13 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                         ],
                     }
                 ],
-                "contractCases": {"name":"cases.json","target":"tests/cases.json","data":base64.b64encode((project/"tests/cases.json").read_bytes()).decode()},
+                "contractCases": {
+                    "name": "cases.json",
+                    "target": "tests/cases.json",
+                    "data": base64.b64encode(
+                        (project / "tests/cases.json").read_bytes()
+                    ).decode(),
+                },
                 "contractFixtures": [
                     select("tests/fixtures/Student.java", "Student.java"),
                     select("tests/fixtures/extra.zip", "additional-sources.zip"),
@@ -424,7 +437,9 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
                     )
                     if scenario.startswith("reference"):
                         archives.append(raw)
-                        self.assertIn("reference/Base.java", [x["target"] for x in job["sources"]])
+                        self.assertIn(
+                            "reference/Base.java", [x["target"] for x in job["sources"]]
+                        )
                     result = jobs.run_job(job, "host", registry=unit_registry())
                     self.assertEqual(result["classification"], "success", result)
                     self.assertEqual(
@@ -460,7 +475,11 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
             finally:
                 shutil.rmtree(job.root)
             starter = jobs.prepare_job(
-                manifest, snapshot, "demo/exr-extra", "starter", registry=unit_registry()
+                manifest,
+                snapshot,
+                "demo/exr-extra",
+                "starter",
+                registry=unit_registry(),
             )
             try:
                 self.assertEqual(starter["grading"]["sourceFiles"], ["Student.java"])
@@ -479,10 +498,20 @@ class AdditionalSourceDeliveryTests(unittest.TestCase):
             _record(fact["check"])["additional-java-sources"] = saved
             # Уже выбранные bytes не перечитываются из изменённого физического source.
             (project / "tests/fixtures/extra.zip").write_bytes(b"tampered")
-            job=jobs.prepare_job(manifest,snapshot,"demo/exr-extra","contract:extra",registry=unit_registry())
-            try:self.assertNotEqual((job.root/"student/additional-sources.zip").read_bytes(),b"tampered")
-            finally:shutil.rmtree(job.root)
-
+            job = jobs.prepare_job(
+                manifest,
+                snapshot,
+                "demo/exr-extra",
+                "contract:extra",
+                registry=unit_registry(),
+            )
+            try:
+                self.assertNotEqual(
+                    (job.root / "student/additional-sources.zip").read_bytes(),
+                    b"tampered",
+                )
+            finally:
+                shutil.rmtree(job.root)
 
 
 class PreparationMetadataTests(unittest.TestCase):
@@ -510,7 +539,9 @@ class PreparationMetadataTests(unittest.TestCase):
 
         def selected(name: str, target: str) -> dict[str, str]:
             return {
-                "name":target,"target":name,"data":base64.b64encode((project/name).read_bytes()).decode(),
+                "name": target,
+                "target": name,
+                "data": base64.b64encode((project / name).read_bytes()).decode(),
             }
 
         fact: dict[str, object] = {
@@ -545,11 +576,11 @@ class PreparationMetadataTests(unittest.TestCase):
 
     def test_prepare_omits_author_description_metadata(self) -> None:
         job = self.prepare()
-        self.assertNotIn('feedback', job['grading'])
-        self.assertNotIn('publicCases', job['grading'])
+        self.assertNotIn("feedback", job["grading"])
+        self.assertNotIn("publicCases", job["grading"])
         written = json.loads((job.root / "tests/grading-job.json").read_text())
-        self.assertNotIn('feedback', written)
-        self.assertNotIn('publicCases', written)
+        self.assertNotIn("feedback", written)
+        self.assertNotIn("publicCases", written)
 
     def test_embedded_author_feedback_is_rejected(self) -> None:
         import copy

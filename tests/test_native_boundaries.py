@@ -1,4 +1,5 @@
 """Адресные guards реальных ролей и завершения процессов, без inventory admission."""
+
 import os
 import signal
 from collections.abc import Mapping
@@ -9,6 +10,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 from test_grading_job import grader
+
 
 class AccessRole(TypedDict):
     uid: int
@@ -42,7 +44,12 @@ class GradingBoundary(TypedDict):
 
 @runtime_checkable
 class RoleRecordsValidator(Protocol):
-    def __call__(self, roles: Mapping[str, AccessRole], owner_uids: set[int], owner_gids: set[int]) -> None: ...
+    def __call__(
+        self,
+        roles: Mapping[str, AccessRole],
+        owner_uids: set[int],
+        owner_gids: set[int],
+    ) -> None: ...
 
 
 @runtime_checkable
@@ -73,37 +80,37 @@ class BuildRoleCleanup(Protocol):
 # Возвращаются те же функции модуля; grade/main не доказывают эти capabilities.
 def role_records_validator(value: object) -> RoleRecordsValidator:
     if not isinstance(value, RoleRecordsValidator):
-        raise AssertionError('Частный контракт role records недоступен')
+        raise AssertionError("Частный контракт role records недоступен")
     return value
 
 
 def grading_environment(value: object) -> GradingEnvironment:
     if not isinstance(value, GradingEnvironment):
-        raise AssertionError('Частный контракт grading environment недоступен')
+        raise AssertionError("Частный контракт grading environment недоступен")
     return value
 
 
 def build_root_validator(value: object) -> BuildRootValidator:
     if not isinstance(value, BuildRootValidator):
-        raise AssertionError('Частный контракт build root недоступен')
+        raise AssertionError("Частный контракт build root недоступен")
     return value
 
 
 def build_processes(value: object) -> BuildProcesses:
     if not isinstance(value, BuildProcesses):
-        raise AssertionError('Частный контракт build processes недоступен')
+        raise AssertionError("Частный контракт build processes недоступен")
     return value
 
 
 def grading_boundary_reader(value: object) -> GradingBoundaryReader:
     if not isinstance(value, GradingBoundaryReader):
-        raise AssertionError('Частный контракт grading boundary недоступен')
+        raise AssertionError("Частный контракт grading boundary недоступен")
     return value
 
 
 def build_role_cleanup(value: object) -> BuildRoleCleanup:
     if not isinstance(value, BuildRoleCleanup):
-        raise AssertionError('Частный контракт build role cleanup недоступен')
+        raise AssertionError("Частный контракт build role cleanup недоступен")
     return value
 
 
@@ -122,10 +129,14 @@ class SeparateNativeRolesTests(unittest.TestCase):
             "nativebuild": {"uid": 1102, "gid": 1102, "groups": [1102]},
         }
 
-    def test_distinct_private_groups_pass_and_collisions_or_extra_groups_refuse(self) -> None:
+    def test_distinct_private_groups_pass_and_collisions_or_extra_groups_refuse(
+        self,
+    ) -> None:
         import copy
 
-        role_records_validator(getattr(grader, "_validate_role_records"))(self.roles, {1000}, {1000})
+        role_records_validator(getattr(grader, "_validate_role_records"))(
+            self.roles, {1000}, {1000}
+        )
         for mutation in [
             "root",
             "same-uid",
@@ -154,7 +165,9 @@ class SeparateNativeRolesTests(unittest.TestCase):
                 r["nativebuild"]["groups"] = [1000]
             with self.subTest(mutation=mutation):
                 with self.assertRaises(grader.GraderError):
-                    role_records_validator(getattr(grader, "_validate_role_records"))(r, {1000}, {1000})
+                    role_records_validator(getattr(grader, "_validate_role_records"))(
+                        r, {1000}, {1000}
+                    )
         with self.assertRaises(grader.GraderError):
             role_records_validator(getattr(grader, "_validate_role_records"))(
                 {"sbuser": self.roles["sbuser"]}, set(), set()
@@ -190,8 +203,15 @@ class SeparateNativeRolesTests(unittest.TestCase):
             },
         )
 
-    def test_private_build_root_rejects_world_search_group_or_identity_drift(self) -> None:
-        good: BuildRootRecord = {"uid": 0, "gid": 1102, "mode": 0o750, "directory": True}
+    def test_private_build_root_rejects_world_search_group_or_identity_drift(
+        self,
+    ) -> None:
+        good: BuildRootRecord = {
+            "uid": 0,
+            "gid": 1102,
+            "mode": 0o750,
+            "directory": True,
+        }
         build_root_validator(getattr(grader, "_validate_build_root_record"))(good, 1102)
         for key, value in [
             ("mode", 0o755),
@@ -205,7 +225,9 @@ class SeparateNativeRolesTests(unittest.TestCase):
                     bad = good.copy()
                     # Меняется тот же словарь отрицательного входа, без DTO-конверсии.
                     fixture_record(bad)[key] = value
-                    build_root_validator(getattr(grader, "_validate_build_root_record"))(bad, 1102)
+                    build_root_validator(
+                        getattr(grader, "_validate_build_root_record")
+                    )(bad, 1102)
 
     def test_process_membership_uses_actual_uid_not_process_name(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -229,12 +251,14 @@ class SeparateNativeRolesTests(unittest.TestCase):
 
 class NamespaceBoundaryTests(unittest.TestCase):
     def test_host_scope_cannot_reach_role_or_process_inventory(self) -> None:
-        with patch.object(Path, "is_file", return_value=False), patch.object(
-            os, "geteuid", return_value=0
-        ), patch.object(
-            grader,
-            "_role_records",
-            side_effect=AssertionError("Unscoped role/process access"),
+        with (
+            patch.object(Path, "is_file", return_value=False),
+            patch.object(os, "geteuid", return_value=0),
+            patch.object(
+                grader,
+                "_role_records",
+                side_effect=AssertionError("Unscoped role/process access"),
+            ),
         ):
             with self.assertRaises(grader.GraderError):
                 grading_boundary_reader(getattr(grader, "_grading_boundary"))()
@@ -242,8 +266,12 @@ class NamespaceBoundaryTests(unittest.TestCase):
 
 class BuildTransitionCleanupTests(unittest.TestCase):
     def test_cleanup_binds_pid_identity_and_records_empty_remaining_set(self) -> None:
-        first: dict[int, BuildProcessRecord] = {71: {"uid": 1102, "starttime": "15", "state": "S"}}
-        changed: dict[int, BuildProcessRecord] = {71: {"uid": 1102, "starttime": "16", "state": "S"}}
+        first: dict[int, BuildProcessRecord] = {
+            71: {"uid": 1102, "starttime": "15", "state": "S"}
+        }
+        changed: dict[int, BuildProcessRecord] = {
+            71: {"uid": 1102, "starttime": "16", "state": "S"}
+        }
         for rescan, expected in [(first, [71]), (changed, [])]:
             killed: list[int] = []
             signals: list[tuple[int, int]] = []
@@ -251,20 +279,22 @@ class BuildTransitionCleanupTests(unittest.TestCase):
             def kill(pid: int, sig: int) -> None:
                 killed.append(pid)
                 signals.append((pid, sig))
-            with patch.object(Path, "is_file", return_value=True), patch.object(
-                os, "geteuid", return_value=0
-            ), patch.object(
-                grader, "_build_process_records", side_effect=[first, rescan, {}]
-            ), patch.object(
-                os, "kill", side_effect=kill
-            ), patch.object(
-                os, "waitpid", side_effect=ChildProcessError
+
+            with (
+                patch.object(Path, "is_file", return_value=True),
+                patch.object(os, "geteuid", return_value=0),
+                patch.object(
+                    grader, "_build_process_records", side_effect=[first, rescan, {}]
+                ),
+                patch.object(os, "kill", side_effect=kill),
+                patch.object(os, "waitpid", side_effect=ChildProcessError),
             ):
-                receipt = build_role_cleanup(getattr(grader, "_finish_build_role"))(1102)
+                receipt = build_role_cleanup(getattr(grader, "_finish_build_role"))(
+                    1102
+                )
             self.assertEqual(killed, expected)
             self.assertEqual(signals, [(pid, signal.SIGKILL) for pid in expected])
             self.assertEqual(
                 receipt,
                 {"uid": 1102, "remaining": [], "terminated": expected, "reaped": []},
             )
-
