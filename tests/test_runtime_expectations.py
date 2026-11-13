@@ -14,7 +14,7 @@ g = fixtures.g
 
 
 class RuntimeExpectations(unittest.TestCase):
-    def test_runtime_failure_contract_reaches_prepared_job(self):
+    def test_runtime_failure_contract_reaches_prepared_job(self) -> None:
         manifest = fixtures.manifest()
         project = manifest["projects"][0]
         project["check"]["contract-cases"] = "cases.json"
@@ -79,7 +79,7 @@ class RuntimeExpectations(unittest.TestCase):
             finally:
                 shutil.rmtree(job.root)
 
-    def test_runtime_failure_starter_reaches_prepared_job(self):
+    def test_runtime_failure_starter_reaches_prepared_job(self) -> None:
         manifest = fixtures.manifest()
         manifest["projects"][0]["check"]["verification-expectations"] = {
             "starter": {"classification": "student-runtime-failure"},
@@ -107,7 +107,7 @@ class RuntimeExpectations(unittest.TestCase):
             finally:
                 shutil.rmtree(job.root)
 
-    def test_author_expectations_accept_runtime_failure(self):
+    def test_author_expectations_accept_runtime_failure(self) -> None:
         for scenario in ("reference", "starter"):
             with self.subTest(scenario=scenario):
                 check = fixture_record(
@@ -123,7 +123,7 @@ class RuntimeExpectations(unittest.TestCase):
                         "Авторская схема отвергла существующую классификацию student-runtime-failure"
                     )
 
-    def test_unknown_classification_remains_rejected(self):
+    def test_unknown_classification_remains_rejected(self) -> None:
         for scenario in ("reference", "starter"):
             for schema in ("project-check", "native-checks"):
                 with self.subTest(scenario=scenario, schema=schema):
@@ -137,7 +137,7 @@ class RuntimeExpectations(unittest.TestCase):
                             schema, check if schema == "project-check" else manifest
                         )
 
-    def test_unknown_contract_classification_remains_rejected(self):
+    def test_unknown_contract_classification_remains_rejected(self) -> None:
         cases = {
             "schemaVersion": 1,
             "cases": [

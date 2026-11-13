@@ -1,8 +1,9 @@
+"""Real JUnit jobs expose discovery, isolation and policy mistakes."""
+
 import base64
 import importlib.util
 from selected_job_fixture import native_manifest
 
-"""Real JUnit jobs expose discovery, isolation and policy mistakes."""
 
 from gradle_unit_fixtures import registry as unit_registry
 import json
@@ -292,7 +293,7 @@ class ScoringTests(unittest.TestCase):
 class AdditionalSourceDeliveryTests(unittest.TestCase):
     def test_reference_extra_and_contract_zip_are_explicit_hashed_public_private_inputs(
         self,
-    ):
+    ) -> None:
         import shutil
         import io
         import zipfile

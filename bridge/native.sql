@@ -30,5 +30,4 @@ SELECT
     ) AS administrator;
 
 -- BLOCK lock
-SELECT
-    pg_advisory_xact_lock(hashtextextended($lock_key, 0));
+SELECT pg_advisory_xact_lock(hashtextextended($lock_key, 0));

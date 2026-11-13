@@ -1,6 +1,9 @@
 """Native package validation сохраняет реальные слоты и privacy без contentproof."""
 
-import copy, shutil, sys, unittest
+import copy
+import shutil
+import sys
+import unittest
 from unittest.mock import patch
 from pathlib import Path
 import test_delivery5 as fixtures

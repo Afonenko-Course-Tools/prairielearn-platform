@@ -1,6 +1,8 @@
 """Apply a narrow, fail-closed patch to the exact pinned Community guard."""
 
-import pathlib, re, sys
+import pathlib
+import re
+import sys
 
 
 def patch(source: str) -> str:

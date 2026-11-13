@@ -46,7 +46,9 @@ class PublishedMetadata(unittest.TestCase):
             }
         return result, files
 
-    def test_publishes_runtime_profiles_without_preparation_or_file_inventories(self):
+    def test_publishes_runtime_profiles_without_preparation_or_file_inventories(
+        self,
+    ) -> None:
         result, files = self.produce()
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertEqual(
@@ -77,7 +79,7 @@ class PublishedMetadata(unittest.TestCase):
         self.assertNotIn("runtimeProfilesSha256", receipt)
         self.assertEqual(receipt["deliverySchemaVersion"], 5)
 
-    def test_workspace_uses_its_own_image_role(self):
+    def test_workspace_uses_its_own_image_role(self) -> None:
         workspace = "ghcr.io/example/sp-git-workspace@sha256:" + "4" * 64
         result, files = self.produce({"WORKSPACE_DIGEST": workspace})
         self.assertEqual(result.returncode, 0, result.stderr.decode())
@@ -90,7 +92,7 @@ class PublishedMetadata(unittest.TestCase):
             workspace,
         )
 
-    def test_rejects_image_from_other_role_before_writing(self):
+    def test_rejects_image_from_other_role_before_writing(self) -> None:
         for changes in (
             {"JAVA_DIGEST": IMAGES["fish"]},
             {"JAVA_DIGEST": "sha256:" + "1" * 64},
@@ -101,7 +103,7 @@ class PublishedMetadata(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(files, {})
 
-    def test_records_real_source_commit_and_version(self):
+    def test_records_real_source_commit_and_version(self) -> None:
         result, files = self.produce()
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         receipt = files["runtime-image.json"]

@@ -1,4 +1,8 @@
-import importlib.util, pathlib, subprocess, unittest, json
+import importlib.util
+import pathlib
+import subprocess
+import unittest
+import json
 
 path = (
     pathlib.Path(__file__).parents[2] / "images/prairielearn/patch-localhost-cookies.py"

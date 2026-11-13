@@ -1,6 +1,11 @@
 """CLI проверяет реальные Native controls и сообщает факты исполнения без receipt."""
 
-import importlib.util, json, subprocess, sys, tempfile, unittest
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 from unittest.mock import patch

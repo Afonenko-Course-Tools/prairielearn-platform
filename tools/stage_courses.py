@@ -6,16 +6,16 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import sys
 import tempfile
 from typing import Protocol, TypedDict, runtime_checkable
 
 TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
-from json_boundary import JSONObject
-from check_registry import Course, RegistryError, validate_registry, INSTITUTIONS
-from grading_job import JobError
+from json_boundary import JSONObject  # noqa: E402 — import after the local test/tool path bootstrap
+from check_registry import Course, RegistryError, validate_registry, INSTITUTIONS  # noqa: E402 — import after the local test/tool path bootstrap
+from grading_job import JobError  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 @runtime_checkable
@@ -81,7 +81,7 @@ class StorageError(Exception):
 
 def git(directory: Path, *args: str) -> str:
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
             ["git", "-c", "core.hooksPath=/dev/null", *args],
             cwd=directory,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},

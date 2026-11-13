@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import sys
 from json_boundary import JSONObject, json_object
 from publication_types import ImageReferences, PublishedRegistry, RuntimeImage
@@ -56,7 +56,7 @@ def assign_images(registry: object, images: ImageReferences) -> PublishedRegistr
 def release_registry(
     root: Path, images: ImageReferences, source_commit: str, version: str
 ) -> PublishedRegistry:
-    commit = subprocess.check_output(
+    commit = subprocess.check_output(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
         ["git", "rev-parse", "HEAD"], cwd=root, text=True
     ).strip()
     if source_commit != commit or version != (root / "VERSION").read_text().strip():

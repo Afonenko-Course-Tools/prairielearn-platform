@@ -179,7 +179,9 @@ class ConsoleContainerFeedback(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 details = json_object(result["feedback"])
                 self.assertEqual(details["kind"], kind)
-                self.assertNotIn("teacherTrace", json_object(details["cases"][0]))
+                cases = details["cases"]
+                assert isinstance(cases, list)
+                self.assertNotIn("teacherTrace", json_object(cases[0]))
                 cases = details["cases"]
                 assert isinstance(cases, list)
                 case = json_object(cases[0])

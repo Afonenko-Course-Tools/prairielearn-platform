@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- TestPlan принадлежит жизненному циклу JUnit и дополняется dynamic tests.
+       Listener намеренно читает живую модель из публичного callback API.
+       Копирование plan потеряет появляющиеся после discovery узлы. -->
+  <Match>
+    <Class name="org.prairielearn.feedback.PlatformJUnitAdapter"/>
+    <Method name="testPlanExecutionStarted" params="org.junit.platform.launcher.TestPlan" returns="void"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+</FindBugsFilter>

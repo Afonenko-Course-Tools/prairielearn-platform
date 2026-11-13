@@ -1,0 +1,8 @@
+[sqlfluff]
+dialect = postgres
+templater = placeholder
+rules = AL04,AM08,ST03
+processes = 1
+large_file_skip_byte_limit = 0
+[sqlfluff:templater:placeholder]
+param_regex = \$(?P<param_name>[A-Za-z_][A-Za-z0-9_]*)

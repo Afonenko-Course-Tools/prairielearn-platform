@@ -2,6 +2,9 @@
 
 import errno
 import json
+import subprocess
+from typing import Unpack
+from test_build_course_launch import RunOptions
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -28,9 +31,11 @@ class PublicationLifecycle(unittest.TestCase):
     def test_output_collision_removes_own_checks_and_allows_retry(self) -> None:
         emit = self.export.emit_package
 
-        def compete(*args, **kwargs):
-            result = emit(*args, **kwargs)
-            if args[0][0] == "quarto":
+        def compete(
+            args: list[str], **kwargs: Unpack[RunOptions]
+        ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
+            result = emit(args, **kwargs)
+            if args[0] == "quarto":
                 self.export.output.mkdir()
             return result
 
@@ -49,9 +54,11 @@ class PublicationLifecycle(unittest.TestCase):
     def test_competing_checks_file_is_preserved(self) -> None:
         emit = self.export.emit_package
 
-        def compete(*args, **kwargs):
-            result = emit(*args, **kwargs)
-            if args[0][0] == "quarto":
+        def compete(
+            args: list[str], **kwargs: Unpack[RunOptions]
+        ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
+            result = emit(args, **kwargs)
+            if args[0] == "quarto":
                 self.checks.write_text("FOREIGN")
             return result
 
@@ -76,10 +83,10 @@ class PublicationLifecycle(unittest.TestCase):
     def test_cleanup_failure_keeps_primary_publication_error(self) -> None:
         unlink = Path.unlink
 
-        def refuse_checks(path: Path, *args, **kwargs):
+        def refuse_checks(path: Path, missing_ok: bool = False) -> None:
             if path == self.checks:
                 raise OSError("SECONDARY_CLEANUP_FAILURE")
-            return unlink(path, *args, **kwargs)
+            return unlink(path, missing_ok=missing_ok)
 
         with patch.object(
             builder,
@@ -94,13 +101,13 @@ class PublicationLifecycle(unittest.TestCase):
         self.assertTrue(
             any(
                 "SECONDARY_CLEANUP_FAILURE" in note
-                for note in caught.exception.__notes__
+                for note in getattr(caught.exception, "__notes__", ())
             )
         )
         self.assert_no_stages()
 
     def test_rollback_preserves_foreign_replacement_of_own_checks(self) -> None:
-        def replaced(*args, **kwargs):
+        def replaced(*args: object, **kwargs: object) -> None:
             self.checks.unlink()
             self.checks.write_text("FOREIGN_REPLACEMENT")
             raise builder.BuildError("PUBLICATION_REFUSED")
@@ -114,10 +121,12 @@ class PublicationLifecycle(unittest.TestCase):
     def test_untrusted_assessment_uuid_cannot_collide_with_question(self) -> None:
         emit = self.export.emit_package
 
-        def collision(*args, **kwargs):
-            result = emit(*args, **kwargs)
-            if args[0][0] == "quarto":
-                native = Path(args[0][4])
+        def collision(
+            args: list[str], **kwargs: Unpack[RunOptions]
+        ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
+            result = emit(args, **kwargs)
+            if args[0] == "quarto":
+                native = Path(args[4])
                 question = next((native / "questions").rglob("info.json"))
                 assessment = next(
                     (native / "courseInstances").rglob("infoAssessment.json")

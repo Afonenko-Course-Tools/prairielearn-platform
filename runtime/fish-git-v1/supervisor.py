@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import selectors
 import signal
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import time
 from collections.abc import Sequence
 from typing import Literal
@@ -47,7 +47,7 @@ def _run(
     command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT
 ) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
     try:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
             command,
             cwd=cwd,
             stdout=subprocess.PIPE,

@@ -36,7 +36,7 @@ jobs = _grading_jobs(jobs)
 
 
 class ReferenceCompleteSources(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.snapshot = Path(self.tmp.name)
@@ -119,7 +119,7 @@ class ReferenceCompleteSources(unittest.TestCase):
         self.addCleanup(shutil.rmtree, job.root)
         return job
 
-    def test_private_reference_replaces_names_student_policy_unchanged(self):
+    def test_private_reference_replaces_names_student_policy_unchanged(self) -> None:
         reference = self.prepare("reference:complete")
         starter = self.prepare("starter")
         self.assertEqual(
@@ -134,7 +134,7 @@ class ReferenceCompleteSources(unittest.TestCase):
         self.assertNotIn("additionalJavaSources", fixture_record(starter["grading"]))
         self.assertFalse((reference.root / "student/Copy.java").exists())
 
-    def test_undeclared_changed_nonjava_reference_refused(self):
+    def test_undeclared_changed_nonjava_reference_refused(self) -> None:
         with self.assertRaises(jobs.JobError):
             self.prepare("reference:foreign")
         fixture_record(
@@ -145,7 +145,7 @@ class ReferenceCompleteSources(unittest.TestCase):
         with self.assertRaises(jobs.JobError):
             self.prepare("reference:complete")
 
-    def test_reference_compiles_with_existing_grader(self):
+    def test_reference_compiles_with_existing_grader(self) -> None:
         reference = self.prepare("reference:complete")
         spec = importlib.util.spec_from_file_location(
             "unchanged_grade", ROOT / "images/java25-grader/grade.py"

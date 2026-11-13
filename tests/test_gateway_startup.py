@@ -8,7 +8,7 @@ import unittest
 
 
 class GatewayStartup(unittest.TestCase):
-    def test_invalid_native_config_rejected_before_native_init(self):
+    def test_invalid_native_config_rejected_before_native_init(self) -> None:
         repository = pathlib.Path(__file__).parents[1]
         for environment, config in [
             ("production", {"devMode": True, "hasShib": True}),

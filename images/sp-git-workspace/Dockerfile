@@ -1,10 +1,12 @@
 FROM docker.io/prairielearn/workspace-vscode-base@sha256:cdad0b1fd89a3e019efca29c66768ffa2f7b4f99dbfe3016e2667f6769b90600
-USER root
+USER 0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends fish=3.7.0-1 python3=3.12.3-0ubuntu2.1 \
     && rm -rf /var/lib/apt/lists/*
 COPY --chmod=0755 --chown=root:root entrypoint.sh /usr/local/bin/sp-git-workspace
 COPY --chmod=0644 --chown=root:root sp-git-workspace-init.py /usr/local/bin/sp-git-workspace-init.py
+# The pinned Workspace base image owns the coder account and its UID contract.
+# hadolint ignore=DL3066
 USER coder
 WORKDIR /home/coder/workspace
 LABEL com.prairielearn.workspace.home="/home/coder/workspace"

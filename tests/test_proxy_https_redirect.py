@@ -16,18 +16,20 @@ ROOT = pathlib.Path(__file__).parents[1]
 
 @unittest.skipUnless(shutil.which("nginx"), "Для интеграционной проверки нужен nginx")
 class GatewayHTTPSRedirect(unittest.TestCase):
+    requests: list[tuple[str, str, bytes]]
+
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.requests = []
 
         class Upstream(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
+            def do_GET(self) -> None:
                 self.respond()
 
-            def do_POST(self):
+            def do_POST(self) -> None:
                 self.respond()
 
-            def respond(self):
+            def respond(self) -> None:
                 body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 cls.requests.append((self.command, self.path, body))
                 target = (
@@ -44,7 +46,7 @@ class GatewayHTTPSRedirect(unittest.TestCase):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
 
-            def log_message(self, *args):
+            def log_message(self, format: str, *args: object) -> None:
                 pass
 
         cls.upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
@@ -79,7 +81,10 @@ class GatewayHTTPSRedirect(unittest.TestCase):
             + location
             + "\n} }\n"
         )
-        command = [shutil.which("nginx"), "-p", str(directory), "-c", str(config)]
+        nginx = shutil.which("nginx")
+        if nginx is None:
+            raise unittest.SkipTest("Для интеграционной проверки нужен nginx")
+        command = [nginx, "-p", str(directory), "-c", str(config)]
         checked = subprocess.run(command + ["-t"], capture_output=True, timeout=5)
         if checked.returncode:
             raise AssertionError(checked.stderr.decode())
@@ -89,7 +94,7 @@ class GatewayHTTPSRedirect(unittest.TestCase):
             stderr=subprocess.DEVNULL,
         )
 
-        def stop():
+        def stop() -> None:
             cls.nginx.terminate()
             cls.nginx.wait(timeout=5)
 
@@ -103,7 +108,9 @@ class GatewayHTTPSRedirect(unittest.TestCase):
                 time.sleep(0.05)
         raise AssertionError("nginx не открыл локальный тестовый порт")
 
-    def request(self, method, path, host, body=None):
+    def request(
+        self, method: str, path: str, host: str, body: bytes | None = None
+    ) -> tuple[int, str | None]:
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         try:
             connection.request(
@@ -122,7 +129,7 @@ class GatewayHTTPSRedirect(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_https_redirect_preserves_host_method_query_and_form_bytes(self):
+    def test_https_redirect_preserves_host_method_query_and_form_bytes(self) -> None:
         for host in ["courses.example", "other.example:8443"]:
             for course in ["java", "system-practice"]:
                 for method in ["GET", "POST"]:
@@ -140,7 +147,7 @@ class GatewayHTTPSRedirect(unittest.TestCase):
                         )
                         self.assertEqual(self.requests[-1], (method, path, body))
 
-    def test_external_https_login_redirect_is_unchanged(self):
+    def test_external_https_login_redirect_is_unchanged(self) -> None:
         self.assertEqual(
             self.request(
                 "POST",

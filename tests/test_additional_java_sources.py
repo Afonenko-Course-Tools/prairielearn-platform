@@ -1,3 +1,5 @@
+"""Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -13,7 +15,6 @@ from selected_job_fixture import (
     native_manifest,
 )
 
-"""Реальные дополнительные public sources и отказ unsafe ZIP до компиляции."""
 
 import hashlib
 import io
@@ -666,7 +667,9 @@ class AdditionalJavaSourcesTests(unittest.TestCase):
 
 class OptionalPreparationTests(unittest.TestCase):
     def test_reference_and_contract_materialize_and_run_actual_sources(self) -> None:
-        import importlib.util, shutil, tempfile
+        import importlib.util
+        import shutil
+        import tempfile
         from gradle_unit_fixtures import registry
 
         spec = importlib.util.spec_from_file_location(

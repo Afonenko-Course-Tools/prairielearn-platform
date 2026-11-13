@@ -5,6 +5,7 @@ import subprocess
 import sys
 import unittest
 import test_grading_job as fixtures
+from test_grader_diagnostics import process_runner
 from selected_job_fixture import fixture_record, fixture_set_up
 
 
@@ -13,7 +14,7 @@ class ProcessFileLimit(unittest.TestCase):
         import resource
 
         before = resource.getrlimit(resource.RLIMIT_NOFILE)
-        code, text, reason = fixtures.grader._run(
+        code, text, reason = process_runner()(
             [
                 sys.executable,
                 "-c",
@@ -21,6 +22,8 @@ class ProcessFileLimit(unittest.TestCase):
             ],
             Path.cwd(),
             5,
+            diagnostics={},
+            stage="limit-probe",
         )
         self.assertEqual(code, 0)
         self.assertIsNone(reason)

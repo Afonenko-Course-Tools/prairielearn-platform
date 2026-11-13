@@ -13,7 +13,8 @@
  * Code written with support from Gemini. Details on landlock can be found here:
  * https://man7.org/linux/man-pages/man7/landlock.7.html
  */
-#define _GNU_SOURCE
+#define _GNU_SOURCE // NOLINT(bugprone-reserved-identifier): glibc feature-test
+                    // macro
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -42,6 +43,7 @@
 static void add_path_rule(int ruleset_fd, const char *path, __u64 access_mask) {
   int fd = open(path, O_PATH | O_CLOEXEC);
   if (fd < 0) {
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling): fixed format writes to stderr, no destination buffer.
     fprintf(stderr, "Failed to open path %s\n", path);
     perror("open");
     return; // Skip directories we can't open (like some system mounts)
@@ -54,6 +56,7 @@ static void add_path_rule(int ruleset_fd, const char *path, __u64 access_mask) {
 
   if (syscall(SYS_landlock_add_rule, ruleset_fd, LANDLOCK_RULE_PATH_BENEATH,
               &path_attr, 0) < 0) {
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling): fixed format writes to stderr, no destination buffer.
     fprintf(stderr, "Failed to add rule for path %s\n", path);
     perror("syscall");
   }
@@ -77,9 +80,10 @@ static int same_object(const struct stat *a, const struct stat *b) {
 
 static int trusted_directory(const struct stat *s) {
   return S_ISDIR(s->st_mode) && s->st_uid == 0 && s->st_gid == 0 &&
-         !(s->st_mode & 07022);
+         !(s->st_mode & 07022U);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): descriptor then Landlock ABI mask; every caller supplies the named mask.
 static int add_dev_null_rule(int ruleset_fd, __u64 access_mask) {
   int root_fd = -1, dev_fd = -1, null_fd = -1, result = -1;
   struct stat root, dev, leaf, current;
@@ -103,7 +107,7 @@ static int add_dev_null_rule(int ruleset_fd, __u64 access_mask) {
     goto done;
   if (!S_ISCHR(leaf.st_mode) || major(leaf.st_rdev) != 1 ||
       minor(leaf.st_rdev) != 3 || leaf.st_uid != 0 || leaf.st_gid != 0 ||
-      (leaf.st_mode & 07777) != 0666 || leaf.st_nlink != 1) {
+      (leaf.st_mode & 07777U) != 0666U || leaf.st_nlink != 1) {
     errno = EPERM;
     goto done;
   }
@@ -200,6 +204,7 @@ int main(int argc, char *argv[]) {
       continue;
 
     char full_path[512];
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling): sizeof(full_path)-bounded destination and directory-entry name.
     snprintf(full_path, sizeof(full_path), "/%s", dir->d_name);
     add_path_rule(ruleset_fd, full_path, access_mask);
   }
@@ -224,6 +229,7 @@ int main(int argc, char *argv[]) {
   }
   close(ruleset_fd);
 
+  // NOLINTNEXTLINE(clang-analyzer-optin.taint.GenericTaint): executing the caller-selected argv is this sandbox wrapper contract; no shell is involved.
   execvp(argv[1], &argv[1]);
   perror("Exec failed");
   return 1;

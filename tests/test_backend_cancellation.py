@@ -144,7 +144,7 @@ class BackendCancellation(unittest.TestCase):
             yield events
 
     def assert_cleanup_blocked(self, job: jobs.GradingJob) -> None:
-        stopped: object = getattr(job, "_containers_stopped")
+        stopped: object = getattr(job, "_containers_stopped", None)
         self.assertIs(stopped, False, "Недоказанную остановку нельзя отмечать успешной")
         self.assertTrue(job.root.is_dir())
         with (
@@ -211,7 +211,7 @@ class BackendCancellation(unittest.TestCase):
                         jobs.run_job(job, "container")
                     self.assertIs(caught.exception, interrupt)
                     self.assertEqual(events, ["run", "remove"])
-                    stopped: object = getattr(job, "_containers_stopped")
+                    stopped: object = getattr(job, "_containers_stopped", None)
                     self.assertIs(stopped, True)
                     jobs.cleanup_job(job, "container")
                 self.assertFalse(job.root.exists())
@@ -265,7 +265,7 @@ class BackendCancellation(unittest.TestCase):
                         },
                     )
                     self.assertEqual(events, ["run", "remove"])
-                    stopped: object = getattr(job, "_containers_stopped")
+                    stopped: object = getattr(job, "_containers_stopped", None)
                     self.assertIs(stopped, True)
                     jobs.cleanup_job(job, "container")
                 self.assertFalse(job.root.exists())
@@ -305,7 +305,7 @@ class BackendCancellation(unittest.TestCase):
                     self.assertEqual(events, ["run", "remove"])
                     self.assertEqual(scratch, ["scratch"])
                     self.assertTrue(job.root.is_dir())
-                    stopped: object = getattr(job, "_containers_stopped")
+                    stopped: object = getattr(job, "_containers_stopped", None)
                     self.assertIs(stopped, True)
                     jobs.cleanup_job(job, "container")
                     self.assertEqual(scratch, ["scratch", "scratch"])
@@ -359,7 +359,7 @@ class BackendCancellation(unittest.TestCase):
                     self.assert_error_retained(caught.exception, timeout)
                     self.assertEqual(events, ["run", "remove"])
                     self.assertEqual(scratch, ["scratch"])
-                    stopped: object = getattr(job, "_containers_stopped")
+                    stopped: object = getattr(job, "_containers_stopped", None)
                     self.assertIs(stopped, True)
                     jobs.cleanup_job(job, "container")
                 self.assertFalse(job.root.exists())

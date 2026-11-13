@@ -14,9 +14,9 @@ assert SPEC is not None and SPEC.loader is not None
 PATCH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PATCH)
 sys.path.insert(0, str(ROOT / "tools"))
-import delivery_verification as verification
-import grading_job
-import test_delivery5 as fixtures
+import delivery_verification as verification  # noqa: E402 — import after the local test/tool path bootstrap
+import grading_job  # noqa: E402 — import after the local test/tool path bootstrap
+import test_delivery5 as fixtures  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 class NativeIntegerManualPointsPatch(unittest.TestCase):

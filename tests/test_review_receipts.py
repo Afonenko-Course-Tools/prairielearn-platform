@@ -1,7 +1,8 @@
 """Результаты grading: полнота сценариев, образы и ожидаемые ошибки."""
 
 from gradle_unit_fixtures import registry as unit_registry
-import sys, unittest
+import sys
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))

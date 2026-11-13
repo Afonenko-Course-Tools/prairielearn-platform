@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import shlex
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import math
 from collections.abc import Mapping, Sequence
 from typing import TypedDict
@@ -112,7 +112,7 @@ def api(endpoint: str, environment: Mapping[str, str], path: str) -> JSONValue:
         )
         + "\n"
     )
-    response = subprocess.run(
+    response = subprocess.run(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
         [
             "curl",
             "--fail",

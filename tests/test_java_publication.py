@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def steps() -> list[JSONObject]:
     workflow = json_object(
-        yaml.load(
+        yaml.load(  # nosec B506 # BaseLoader constructs strings/collections only and preserves workflow on as text
             (ROOT / ".github/workflows/publish-runtime.yml").read_text(),
             Loader=yaml.BaseLoader,
         )

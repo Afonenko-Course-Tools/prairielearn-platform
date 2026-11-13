@@ -1,5 +1,7 @@
 """Первичная диагностика незавершённого JUnit и граница частного отчёта."""
 
+from platform_modules import grader_hook
+
 from pathlib import Path
 import selectors
 import signal
@@ -41,7 +43,7 @@ class ReportHelpers(Protocol):
 
 
 def process_runner() -> ProcessRunner:
-    run: object = getattr(grader, "_run")
+    run: object = grader_hook(grader, "_run")
     assert isinstance(run, ProcessRunner)
     return run
 
@@ -194,7 +196,7 @@ class JUnitDiagnostics(unittest.TestCase):
         self.assertNotIn("score", result)
 
     def test_bad_report_keeps_completed_execution(self) -> None:
-        original: object = getattr(grader, "_junit_result_helpers")
+        original: object = grader_hook(grader, "_junit_result_helpers")
         assert isinstance(original, ReportHelpers)
         helpers = original()
 

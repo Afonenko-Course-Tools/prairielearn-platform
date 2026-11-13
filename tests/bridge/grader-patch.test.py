@@ -1,4 +1,6 @@
-import importlib.util, pathlib, unittest
+import importlib.util
+import pathlib
+import unittest
 
 
 class Patch(unittest.TestCase):

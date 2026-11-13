@@ -5,7 +5,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 from selected_job_fixture import fixture_record, fixture_run_job, fixture_set_up
-import json, unittest
+import json
+import unittest
 from unittest.mock import patch
 import jsonschema
 import test_grading_job as fixtures
@@ -59,7 +60,7 @@ class BindingStages(unittest.TestCase):
 
     def test_real_trusted_rejection_retains_existing_raw_schema_and_native_privacy(
         self,
-    ):
+    ) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             "class AnswerTest { CLOSED_BINDING_CANARY value; }"
         )
@@ -97,7 +98,9 @@ class BindingStages(unittest.TestCase):
         self.assertEqual(native["classification"], "infrastructure-failure")
         self.assertNotIn("studentCompilation", native)
 
-    def test_trusted_compiler_limit_remains_infrastructure_not_completed_binding(self):
+    def test_trusted_compiler_limit_remains_infrastructure_not_completed_binding(
+        self,
+    ) -> None:
         original = _private_run(getattr(grader, "_run", None))
 
         def limit(
@@ -128,7 +131,7 @@ class BindingStages(unittest.TestCase):
         ):
             self.run_job()
 
-    def test_student_tests_trusted_failure_never_claims_student_success(self):
+    def test_student_tests_trusted_failure_never_claims_student_success(self) -> None:
         self.cfg.update(
             mode="student-tests",
             runtime="java25-mutation-v1",
@@ -146,8 +149,12 @@ class BindingStages(unittest.TestCase):
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_actual_cli_delivers_native_error_and_retains_operator_failure_exit(self):
-        import os, subprocess, sys
+    def test_actual_cli_delivers_native_error_and_retains_operator_failure_exit(
+        self,
+    ) -> None:
+        import os
+        import subprocess
+        import sys
 
         (self.job / "tests/AnswerTest.java").write_text(
             "class AnswerTest { CLOSED_CLI_BINDING_CANARY value; }"

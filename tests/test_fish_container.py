@@ -11,7 +11,7 @@ import unittest
     "Set PL_FISH_TEST_IMAGE to an actual built fish image",
 )
 class FishContainer(unittest.TestCase):
-    def test_verified_fish_image_grades_reference_and_wrong_text(self):
+    def test_verified_fish_image_grades_reference_and_wrong_text(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "student").mkdir()

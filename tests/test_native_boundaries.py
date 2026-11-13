@@ -1,5 +1,7 @@
 """Адресные guards реальных ролей и завершения процессов, без inventory admission."""
 
+from platform_modules import grader_hook
+
 import os
 import signal
 from collections.abc import Mapping
@@ -134,7 +136,7 @@ class SeparateNativeRolesTests(unittest.TestCase):
     ) -> None:
         import copy
 
-        role_records_validator(getattr(grader, "_validate_role_records"))(
+        role_records_validator(grader_hook(grader, "_validate_role_records"))(
             self.roles, {1000}, {1000}
         )
         for mutation in [
@@ -165,11 +167,11 @@ class SeparateNativeRolesTests(unittest.TestCase):
                 r["nativebuild"]["groups"] = [1000]
             with self.subTest(mutation=mutation):
                 with self.assertRaises(grader.GraderError):
-                    role_records_validator(getattr(grader, "_validate_role_records"))(
-                        r, {1000}, {1000}
-                    )
+                    role_records_validator(
+                        grader_hook(grader, "_validate_role_records")
+                    )(r, {1000}, {1000})
         with self.assertRaises(grader.GraderError):
-            role_records_validator(getattr(grader, "_validate_role_records"))(
+            role_records_validator(grader_hook(grader, "_validate_role_records"))(
                 {"sbuser": self.roles["sbuser"]}, set(), set()
             )
 
@@ -190,7 +192,7 @@ class SeparateNativeRolesTests(unittest.TestCase):
                 "GRADLE_USER_HOME": "/tmp/build-cache",
             },
         ):
-            env = grading_environment(getattr(grader, "_grading_environment"))()
+            env = grading_environment(grader_hook(grader, "_grading_environment"))()
         self.assertEqual(
             env,
             {
@@ -212,7 +214,9 @@ class SeparateNativeRolesTests(unittest.TestCase):
             "mode": 0o750,
             "directory": True,
         }
-        build_root_validator(getattr(grader, "_validate_build_root_record"))(good, 1102)
+        build_root_validator(grader_hook(grader, "_validate_build_root_record"))(
+            good, 1102
+        )
         for key, value in [
             ("mode", 0o755),
             ("mode", 0o770),
@@ -226,7 +230,7 @@ class SeparateNativeRolesTests(unittest.TestCase):
                     # Меняется тот же словарь отрицательного входа, без DTO-конверсии.
                     fixture_record(bad)[key] = value
                     build_root_validator(
-                        getattr(grader, "_validate_build_root_record")
+                        grader_hook(grader, "_validate_build_root_record")
                     )(bad, 1102)
 
     def test_process_membership_uses_actual_uid_not_process_name(self) -> None:
@@ -244,7 +248,9 @@ class SeparateNativeRolesTests(unittest.TestCase):
                     + " ".join(["0"] * 18 + ["314159"] + ["0"] * 5)
                 )
             self.assertEqual(
-                build_processes(getattr(grader, "_build_process_records"))(root, 1102),
+                build_processes(grader_hook(grader, "_build_process_records"))(
+                    root, 1102
+                ),
                 {71: {"uid": 1102, "starttime": "314159", "state": "S"}},
             )
 
@@ -261,7 +267,7 @@ class NamespaceBoundaryTests(unittest.TestCase):
             ),
         ):
             with self.assertRaises(grader.GraderError):
-                grading_boundary_reader(getattr(grader, "_grading_boundary"))()
+                grading_boundary_reader(grader_hook(grader, "_grading_boundary"))()
 
 
 class BuildTransitionCleanupTests(unittest.TestCase):
@@ -277,8 +283,8 @@ class BuildTransitionCleanupTests(unittest.TestCase):
             signals: list[tuple[int, int]] = []
 
             def kill(pid: int, sig: int) -> None:
-                killed.append(pid)
-                signals.append((pid, sig))
+                killed.append(pid)  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                signals.append((pid, sig))  # noqa: B023 — mock is consumed synchronously inside this loop iteration
 
             with (
                 patch.object(Path, "is_file", return_value=True),
@@ -289,7 +295,7 @@ class BuildTransitionCleanupTests(unittest.TestCase):
                 patch.object(os, "kill", side_effect=kill),
                 patch.object(os, "waitpid", side_effect=ChildProcessError),
             ):
-                receipt = build_role_cleanup(getattr(grader, "_finish_build_role"))(
+                receipt = build_role_cleanup(grader_hook(grader, "_finish_build_role"))(
                     1102
                 )
             self.assertEqual(killed, expected)

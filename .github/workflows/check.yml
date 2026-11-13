@@ -33,11 +33,20 @@ jobs:
       - name: Подготовить закреплённые Python зависимости проверок
         run: |
           python3 -m venv "$RUNNER_TEMP/platform-ci"
-          "$RUNNER_TEMP/platform-ci/bin/python" -m pip install --requirement requirements.txt
+          "$RUNNER_TEMP/platform-ci/bin/python" -m pip install --requirement requirements-dev.txt
           echo "$RUNNER_TEMP/platform-ci/bin" >> "$GITHUB_PATH"
       - name: Проверить native bridge и fail-closed patches
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm run format:check
+          ruff check .
+          ruff format --check .
+          pyright --pythonpath "$(command -v python3)"
+          bandit -q -r tests -x tests/fixtures -t B301,B307,B501,B506,B602,B605
+          bandit -q -r . -x ./tests,./node_modules,./runtime/java25-junit-v1/upstream
+          yamllint .github ansible compose examples .yamllint.yml
+          sqlfluff lint bridge
           node --test tests/bridge/*.test.mjs
           node --test tests/integer-manual-points.test.mjs
           python3 -B tests/bridge/enrollment-schema.test.py
@@ -69,3 +78,55 @@ jobs:
       - name: Проверить публичный результат grader в собранном образе
         run: |
           PL_TEST_IMAGE="$(docker image inspect local/platform-java:ci --format '{{.Id}}')" python3 -m unittest discover -s tests -p test_plain_image.py -v
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: archlinux@sha256:97119fd9e21219b02b3c14ba256c9d3c0d031d07fc26c836c41ed793beeb5b74
+    steps:
+      - name: Установить штатные инструменты анализа
+        run: |
+          pacman -Syu --noconfirm --needed git nodejs npm python python-pip jdk25-openjdk maven ruff pyright bandit sqlfluff yamllint ansible-lint opentofu tflint taplo-cli actionlint shellcheck shfmt clang jq libxml2 curl
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Установить официальный Hadolint binary
+        run: |
+          curl --fail --location --silent --show-error https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64 -o "$RUNNER_TEMP/hadolint-linux-x86_64"
+          curl --fail --location --silent --show-error https://github.com/hadolint/hadolint/releases/download/v2.15.1/checksums.sha256 -o "$RUNNER_TEMP/checksums.sha256"
+          (cd "$RUNNER_TEMP" && grep -E ' [*]hadolint-linux-x86_64$' checksums.sha256 | sha256sum --check --strict)
+          install -m 0755 "$RUNNER_TEMP/hadolint-linux-x86_64" /usr/local/bin/hadolint
+      - name: Подготовить обычные devDependencies
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
+          export PATH="$JAVA_HOME/bin:$PATH"
+          python -m venv "$RUNNER_TEMP/platform-quality"
+          "$RUNNER_TEMP/platform-quality/bin/python" -m pip install --requirement requirements-dev.txt
+          echo "$RUNNER_TEMP/platform-quality/bin" >> "$GITHUB_PATH"
+          echo "JAVA_HOME=/usr/lib/jvm/java-25-openjdk" >> "$GITHUB_ENV"
+          echo "/usr/lib/jvm/java-25-openjdk/bin" >> "$GITHUB_PATH"
+          npm ci --ignore-scripts --no-audit --no-fund
+          mvn -B -q -f tools/quality/pom.xml dependency:copy -Dartifact=com.google.googlejavaformat:google-java-format:2.0.0:jar:all-deps -DoutputDirectory="$RUNNER_TEMP/platform-java-tools"
+          echo "JAVA_FORMAT_JAR=$RUNNER_TEMP/platform-java-tools/google-java-format-2.0.0-all-deps.jar" >> "$GITHUB_ENV"
+          mvn -B -q -f tools/quality/pom.xml -Pspotbugs dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/spotbugs-classpath"
+          mvn -B -q -f tools/quality/pom.xml -Perrorprone dependency:build-classpath -Dmdep.outputFile="$RUNNER_TEMP/errorprone-classpath"
+      - name: Проверить все собственные исходники и схемы provider
+        run: |
+          SPOTBUGS_CLASSPATH="$(cat "$RUNNER_TEMP/spotbugs-classpath")"
+          ERROR_PRONE_CLASSPATH="$(cat "$RUNNER_TEMP/errorprone-classpath")"
+          export SPOTBUGS_CLASSPATH ERROR_PRONE_CLASSPATH
+          export ANSIBLE_HOME="$RUNNER_TEMP/platform-ansible"
+          export ANSIBLE_LOCAL_TEMP="$RUNNER_TEMP/platform-ansible/tmp"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/platform-quality-cache"
+          tools/check-quality.sh
+          tools/quality/controls.sh
+      - name: Сохранить полный Bandit audit с рассмотренными контекстами
+        if: always()
+        run: |
+          set +e
+          bandit -r . -x ./tests,./node_modules,./runtime/java25-junit-v1/upstream --ignore-nosec --format json --output "$RUNNER_TEMP/platform-bandit-audit.json"
+          quality_audit_status=$?
+          set -e
+          test "$quality_audit_status" -eq 0 || test "$quality_audit_status" -eq 1
+          jq -e '.errors | length == 0' "$RUNNER_TEMP/platform-bandit-audit.json"
+          cat "$RUNNER_TEMP/platform-bandit-audit.json"

@@ -1,10 +1,16 @@
 """Публичные перегрузки JUnit сохраняют результат, тип и отдельные случаи."""
 
 import unittest
+from pathlib import Path
+
 import test_plain_runtime as fixtures
+from grading_types import JavaGradingDescriptor
 
 
 class CourseDescriptors(unittest.TestCase):
+    job: Path
+    config: JavaGradingDescriptor
+
     setUp = fixtures.PlainRuntimeTests.setUp
     run_job = fixtures.PlainRuntimeTests.run_job
 
@@ -26,6 +32,7 @@ public class AnswerTest {
  @Test void wrongType() { assertInstanceOf(String.class,(Object) Student.answer()); }
 }""")
         result = self.run_job()
+        assert "counts" in result
         assert "score" in result
         self.assertEqual(result["score"], 0.2)
         self.assertEqual(
@@ -56,6 +63,7 @@ public class AnswerTest {
  @Test void wrongChars() {assertArrayEquals(new char[]{'я'},new char[]{'ю'});}
 }""")
         result = self.run_job()
+        assert "counts" in result
         assert "score" in result
         self.assertEqual(
             (

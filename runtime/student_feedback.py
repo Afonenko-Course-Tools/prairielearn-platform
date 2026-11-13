@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 import textwrap
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 if TYPE_CHECKING:
     from grading_types import (
@@ -214,16 +214,26 @@ def student_result(result: object, descriptor: object) -> StudentResult:
         for original in counts["cases"]:
             case: PublicCase = {"name": original["name"], "status": original["status"]}
             lines: list[str] = []
-            for key, label in (
+            details: tuple[
+                tuple[
+                    Literal[
+                        "message", "expected", "actual", "exceptionType", "stackTrace"
+                    ],
+                    str,
+                ],
+                ...,
+            ] = (
                 ("message", "Сообщение"),
                 ("expected", "Ожидается"),
                 ("actual", "Получено"),
                 ("exceptionType", "Исключение"),
                 ("stackTrace", "Трассировка"),
-            ):
-                if key in original:
-                    case[key] = original[key]
-                    lines.append(label + ": " + original[key])
+            )
+            for key, label in details:
+                case_detail = original.get(key)
+                if case_detail is not None:
+                    case[key] = case_detail
+                    lines.append(label + ": " + case_detail)
             public_cases.append(case)
             summary = (
                 "Проверка пройдена."

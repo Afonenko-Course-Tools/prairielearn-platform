@@ -30,7 +30,7 @@ public final class PlatformApiPrecheck {
         private final Path classes, scratch;
         private int clients;
 
-        Api(Path classes, Path scratch) throws Exception {
+        Api(Path classes, Path scratch) throws MalformedURLException {
             this.classes = classes;
             this.scratch = scratch;
             loader =
@@ -78,7 +78,9 @@ public final class PlatformApiPrecheck {
                 for (Path path :
                         paths.filter(p -> Files.isRegularFile(p, LinkOption.NOFOLLOW_LINKS))
                                 .toList()) {
-                    String leaf = path.getFileName().toString();
+                    String leaf =
+                            Objects.requireNonNull(path.getFileName(), "Regular file has no name")
+                                    .toString();
                     if (!leaf.equals(simpleName + ".class")
                             && !leaf.endsWith("$" + simpleName + ".class")) continue;
                     String binary =
@@ -143,7 +145,8 @@ public final class PlatformApiPrecheck {
         }
 
         /** Клиенты компилируются независимо; предыдущие клиенты не входят в classpath. */
-        public void compiles(String name, String source, boolean expected) throws Exception {
+        public void compiles(String name, String source, boolean expected)
+                throws java.io.IOException, Mismatch {
             if (!name.matches("[A-Za-z_$][\\w$]*(\\.[A-Za-z_$][\\w$]*)*"))
                 throw new IllegalArgumentException("Invalid client name");
             Path output = Files.createDirectory(scratch.resolve("client-" + clients++));
@@ -208,7 +211,8 @@ public final class PlatformApiPrecheck {
         }
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args)
+            throws java.io.IOException, org.json.simple.parser.ParseException {
         Path parameters = Path.of(args[0]);
         JSONObject cfg;
         try (Reader reader = Files.newBufferedReader(parameters)) {

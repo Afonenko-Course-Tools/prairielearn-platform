@@ -22,7 +22,7 @@ class UploadedJavaSources(unittest.TestCase):
             helpers.archive(entries)
         )
 
-    def test_free_primary_accepts_arbitrary_flat_java_filename(self):
+    def test_free_primary_accepts_arbitrary_flat_java_filename(self) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Student.java").unlink()
         (self.job / "student/Solution.java").write_text(
@@ -35,7 +35,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(value["classification"], "success", value)
         self.assertEqual(value["score"], 1)
 
-    def test_fixed_nested_files_can_all_arrive_in_zip(self):
+    def test_fixed_nested_files_can_all_arrive_in_zip(self) -> None:
         self.policy(
             primaryRequired=True,
             allowAdditional=False,
@@ -68,7 +68,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(value["classification"], "success", value)
         self.assertEqual(value["score"], 1)
 
-    def test_fixed_allowlist_rejects_extra_zip_or_flat_sources(self):
+    def test_fixed_allowlist_rejects_extra_zip_or_flat_sources(self) -> None:
         self.policy(allowAdditional=False)
         for transport in ("flat", "zip"):
             with self.subTest(transport=transport):
@@ -82,7 +82,9 @@ class UploadedJavaSources(unittest.TestCase):
                 self.assertEqual(value["classification"], "unsafe-submission")
                 self.assertNotIn("score", value)
 
-    def test_required_primary_cannot_be_replaced_by_an_unrelated_zip_source(self):
+    def test_required_primary_cannot_be_replaced_by_an_unrelated_zip_source(
+        self,
+    ) -> None:
         self.policy(allowAdditional=False)
         (self.job / "student/Student.java").unlink()
         self.zip([("Other.java", "class Other {}")])
@@ -90,7 +92,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(value["classification"], "unsafe-submission")
         self.assertNotIn("score", value)
 
-    def test_trusted_basename_in_a_different_student_package_is_legal(self):
+    def test_trusted_basename_in_a_different_student_package_is_legal(self) -> None:
         self.policy()
         (self.job / "student/Student.java").write_text(
             "public class Student {public static int answer(){return p.AnswerTest.value();}}"
@@ -110,7 +112,7 @@ class UploadedJavaSources(unittest.TestCase):
                 self.assertEqual(value["classification"], "success", value)
                 self.assertEqual(value["score"], 1)
 
-    def test_declared_zip_member_runs_with_no_additional_file_count(self):
+    def test_declared_zip_member_runs_with_no_additional_file_count(self) -> None:
         self.policy(primaryRequired=True, allowAdditional=False, maxFiles=1)
         (self.job / "student/Student.java").unlink()
         self.zip(
@@ -125,7 +127,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(result["score"], 1)
         self.assertEqual(fixture_record(result["additionalSources"])["files"], [])
 
-    def test_flat_and_archive_duplicate_is_rejected_before_execution(self):
+    def test_flat_and_archive_duplicate_is_rejected_before_execution(self) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Extra.java").write_text("class Extra {}")
         self.zip([("Extra.java", "class Extra {}")])
@@ -133,7 +135,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(value["classification"], "unsafe-submission")
         self.assertNotIn("score", value)
 
-    def test_flat_and_zip_share_the_same_file_count_cap(self):
+    def test_flat_and_zip_share_the_same_file_count_cap(self) -> None:
         self.policy(primaryRequired=False, maxFiles=1)
         (self.job / "student/Extra.java").write_text("class Extra {}")
         self.zip([("Second.java", "class Second {}")])
@@ -141,7 +143,7 @@ class UploadedJavaSources(unittest.TestCase):
         self.assertEqual(value["classification"], "unsafe-submission")
         self.assertNotIn("score", value)
 
-    def test_flat_symlink_is_not_silently_ignored(self):
+    def test_flat_symlink_is_not_silently_ignored(self) -> None:
         self.policy(primaryRequired=False)
         (self.job / "student/Extra.java").symlink_to(self.job / "missing.java")
         value = self.run_job()

@@ -1,6 +1,9 @@
 """Проверка actual native пакета; не исполняет и не оценивает ручной ответ."""
 
-import json, re, stat, uuid
+import json
+import re
+import stat
+import uuid
 from html.parser import HTMLParser
 from pathlib import Path
 import jsonschema
@@ -35,8 +38,14 @@ def file_bytes(root: str | Path, name: str) -> bytes:
 
 
 @runtime_checkable
-class _NativeSchemaValidate(Protocol):
-    def __call__(self, instance: object) -> None: ...
+class _NativeSchemaValidator(Protocol):
+    def validate(self, instance: object) -> None: ...
+
+
+def _schema_validator(value: object) -> _NativeSchemaValidator:
+    if not isinstance(value, _NativeSchemaValidator):
+        raise JobError("Native JSON schema validator unavailable")
+    return value
 
 
 def native_schema(name: str, value: object) -> None:
@@ -45,10 +54,9 @@ def native_schema(name: str, value: object) -> None:
         schema = json_object(json.loads(file_bytes(folder, name)))
         if name == "infoCourse.json":
             schema = integer_manual_points_schema(schema)
-        validate_value: object = getattr(jsonschema.Draft7Validator(schema), "validate")
-        if not isinstance(validate_value, _NativeSchemaValidate):
-            raise JobError("Native JSON schema validator unavailable")
-        validate_value(json_value(value))
+        _schema_validator(jsonschema.Draft7Validator(schema)).validate(
+            json_value(value)
+        )
     except jsonschema.ValidationError as error:
         raise JobError("Invalid native " + name + ": " + error.message) from error
 
@@ -599,7 +607,7 @@ def package_integrity(
                 == "optional"
                 for q in _texts(slot["candidates"], "Invalid canonical candidate pool")
             }
-            for zone, group in groups:
+            for _zone, group in groups:
                 for question in _records(
                     group.get("alternatives", [group]),
                     "Invalid native question alternatives",

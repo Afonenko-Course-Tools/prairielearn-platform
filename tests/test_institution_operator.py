@@ -11,11 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class InstitutionOperatorTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.script = ROOT / "tools/bootstrap-native-course.mjs"
         self.assertTrue(self.script.is_file(), "Native institution operator is missing")
 
-    def test_help_does_not_need_database_or_credentials(self):
+    def test_help_does_not_need_database_or_credentials(self) -> None:
         result = subprocess.run(
             ["node", str(self.script), "--help"],
             capture_output=True,
@@ -25,7 +25,7 @@ class InstitutionOperatorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--registry", result.stdout)
 
-    def test_unknown_institution_precedes_native_initialization(self):
+    def test_unknown_institution_precedes_native_initialization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             registry = {
@@ -63,7 +63,7 @@ class InstitutionOperatorTests(unittest.TestCase):
             self.assertIn("Unknown institution key", result.stderr)
             self.assertNotIn("Cannot find package", result.stderr)
 
-    def test_actor_is_required_before_native_initialization(self):
+    def test_actor_is_required_before_native_initialization(self) -> None:
         for script, arguments in [
             (
                 "bootstrap-native-course.mjs",

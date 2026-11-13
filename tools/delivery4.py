@@ -1,6 +1,15 @@
 """Закрытые data-only bindings v4; пакет и seed никогда не исполняются."""
 
-import io, json, os, re, resource, stat, subprocess, tempfile, unicodedata, zipfile
+import io
+import json
+import os
+import re
+import resource
+import stat
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
+import tempfile
+import unicodedata
+import zipfile
 from pathlib import Path
 from collections.abc import Collection, Sequence
 from typing import TypeGuard
@@ -452,7 +461,7 @@ def seed_proof(native: str | Path, prefix: str, b: object) -> SeedProof:
             try:
                 # Файл и OS limit ограничивают stdout до чтения в Python; stderr не копится.
                 with tempfile.TemporaryFile() as output:
-                    subprocess.run(
+                    subprocess.run(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
                         [
                             "git",
                             "-c",

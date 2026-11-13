@@ -55,7 +55,9 @@ class PlainRuntimeTests(unittest.TestCase):
         (self.job / "tests/grading-job.json").write_text(json.dumps(self.config))
         return grader.grade(self.job)
 
-    def test_correct_answer_uses_standard_report_without_execution_inventory(self):
+    def test_correct_answer_uses_standard_report_without_execution_inventory(
+        self,
+    ) -> None:
         result = self.run_job()
         assert "score" in result
         self.assertEqual(result["score"], 1)
@@ -65,7 +67,7 @@ class PlainRuntimeTests(unittest.TestCase):
         assert "reportFormat" in result
         self.assertEqual(result["reportFormat"], "junit-listener")
 
-    def test_student_assertion_is_runtime_failure(self):
+    def test_student_assertion_is_runtime_failure(self) -> None:
         (self.job / "student/Student.java").write_text(
             'public class Student { public static int answer(){ throw new AssertionError("student"); } }'
         )
@@ -76,7 +78,7 @@ class PlainRuntimeTests(unittest.TestCase):
         assert "counts" in result
         self.assertEqual(set(result["counts"]["failureKinds"].values()), {"runtime"})
 
-    def test_wrong_answer_keeps_assertion_feedback(self):
+    def test_wrong_answer_keeps_assertion_feedback(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student { public static int answer(){ return 41; } }"
         )
@@ -86,10 +88,11 @@ class PlainRuntimeTests(unittest.TestCase):
         self.assertEqual(result["score"], 0)
         assert "counts" in result
         case = result["counts"]["cases"][0]
+        assert "expected" in case and "actual" in case
         self.assertEqual(case["expected"], "42")
         self.assertEqual(case["actual"], "41")
 
-    def test_threshold_preserves_declared_junit_points(self):
+    def test_threshold_preserves_declared_junit_points(self) -> None:
         self.config["scoring"] = {"mode": "threshold", "basis": "score", "value": 0.5}
         (self.job / "tests/AnswerTest.java").write_text(
             'import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*; public class AnswerTest { @Test @Tag("points=3") void heavy(){ assertEquals(0,Student.answer()); } @Test @Tag("points=1") void light(){ assertEquals(42,Student.answer()); } }'
@@ -100,7 +103,7 @@ class PlainRuntimeTests(unittest.TestCase):
         assert "score" in result
         self.assertEqual(result["score"], 0)
 
-    def test_dynamic_and_parameterized_cases_use_public_junit_ids(self):
+    def test_dynamic_and_parameterized_cases_use_public_junit_ids(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             'import java.util.stream.Stream; import org.junit.jupiter.api.*; import org.junit.jupiter.params.ParameterizedTest; import org.junit.jupiter.params.provider.ValueSource; import static org.junit.jupiter.api.Assertions.*; public class AnswerTest { @ParameterizedTest @ValueSource(ints={41,42}) void rows(int n){assertEquals(n,Student.answer());} @TestFactory Stream<DynamicTest> generated(){return Stream.of(DynamicTest.dynamicTest("Динамический",()->assertEquals(42,Student.answer())));}}'
         )
@@ -109,7 +112,7 @@ class PlainRuntimeTests(unittest.TestCase):
         self.assertEqual(result["counts"]["executed"], 3)
         self.assertEqual(result["score"], 2 / 3)
 
-    def test_successful_empty_factories_and_containers_are_not_leaf_cases(self):
+    def test_successful_empty_factories_and_containers_are_not_leaf_cases(self) -> None:
         (self.job / "tests/AnswerTest.java").write_text(
             'import java.util.stream.Stream; import org.junit.jupiter.api.*; import static org.junit.jupiter.api.Assertions.*; public class AnswerTest { @Test void answer(){assertEquals(42,Student.answer());} @TestFactory Stream<DynamicNode> empty(){return Stream.empty();} @TestFactory Stream<DynamicNode> container(){return Stream.of(DynamicContainer.dynamicContainer("empty",Stream.empty()));}}'
         )
@@ -120,14 +123,14 @@ class PlainRuntimeTests(unittest.TestCase):
         assert "counts" in result
         self.assertEqual(result["counts"]["passed"], 1)
 
-    def test_premature_jvm_exit_is_infrastructure(self):
+    def test_premature_jvm_exit_is_infrastructure(self) -> None:
         (self.job / "student/Student.java").write_text(
             "public class Student { public static int answer(){System.exit(0);return 42;} }"
         )
         with self.assertRaises(grader.GraderError):
             self.run_job()
 
-    def test_compile_error_is_student_result(self):
+    def test_compile_error_is_student_result(self) -> None:
         (self.job / "student/Student.java").write_text("not java")
         result = self.run_job()
         self.assertEqual(result["classification"], "student-compilation-failure")

@@ -5,7 +5,11 @@ from collections.abc import Iterable, Mapping
 from typing import Protocol, runtime_checkable
 from jsonschema.exceptions import ValidationError
 from selected_job_fixture import fixture_record
-import copy, json, os, unittest, jsonschema
+import copy
+import json
+import os
+import unittest
+import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = fixture_record(
@@ -105,7 +109,7 @@ class ResultAdmissionTests(unittest.TestCase):
                     not errors, valid, "\n".join(e.message for e in errors)[:1500]
                 )
 
-    def test_actual_early_and_post_compile_guard_phases_are_valid(self):
+    def test_actual_early_and_post_compile_guard_phases_are_valid(self) -> None:
         for value in [
             outcome("failure"),
             outcome(),
@@ -115,7 +119,9 @@ class ResultAdmissionTests(unittest.TestCase):
         ]:
             self.check_both(value, True)
 
-    def test_student_compile_failures_preserve_trusted_first_mutation_fact(self):
+    def test_student_compile_failures_preserve_trusted_first_mutation_fact(
+        self,
+    ) -> None:
         self.check_both(
             outcome("failure", classification="student-compilation-failure"), True
         )
@@ -135,7 +141,7 @@ class ResultAdmissionTests(unittest.TestCase):
             "java25-mutation-v1",
         )
 
-    def test_student_compile_failure_never_claims_dependent_execution(self):
+    def test_student_compile_failure_never_claims_dependent_execution(self) -> None:
         # Independent receipt claims: javac failed, so dependent execution cannot have run.
         for trusted, runtime in [
             ("not-run", "java25-junit-v1"),
@@ -147,7 +153,7 @@ class ResultAdmissionTests(unittest.TestCase):
             value["dependentExecution"] = "complete"
             self.check_both(value, False, runtime)
 
-    def test_student_compile_failure_never_has_execution_duration(self):
+    def test_student_compile_failure_never_has_execution_duration(self) -> None:
         for trusted, runtime in [
             ("not-run", "java25-junit-v1"),
             ("success", "java25-mutation-v1"),
@@ -158,7 +164,7 @@ class ResultAdmissionTests(unittest.TestCase):
             fixture_record(value.setdefault("durations", {}))["execution"] = 0.1
             self.check_both(value, False, runtime)
 
-    def test_student_compile_failure_optional_not_run_is_valid(self):
+    def test_student_compile_failure_optional_not_run_is_valid(self) -> None:
         for trusted, runtime in [
             ("not-run", "java25-junit-v1"),
             ("success", "java25-mutation-v1"),
@@ -169,7 +175,7 @@ class ResultAdmissionTests(unittest.TestCase):
             value["dependentExecution"] = "not-run"
             self.check_both(value, True, runtime)
 
-    def test_unsafe_can_never_claim_grade_or_behavior_execution(self):
+    def test_unsafe_can_never_claim_grade_or_behavior_execution(self) -> None:
         mutations: list[dict[str, object]] = [
             {"score": 0},
             {"score": 1},
@@ -187,7 +193,7 @@ class ResultAdmissionTests(unittest.TestCase):
             fixture_record(value.setdefault("durations", {}))["execution"] = 0.1
             self.check_both(value, False)
 
-    def test_impossible_compile_or_api_stage_combinations_fail_closed(self):
+    def test_impossible_compile_or_api_stage_combinations_fail_closed(self) -> None:
         for value in [
             outcome("not-run"),
             outcome("failure", "success"),
@@ -198,7 +204,9 @@ class ResultAdmissionTests(unittest.TestCase):
         ]:
             self.check_both(value, False)
 
-    def test_post_compile_claims_require_corresponding_actual_phase_evidence(self):
+    def test_post_compile_claims_require_corresponding_actual_phase_evidence(
+        self,
+    ) -> None:
         for trusted, api, keys in [
             ("not-run", None, ["studentCompilation"]),
             ("success", None, ["studentCompilation", "trustedCompilation"]),
@@ -222,17 +230,19 @@ class ResultAdmissionTests(unittest.TestCase):
             value.pop(key)
             self.check_both(value, False)
 
-    def test_api_not_run_does_not_allow_hidden_api_execution(self):
+    def test_api_not_run_does_not_allow_hidden_api_execution(self) -> None:
         for student in ["failure", "success"]:
             value = outcome(student, api="not-run")
             fixture_record(value.setdefault("durations", {}))["apiExecution"] = 0.1
             self.check_both(value, False)
 
-    def test_mutation_compile_failure_cannot_claim_api_precheck(self):
+    def test_mutation_compile_failure_cannot_claim_api_precheck(self) -> None:
         value = outcome("failure", "success", "not-run", "student-compilation-failure")
         self.check_both(value, False, "java25-mutation-v1")
 
-    def test_trusted_first_student_compile_failure_is_not_an_implementation_stage(self):
+    def test_trusted_first_student_compile_failure_is_not_an_implementation_stage(
+        self,
+    ) -> None:
         value = outcome(
             "failure", "success", classification="student-compilation-failure"
         )

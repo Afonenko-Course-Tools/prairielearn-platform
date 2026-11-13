@@ -5,7 +5,7 @@ import unittest
 
 
 class ProxmoxPreflight(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         path = pathlib.Path(__file__).parents[1] / "tools/proxmox-preflight.py"
         sys.path.insert(0, str(path.parent))
         spec = importlib.util.spec_from_file_location("preflight", path)
@@ -24,12 +24,12 @@ class ProxmoxPreflight(unittest.TestCase):
             }
         ]
 
-    def test_assigned_qcl_memory_is_reserved_even_when_idle(self):
+    def test_assigned_qcl_memory_is_reserved_even_when_idle(self) -> None:
         self.node["maxmem"] = 50 * 1024**3
         with self.assertRaises(ValueError):
             self.module.admit(self.node, self.guests, 102, 8 * 1024**3)
 
-    def test_only_new_id_and_adequate_headroom_are_admitted(self):
+    def test_only_new_id_and_adequate_headroom_are_admitted(self) -> None:
         self.assertGreater(
             self.module.admit(self.node, self.guests, 102, 8 * 1024**3)[
                 "remainingBytes"

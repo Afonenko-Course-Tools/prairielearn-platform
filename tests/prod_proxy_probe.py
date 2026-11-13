@@ -217,7 +217,7 @@ class ProductionProxy(unittest.TestCase):
         self.assertEqual(headers.get("x-forwarded-proto"), "https")
         return actual_path, headers
 
-    def test_public_native_locations_replace_forged_forwarding(self):
+    def test_public_native_locations_replace_forged_forwarding(self) -> None:
         for path in [
             "/pl/example?x=1",
             "/favicon.ico",
@@ -231,7 +231,7 @@ class ProductionProxy(unittest.TestCase):
                     self.assertNotIn("x-trust-auth-" + name, headers)
                 self.assertEqual(headers["cookie"], FORGED["Cookie"])
 
-    def test_handoff_keeps_verified_identity_and_native_cookie(self):
+    def test_handoff_keeps_verified_identity_and_native_cookie(self) -> None:
         for prefix in ["/gateway/pl/", "/gateway/courses/synthetic/pl/"]:
             with self.subTest(prefix=prefix):
                 path, headers = self.observed(prefix + "a" * 43)
@@ -242,7 +242,7 @@ class ProductionProxy(unittest.TestCase):
                 self.assertNotIn("x-trust-auth-uin", headers)
                 self.assertEqual(headers.get("cookie"), "pl2_pre_auth_url=" + TARGET)
 
-    def test_rejected_browser_proof_never_reaches_native_callback(self):
+    def test_rejected_browser_proof_never_reaches_native_callback(self) -> None:
         invalid: list[dict[str, str] | list[tuple[str, str]]] = [
             {},
             {"Cookie": "pl2_session=synthetic"},
@@ -260,7 +260,7 @@ class ProductionProxy(unittest.TestCase):
                     self.assertEqual(status, 403)
                     self.assertEqual(self.upstream.callbacks, before)
 
-    def test_private_and_callback_routes_remain_closed(self):
+    def test_private_and_callback_routes_remain_closed(self) -> None:
         for path, expected in [
             ("/internal/handoff/test", 404),
             ("/__verified_handoff", 404),

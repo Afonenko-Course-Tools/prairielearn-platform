@@ -19,7 +19,7 @@ import resource
 import selectors
 import secrets
 import signal
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -261,7 +261,8 @@ def _validate_role_records(
 
 
 def _role_records() -> dict[str, AccessRole]:
-    import pwd, grp
+    import pwd
+    import grp
 
     try:
         roles: dict[str, AccessRole] = {
@@ -288,7 +289,8 @@ def _role_records() -> dict[str, AccessRole]:
 
 
 def _protect_input_identity(job: Path) -> None:
-    import pwd, grp
+    import pwd
+    import grp
 
     owners = {p.stat().st_uid for p in (job, job / "student", job / "tests")}
     groups = {p.stat().st_gid for p in (job, job / "student", job / "tests")}
@@ -353,7 +355,7 @@ def _grading_environment() -> dict[str, str]:
         "PATH": home + "/bin:/usr/bin:/bin",
         "JAVA_HOME": home,
         "HOME": "/nonexistent",
-        "TMPDIR": "/tmp",
+        "TMPDIR": "/tmp",  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
     }
@@ -488,7 +490,7 @@ def _grading_boundary_unchecked() -> GradingBoundary:
     ]:
         code, _, reason = _run_unchecked(
             [*prefix, "/usr/bin/test", flag, str(path)],
-            Path("/tmp"),
+            Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
             5,
             1024,
             env=_grading_environment(),
@@ -528,7 +530,7 @@ def _run_unchecked(
     if diagnostics is not None:
         diagnostics["stage"] = stage
     try:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
             command,
             cwd=cwd,
             stdout=subprocess.PIPE,
@@ -1928,7 +1930,7 @@ def _native_containment(
     # These are actual UID/readability checks, before the first Gradle child.
     code, text, reason = _run(
         [*prefix, "/usr/bin/id", "-u"],
-        Path("/tmp"),
+        Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
         5,
         1024,
         env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
@@ -1938,7 +1940,7 @@ def _native_containment(
     for path in private_paths:
         code, text, reason = _run(
             [*prefix, "/usr/bin/test", "-r", str(path)],
-            Path("/tmp"),
+            Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
             5,
             1024,
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
@@ -2544,7 +2546,7 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
                     raise GraderError("Invalid variant ID")
                 selected = [
                     p
-                    for p, n in zip(tests, test_names)
+                    for p, n in zip(tests, test_names, strict=True)
                     if n.startswith("variants/" + variant + "/")
                 ]
                 if not selected:

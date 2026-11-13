@@ -1,13 +1,19 @@
 """Применимость src/dist hooks и атомарный отказ patcher; без Native/DB/Docker."""
 
-import json, pathlib, shutil, subprocess, sys, tempfile, unittest
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests/fixtures/native-credit-upstream"
 
 
 class PatchControls(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory(prefix="credit-patch-")
         self.root = pathlib.Path(self.tmp.name)
         self.records = json.loads((FIX / "SOURCE.json").read_bytes())["files"]
@@ -16,7 +22,7 @@ class PatchControls(unittest.TestCase):
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(FIX / rel, dest)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.tmp.cleanup()
 
     def paths(self):
@@ -37,7 +43,7 @@ class PatchControls(unittest.TestCase):
             timeout=10,
         )
 
-    def test_ten_native_src_dist_hooks_accept_unrelated_comments(self):
+    def test_ten_native_src_dist_hooks_accept_unrelated_comments(self) -> None:
         for p in self.paths():
             p.write_text(p.read_text() + "\n// harmless upstream comment\n")
         result = self.run_patch()
@@ -56,7 +62,7 @@ class PatchControls(unittest.TestCase):
                     "await applyRecognizedCredit({ assessment_instance_id", text
                 )
 
-    def test_patched_native_aggregate_preserves_scoring_behavior(self):
+    def test_patched_native_aggregate_preserves_scoring_behavior(self) -> None:
         self.assertEqual(self.run_patch().returncode, 0)
         result = subprocess.run(
             [
@@ -69,7 +75,7 @@ class PatchControls(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_missing_native_boundary_refuses_before_any_file_write(self):
+    def test_missing_native_boundary_refuses_before_any_file_write(self) -> None:
         p = self.paths()[-1]
         p.write_text(
             p.read_text().replace(
@@ -82,7 +88,7 @@ class PatchControls(unittest.TestCase):
         self.assertNotEqual(self.run_patch().returncode, 0)
         self.assertEqual(before, {p: p.read_bytes() for p in self.paths()})
 
-    def test_duplicate_native_boundary_refuses_before_any_file_write(self):
+    def test_duplicate_native_boundary_refuses_before_any_file_write(self) -> None:
         p = self.root / "src/lib/assessment.ts"
         p.write_text(
             p.read_text()
@@ -92,13 +98,13 @@ class PatchControls(unittest.TestCase):
         self.assertNotEqual(self.run_patch().returncode, 0)
         self.assertEqual(before, {p: p.read_bytes() for p in self.paths()})
 
-    def test_duplicate_patch_refuses_without_duplicate_hooks(self):
+    def test_duplicate_patch_refuses_without_duplicate_hooks(self) -> None:
         self.assertEqual(self.run_patch().returncode, 0)
         before = {p: p.read_bytes() for p in self.paths()}
         self.assertNotEqual(self.run_patch().returncode, 0)
         self.assertEqual(before, {p: p.read_bytes() for p in self.paths()})
 
-    def test_missing_native_file_io_failure_does_not_partially_patch(self):
+    def test_missing_native_file_io_failure_does_not_partially_patch(self) -> None:
         self.paths()[-1].unlink()
         before = {p: p.read_bytes() for p in self.paths() if p.exists()}
         self.assertNotEqual(self.run_patch().returncode, 0)

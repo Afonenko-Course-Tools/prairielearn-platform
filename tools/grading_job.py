@@ -12,7 +12,7 @@ import json
 import os
 from pathlib import Path
 import shutil
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import tempfile
 import secrets
 import jsonschema
@@ -808,7 +808,7 @@ class _RegistryHostGrader(Protocol):
 
 def _remove_container(name: str) -> None:
     """Подтвердить удаление только собственного заранее выбранного контейнера."""
-    cleanup = subprocess.run(
+    cleanup = subprocess.run(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
         ["docker", "rm", "--force", name],
         capture_output=True,
         text=True,
@@ -918,7 +918,7 @@ def run_job(
             ]
             job.mark_containers_stopped(False)
             try:
-                p = subprocess.run(
+                p = subprocess.run(  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
                     cmd,
                     capture_output=True,
                     text=True,
@@ -1125,9 +1125,9 @@ def cleanup_job(job: object, backend: str) -> None:
     ):
         raise JobError("Scratch cleanup identity changed")
     cleanup_name = "plcleanup-" + secrets.token_hex(12)
-    setattr(job, "_containers_stopped", False)
+    setattr(job, "_containers_stopped", False)  # noqa: B010 — object boundary deliberately supports prepared dict subclasses
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
             [
                 "docker",
                 "run",
@@ -1171,13 +1171,13 @@ def cleanup_job(job: object, backend: str) -> None:
             raise JobError(
                 message + "; container cleanup failed: " + str(cleanup_error)
             ) from cleanup_error
-        setattr(job, "_containers_stopped", True)
+        setattr(job, "_containers_stopped", True)  # noqa: B010 — object boundary deliberately supports prepared dict subclasses
         if isinstance(error, KeyboardInterrupt):
             raise
         raise JobError(message + "; container removed") from error
     if result.returncode:
         raise JobError("Scratch ownership cleanup failed: " + result.stderr)
-    setattr(job, "_containers_stopped", True)
+    setattr(job, "_containers_stopped", True)  # noqa: B010 — object boundary deliberately supports prepared dict subclasses
     check_root()
     shutil.rmtree(root)
 

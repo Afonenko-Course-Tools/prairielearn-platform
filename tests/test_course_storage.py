@@ -19,7 +19,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "tools/stage_courses.py"
 
 
 class CourseStorageTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.assertTrue(SCRIPT.is_file(), "Course storage is not implemented")
         spec = importlib.util.spec_from_file_location("storage", SCRIPT)
         if spec is None or spec.loader is None:
@@ -141,7 +141,7 @@ class CourseStorageTests(unittest.TestCase):
         value["name"] = name
         p.write_text(json.dumps(value))
 
-    def stop(self):
+    def stop(self) -> None:
         self.server.shutdown()
         self.server.server_close()
         self.thread.join()
@@ -149,7 +149,7 @@ class CourseStorageTests(unittest.TestCase):
     def stage(self):
         return self.module.stage_course(self.course, self.storage)
 
-    def test_exact_commit_checkout_and_repeat_are_stable(self):
+    def test_exact_commit_checkout_and_repeat_are_stable(self) -> None:
         path = self.stage()
         self.assertEqual(path, self.storage / "course-a" / self.first)
         self.assertEqual(
@@ -157,7 +157,7 @@ class CourseStorageTests(unittest.TestCase):
         )
         self.assertEqual(self.stage(), path)
 
-    def test_upgrade_retains_previous_delivery(self):
+    def test_upgrade_retains_previous_delivery(self) -> None:
         first = self.stage()
         self.rename_course("SYN2")
         self.update_provenance()
@@ -172,13 +172,13 @@ class CourseStorageTests(unittest.TestCase):
             json.loads((first / "infoCourse.json").read_text())["name"], "SYN"
         )
 
-    def test_dirty_existing_checkout_is_refused(self):
+    def test_dirty_existing_checkout_is_refused(self) -> None:
         path = self.stage()
         (path / "infoCourse.json").write_text("changed")
         with self.assertRaises(self.module.StorageError):
             self.stage()
 
-    def test_symlink_git_metadata_is_refused_before_git_execution(self):
+    def test_symlink_git_metadata_is_refused_before_git_execution(self) -> None:
         path = self.stage()
         metadata = self.root / "external-git"
         shutil.move(path / ".git", metadata)
@@ -188,13 +188,13 @@ class CourseStorageTests(unittest.TestCase):
                 self.stage()
             invoked.assert_not_called()
 
-    def test_nonexistent_commit_leaves_no_published_directory(self):
+    def test_nonexistent_commit_leaves_no_published_directory(self) -> None:
         self.course["commit"] = "f" * 40
         with self.assertRaises(self.module.StorageError):
             self.stage()
         self.assertFalse((self.storage / "course-a" / ("f" * 40)).exists())
 
-    def test_symlink_payload_is_refused(self):
+    def test_symlink_payload_is_refused(self) -> None:
         (self.repo / "leak").symlink_to("/etc/hosts")
         self.git("add", ".")
         self.git("commit", "-qm", "Unsafe native")
@@ -203,7 +203,7 @@ class CourseStorageTests(unittest.TestCase):
         with self.assertRaises(self.module.StorageError):
             self.stage()
 
-    def test_two_course_ids_keep_separate_storage(self):
+    def test_two_course_ids_keep_separate_storage(self) -> None:
         first = self.stage()
         self.course["id"] = "course-b"
         self.course["mount"] = "/course2"
@@ -212,7 +212,7 @@ class CourseStorageTests(unittest.TestCase):
         self.assertTrue(first.is_dir())
         self.assertTrue(second.is_dir())
 
-    def test_registry_upgrade_one_course_preserves_other_pin_and_payload(self):
+    def test_registry_upgrade_one_course_preserves_other_pin_and_payload(self) -> None:
         a = dict(self.course)
         b = dict(self.course, id="course-b", mount="/course2")
         registry = {"schema": "pl-courses-v1", "courses": [a, b]}
@@ -245,12 +245,12 @@ class CourseStorageTests(unittest.TestCase):
         )
         self.assertTrue(Path(first["services"]["pl"]["volumes"][1]["source"]).exists())
 
-    def test_symlink_storage_parent_is_refused(self):
+    def test_symlink_storage_parent_is_refused(self) -> None:
         (self.storage / "course-a").symlink_to(self.repo)
         with self.assertRaises(self.module.StorageError):
             self.stage()
 
-    def test_v2_institution_reference_survives_staging_and_repeat(self):
+    def test_v2_institution_reference_survives_staging_and_repeat(self) -> None:
         catalog = {
             "schema": "pl-institutions-v1",
             "institutions": {
@@ -271,7 +271,7 @@ class CourseStorageTests(unittest.TestCase):
         )
         self.assertTrue(Path(first["services"]["pl"]["volumes"][0]["source"]).is_dir())
 
-    def test_unknown_institution_rejects_before_checkout(self):
+    def test_unknown_institution_rejects_before_checkout(self) -> None:
         catalog = {
             "schema": "pl-institutions-v1",
             "institutions": {

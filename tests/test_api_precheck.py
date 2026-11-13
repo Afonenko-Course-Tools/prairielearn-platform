@@ -1,3 +1,5 @@
+"""Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
+
 from __future__ import annotations
 
 import base64
@@ -10,7 +12,6 @@ from selected_job_fixture import (
     native_manifest,
 )
 
-"""Порядок API gate проверяется реальными компиляторами и процессами JDK25."""
 
 from gradle_unit_fixtures import registry as unit_registry
 import json

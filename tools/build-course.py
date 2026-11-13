@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import uuid
 import tempfile
 import shutil
@@ -225,7 +225,7 @@ def build_course(
         if candidate_image:
             command += ["--candidate-image", candidate_image]
         try:
-            subprocess.run(command, cwd=root, check=True)
+            subprocess.run(command, cwd=root, check=True)  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
         except (OSError, subprocess.CalledProcessError) as error:
             raise BuildError("Installed full owner export failed") from error
         from delivery_verification import package_integrity

@@ -1,6 +1,10 @@
 """Функциональная поставка Native сохраняет UUID, выбор и приватность без proof."""
 
-import copy, json, sys, tempfile, unittest
+import copy
+import json
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from typing import TypeGuard
 

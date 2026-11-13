@@ -15,9 +15,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from delivery4 import seed_proof
-from grading_job import JobError
-from delivery_types import SeedProof
+from delivery4 import seed_proof  # noqa: E402 — import after the local test/tool path bootstrap
+from grading_job import JobError  # noqa: E402 — import after the local test/tool path bootstrap
+from delivery_types import SeedProof  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 class GitCommand(Protocol):
@@ -52,6 +52,10 @@ class RecipeSeed(unittest.TestCase):
                     "core.hooksPath=/dev/null",
                     "-c",
                     "core.fsmonitor=false",
+                    "-c",
+                    "maintenance.auto=false",
+                    "-c",
+                    "gc.auto=0",
                     "-c",
                     "user.name=Fixture",
                     "-c",
@@ -199,11 +203,11 @@ class RecipeSeed(unittest.TestCase):
                 with self.subTest(packed=packed, unreachable=unreachable):
 
                     def change(git: GitCommand, work: Path) -> None:
-                        if unreachable:
+                        if unreachable:  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                             (work / "notes.txt").write_bytes(b"public\n")
                             git("add", "notes.txt")
                             git("commit", "--amend", "--no-edit", "-q")
-                        if packed:
+                        if packed:  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                             git("repack", "-ad")
 
                     root, entries = self.fixture(

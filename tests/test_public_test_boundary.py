@@ -1,5 +1,7 @@
 """Описания публичных примеров не являются входом проверяющего раннера."""
 
+from platform_modules import grader_hook
+
 import json
 from collections.abc import Iterator
 from typing import Protocol, runtime_checkable
@@ -11,7 +13,7 @@ import jsonschema
 from test_student_feedback import feedback
 
 
-def sample_counts():
+def sample_counts() -> dict[str, object]:
     return {
         "complete": True,
         "eventErrors": 0,
@@ -38,8 +40,8 @@ def sample_counts():
     }
 
 
-from json_boundary import is_object, is_list
-import test_grading_job as fixtures
+from json_boundary import is_object, is_list  # noqa: E402 — import after the local test/tool path bootstrap
+import test_grading_job as fixtures  # noqa: E402 — import after the local test/tool path bootstrap
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,7 +63,7 @@ class ConfigValidator(Protocol):
 
 
 def validate_config(config: object) -> None:
-    validator: object = getattr(fixtures.grader, "validate_config")
+    validator: object = grader_hook(fixtures.grader, "validate_config")
     if not isinstance(validator, ConfigValidator):
         raise AssertionError("Частный контракт validate_config недоступен")
     validator(config)
@@ -129,7 +131,7 @@ class PublicTestBoundary(unittest.TestCase):
 
     def test_legacy_observation_cannot_add_a_card_or_override_junit(self) -> None:
         counts = sample_counts()
-        leaf = counts["cases"][0]
+        leaf = fixture_record(fixture_list(counts["cases"])[0])
         leaf["name"] = "Обычный JUnit display name"
         source = {
             "classification": "success",
@@ -163,7 +165,9 @@ class PublicTestBoundary(unittest.TestCase):
         self.assertEqual(native["score"], 1)
         self.assertNotIn("publicCases", native["feedback"])
         self.assertNotIn("CLOSED_", json.dumps(native))
-        self.assertIn("Ожидается: " + leaf["expected"], native["tests"][0]["message"])
+        self.assertIn(
+            "Ожидается: " + str(leaf["expected"]), native["tests"][0]["message"]
+        )
 
     def test_no_description_cards_on_compile_or_infrastructure_failure(self) -> None:
         for kind in ("student-compilation-failure", "infrastructure-failure"):

@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 
-class _RunOptions(TypedDict, total=False):
+class RunOptions(TypedDict, total=False):
     cwd: Path
     check: bool
     capture_output: bool
@@ -80,11 +80,11 @@ class LaunchContract(unittest.TestCase):
         self.stage = self.root / "known-stage"
         self.registry = self.root / "registry.json"
         self.registry.write_text("{}")
-        self.calls: list[tuple[list[str], _RunOptions] | Path] = []
+        self.calls: list[tuple[list[str], RunOptions] | Path] = []
         self.original_run = subprocess.run
 
     def run_spy(
-        self, args: list[str], **kw: Unpack[_RunOptions]
+        self, args: list[str], **kw: Unpack[RunOptions]
     ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
         if args[0] == "quarto":
             self.calls.append((args, kw))
@@ -143,7 +143,7 @@ class LaunchContract(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def emit_package(
-        self, args: list[str], **kw: Unpack[_RunOptions]
+        self, args: list[str], **kw: Unpack[RunOptions]
     ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
         if args[0] != "quarto":
             return self.original_run(args, **kw)
@@ -198,7 +198,7 @@ class LaunchContract(unittest.TestCase):
         self,
     ) -> None:
         def spawn(
-            args: list[str], **kw: Unpack[_RunOptions]
+            args: list[str], **kw: Unpack[RunOptions]
         ) -> subprocess.CompletedProcess[bytes] | subprocess.CompletedProcess[str]:
             if args[0] != "quarto":
                 return self.original_run(args, **kw)

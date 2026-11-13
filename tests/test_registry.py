@@ -4,8 +4,8 @@ import sys
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/check_registry.py"
 sys.path.insert(0, str(SCRIPT.parent))
-import check_registry as registry_module
-from check_registry import Course
+import check_registry as registry_module  # noqa: E402 — import after the local test/tool path bootstrap
+from check_registry import Course  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 class RegistryTests(unittest.TestCase):

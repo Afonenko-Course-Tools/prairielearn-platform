@@ -40,7 +40,7 @@ class NativeNamePatch(unittest.TestCase):
             / ("gateway-name-base." + ("ts" if kind == "src" else "js"))
         ).read_text()
 
-    def test_generated_body_and_no_uid_sql_change(self):
+    def test_generated_body_and_no_uid_sql_change(self) -> None:
         for kind in ["src", "dist"]:
             source = self.original(kind)
             result = PATCH.patch(source, kind)
@@ -67,7 +67,7 @@ class NativeNamePatch(unittest.TestCase):
                 PATCH.patch(source + "\n// harmless upstream comment", kind),
             )
 
-    def test_missing_or_duplicate_boundaries_refuse(self):
+    def test_missing_or_duplicate_boundaries_refuse(self) -> None:
         for kind in ["src", "dist"]:
             source = self.original(kind)
             for anchor in [
@@ -84,7 +84,7 @@ class NativeNamePatch(unittest.TestCase):
         with self.assertRaises(ValueError):
             PATCH.patch(self.original("src"), "unknown")
 
-    def test_both_pinned_inputs_validated_before_any_write(self):
+    def test_both_pinned_inputs_validated_before_any_write(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             src, dist = (
                 pathlib.Path(directory) / "callback.ts",
@@ -98,7 +98,9 @@ class NativeNamePatch(unittest.TestCase):
             self.assertEqual(src.read_bytes(), before)
             self.assertEqual(dist.read_text(), "drift")
 
-    def test_actual_patched_callback_both_generated_forms_with_mock_load_user(self):
+    def test_actual_patched_callback_both_generated_forms_with_mock_load_user(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             for kind, suffix in [("src", "ts"), ("dist", "js")]:
                 path = pathlib.Path(directory) / ("callback." + suffix)
@@ -118,7 +120,9 @@ class NativeNamePatch(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn('"checks":32', result.stdout)
 
-    def test_proxy_public_routes_strip_both_names_and_handoff_uses_verified_wire(self):
+    def test_proxy_public_routes_strip_both_names_and_handoff_uses_verified_wire(
+        self,
+    ) -> None:
         source = (ROOT / "proxy/nginx.prod.conf").read_text()
         self.assertIn(
             "auth_request_set $verified_name_utf8_b64 $upstream_http_x_verified_name_utf8_b64;",

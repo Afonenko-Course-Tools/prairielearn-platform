@@ -1,5 +1,7 @@
 """Source guard regression; mocked container facts не доказывают изоляцию."""
 
+from platform_modules import grader_hook
+
 import os
 import shutil
 from collections.abc import Iterator, Sequence
@@ -34,7 +36,7 @@ class InstalledHelperGuardTests(unittest.TestCase):
                     else real_iterdir(path)
                 )
 
-            containment: object = getattr(grader, "_native_containment")
+            containment: object = grader_hook(grader, "_native_containment")
             if not isinstance(containment, _NativeContainment):
                 raise RuntimeError("Контракт локального native containment недоступен")
             with (

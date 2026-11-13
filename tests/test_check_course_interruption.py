@@ -123,10 +123,10 @@ class CheckCourseInterruption(unittest.TestCase):
                     private = job.root / ".native-build-private"
                     private.mkdir(mode=0o700)
                     evidence = private / "compile.log"
-                    evidence.write_text(log_data)
+                    evidence.write_text(log_data)  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                     evidence.chmod(0o600)
-                    events.append("grading-complete")
-                    return completed
+                    events.append("grading-complete")  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                    return completed  # noqa: B023 — mock is consumed synchronously inside this loop iteration
 
                 def run(
                     command: list[str], **kwargs: object
@@ -134,17 +134,17 @@ class CheckCourseInterruption(unittest.TestCase):
                     nonlocal calls, selected_name
                     calls += 1
                     self.assertLessEqual(calls, 2)
-                    job = prepared
+                    job = prepared  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                     if job is None:
                         raise AssertionError("Ownership запущен до подготовки job")
                     self.assertTrue(job.root.is_dir())
-                    self.assertEqual(log.read_text(), log_data)
+                    self.assertEqual(log.read_text(), log_data)  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                     self.assertEqual(
                         kwargs, {"capture_output": True, "text": True, "timeout": 10}
                     )
                     if calls == 1:
-                        saved = json_object(json.loads(output.read_text()))
-                        self.assertEqual(saved["results"], [completed])
+                        saved = json_object(json.loads(output.read_text()))  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                        self.assertEqual(saved["results"], [completed])  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                         self.assertEqual(saved["remaining"], [])
                         self.assertEqual(
                             command[:4], ["docker", "run", "--rm", "--name"]
@@ -156,15 +156,15 @@ class CheckCourseInterruption(unittest.TestCase):
                             f"type=bind,src={job.root},dst=/grade,bind-recursive=disabled",
                             command,
                         )
-                        events.append("ownership-run")
-                        raise interrupt
+                        events.append("ownership-run")  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                        raise interrupt  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                     self.assertEqual(
                         command, ["docker", "rm", "--force", selected_name]
                     )
-                    events.append("ownership-remove")
-                    if isinstance(removal, BaseException):
-                        raise removal
-                    return removal
+                    events.append("ownership-remove")  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                    if isinstance(removal, BaseException):  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                        raise removal  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                    return removal  # noqa: B023 — mock is consumed synchronously inside this loop iteration
 
                 args = [
                     "check-course.py",
@@ -286,7 +286,7 @@ class CheckCourseInterruption(unittest.TestCase):
                     job_root: object = getattr(job, "root", None)
                     if not isinstance(job_root, Path):
                         raise TypeError("Private job root недоступен")
-                    setattr(job, "_containers_stopped", False)
+                    setattr(job, "_containers_stopped", False)  # noqa: B010 — a prepared dict subclass owns private cleanup state
                     self.addCleanup(shutil.rmtree, job_root)
                     interrupted_root = job_root
                 raise KeyboardInterrupt

@@ -7,7 +7,8 @@ import importlib.util
 SPEC = importlib.util.spec_from_file_location(
     "manual_points_patch", Path(__file__).with_name("patch-integer-manual-points.py")
 )
-assert SPEC is not None and SPEC.loader is not None
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("Загрузчик соседнего trusted patch-модуля недоступен")
 MANUAL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MANUAL)
 once = MANUAL.once

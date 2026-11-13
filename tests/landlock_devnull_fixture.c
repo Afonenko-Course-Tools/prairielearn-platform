@@ -1,5 +1,6 @@
 /* Только syscall fixtures: этот файл не входит в grading image. */
-#define _GNU_SOURCE
+#define _GNU_SOURCE // NOLINT(bugprone-reserved-identifier): glibc feature-test
+                    // macro
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,28 +24,29 @@ static int fake_open(const char *p, int flags, ...) {
     errno = EINVAL;
     return -1;
   }
-  if ((flags & (O_PATH | O_CLOEXEC | O_NOFOLLOW | O_DIRECTORY)) !=
+  if (((unsigned int)flags &
+       (unsigned int)(O_PATH | O_CLOEXEC | O_NOFOLLOW | O_DIRECTORY)) !=
       (O_PATH | O_CLOEXEC | O_NOFOLLOW | O_DIRECTORY))
     bad_flags = 1;
   if (scenario == 12) {
     errno = EACCES;
     return -1;
   }
-  opened_fds |= 1U << 6;
+  opened_fds |= 1U << 6U;
   return 6;
 }
 static int fake_openat(int fd, const char *p, int flags, ...) {
-  if ((flags & (O_PATH | O_CLOEXEC | O_NOFOLLOW)) !=
+  if (((unsigned int)flags & (unsigned int)(O_PATH | O_CLOEXEC | O_NOFOLLOW)) !=
       (O_PATH | O_CLOEXEC | O_NOFOLLOW))
     bad_flags = 1;
   if (fd == 6 && strcmp(p, "dev") == 0) {
-    if (!(flags & O_DIRECTORY))
+    if (!((unsigned int)flags & (unsigned int)O_DIRECTORY))
       bad_flags = 1;
     if (scenario == 13) {
       errno = EACCES;
       return -1;
     }
-    opened_fds |= 1U << 7;
+    opened_fds |= 1U << 7U;
     return 7;
   }
   if (fd == 7 && strcmp(p, "null") == 0) {
@@ -52,13 +54,14 @@ static int fake_openat(int fd, const char *p, int flags, ...) {
       errno = EACCES;
       return -1;
     }
-    opened_fds |= 1U << 8;
+    opened_fds |= 1U << 8U;
     return 8;
   }
   errno = EINVAL;
   return -1;
 }
 static void fill(int fd, struct stat *s) {
+  // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling): exact size of the fixture-owned stat object.
   memset(s, 0, sizeof(*s));
   s->st_dev = 1;
   s->st_nlink = 2;
@@ -140,7 +143,7 @@ static int fake_fstatat(int fd, const char *p, struct stat *s, int flags) {
   return 0;
 }
 static int fake_close(int fd) {
-  closed_fds |= 1U << fd;
+  closed_fds |= 1U << (unsigned int)fd;
   if (fd == 8 && scenario == 20) {
     errno = EIO;
     return -1;
@@ -208,11 +211,23 @@ static int upstream_sandbox_main(int argc, char *argv[]);
 #define prctl fake_prctl
 #define execvp fake_execvp
 #define syscall fake_syscall
+// NOLINTNEXTLINE(bugprone-suspicious-include): inject syscall fakes into the production C translation unit.
 #include "../images/java25-grader/landlock/sandbox.c"
 #undef main
+static int fixture_integer(const char *text) {
+  char *end = NULL;
+  errno = 0;
+  long value = strtol(text, &end, 10);
+  if (errno != 0 || end == text || *end != '\0' || value < INT_MIN ||
+      value > INT_MAX) {
+    fputs("Invalid fixture integer\n", stderr);
+    exit(2);
+  }
+  return (int)value;
+}
 int main(int argc, char **argv) {
-  scenario = argc > 1 ? atoi(argv[1]) : 0;
-  fixture_abi = argc > 2 ? atoi(argv[2]) : 3;
+  scenario = argc > 1 ? fixture_integer(argv[1]) : 0;
+  fixture_abi = argc > 2 ? fixture_integer(argv[2]) : 3;
   char command_name[] = "sandbox", target_name[] = "never-executed";
   char *command[] = {command_name, target_name, NULL};
   int rc = upstream_sandbox_main(2, command);

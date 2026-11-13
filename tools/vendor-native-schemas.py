@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Воспроизводимо копирует pinned native schemas из canonical exporter."""
 
-import argparse, subprocess
+import argparse
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +21,7 @@ names = [
     "PRAIRIELEARN-LICENSE",
     "provenance.json",
 ]
-commit = subprocess.check_output(
+commit = subprocess.check_output(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
     ["git", "rev-parse", "HEAD"], cwd=source, text=True
 ).strip()
 for name in names:
@@ -28,7 +29,7 @@ for name in names:
     if path.is_symlink() or path.resolve() != path:
         raise SystemExit("Unsafe schema source")
     data = path.read_bytes()
-    pinned = subprocess.check_output(
+    pinned = subprocess.check_output(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
         ["git", "show", commit + ":" + base + "/" + name], cwd=source
     )
     if data != pinned:

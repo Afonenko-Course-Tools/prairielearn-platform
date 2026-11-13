@@ -1,23 +1,10 @@
 """Student boundary rejects private canaries, including failed runner reports."""
 
-from collections.abc import Iterable
 from gradle_unit_fixtures import unit_platform
-import importlib.util, json, unittest
+import importlib.util
+import json
+import unittest
 from pathlib import Path
-from typing import Protocol, runtime_checkable
-from selected_job_fixture import fixture_list, fixture_record
-
-
-@runtime_checkable
-class _CaseSchema(Protocol):
-    def validate(self, value: object) -> None: ...
-    def iter_errors(self, value: object) -> Iterable[object]: ...
-
-
-def _case_schema(value: object) -> _CaseSchema:
-    if not isinstance(value, _CaseSchema):
-        raise AssertionError("Канонический case schema validator недоступен")
-    return value
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +18,7 @@ spec.loader.exec_module(feedback)
 
 
 class StudentFeedback(unittest.TestCase):
-    def test_infrastructure_has_no_score(self):
+    def test_infrastructure_has_no_score(self) -> None:
         value = feedback.student_result(
             {"classification": "infrastructure-failure", "score": 0}, {}
         )
@@ -39,7 +26,7 @@ class StudentFeedback(unittest.TestCase):
         self.assertTrue(value["grading_error"])
         self.assertNotIn("score", value)
 
-    def test_compile_error_preserves_file_line_and_message(self):
+    def test_compile_error_preserves_file_line_and_message(self) -> None:
         value = feedback.student_result(
             {
                 "classification": "student-compilation-failure",
@@ -55,7 +42,7 @@ class StudentFeedback(unittest.TestCase):
         self.assertEqual((error["file"], error["line"]), ("demo/A.java", 3))
         self.assertIn("int cannot be converted to String", error["message"])
 
-    def test_api_mismatch_preserves_declared_contract(self):
+    def test_api_mismatch_preserves_declared_contract(self) -> None:
         value = feedback.student_result(
             {
                 "classification": "student-api-mismatch",
@@ -73,7 +60,7 @@ class StudentFeedback(unittest.TestCase):
 
 
 class ActualFishFeedback(unittest.TestCase):
-    def test_fish_score_and_runtime_class_without_description_metadata(self):
+    def test_fish_score_and_runtime_class_without_description_metadata(self) -> None:
         import tempfile
 
         spec = importlib.util.spec_from_file_location(
@@ -124,8 +111,10 @@ class ActualFishFeedback(unittest.TestCase):
     "Set PL_FISH_TEST_IMAGE to exact local candidate",
 )
 class NativeFishContainerFeedback(unittest.TestCase):
-    def test_same_fish_image_native_and_private_boundary(self):
-        import tempfile, subprocess, os
+    def test_same_fish_image_native_and_private_boundary(self) -> None:
+        import tempfile
+        import subprocess
+        import os
 
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp)

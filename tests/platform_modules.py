@@ -42,3 +42,8 @@ def load_student_feedback(path: Path) -> FeedbackModule:
     if not isinstance(module, FeedbackModule):
         raise RuntimeError("Контракт student feedback недоступен")
     return module
+
+
+def grader_hook(grader: object, name: str) -> object:
+    """Частный hook проверяется вызывающим тестом через его точный Protocol."""
+    return getattr(grader, name, None)

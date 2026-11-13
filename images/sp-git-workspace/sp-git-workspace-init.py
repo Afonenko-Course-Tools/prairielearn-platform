@@ -5,7 +5,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import tempfile
 from typing import TypeGuard, TypedDict
 import zipfile
@@ -102,7 +102,7 @@ def initialize(root: Path) -> None:
         )
 
         def git(*args: str) -> str:
-            return subprocess.check_output(
+            return subprocess.check_output(  # nosec B603, B607 # explicit argv sequence is passed without shell; execution belongs to this component; system tools are intentionally resolved through the operator-controlled PATH (AGENTS.md)
                 [
                     "git",
                     "-c",

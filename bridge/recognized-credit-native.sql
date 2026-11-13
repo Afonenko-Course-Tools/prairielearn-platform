@@ -115,7 +115,8 @@ WHERE
     AND aq.deleted_at IS NULL AND a.deleted_at IS NULL AND q.deleted_at IS NULL;
 
 -- BLOCK source_success
--- Original auto job and raw answer remain untouched. No text feedback can grant credit.
+-- Original auto job and raw answer remain untouched.
+-- No text feedback can grant credit.
 SELECT
     CURRENT_DATABASE() AS database,
     gj.id::text AS "autoJobId",

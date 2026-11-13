@@ -3,7 +3,12 @@
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import TypedDict
-import hashlib, json, subprocess, sys, tempfile, unittest
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
 from gradle_unit_fixtures import unit_platform
 from grading_types import JavaGradingDescriptor
 from json_boundary import JSONObject, JSONValue, json_object

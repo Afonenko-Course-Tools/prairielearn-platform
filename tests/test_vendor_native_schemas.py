@@ -1,6 +1,11 @@
 """Копирование upstream schemas и проверка актуальности без SHA manifest."""
 
-import pathlib, shutil, subprocess, sys, tempfile, unittest
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 NAMES = [
@@ -14,7 +19,7 @@ NAMES = [
 
 
 class VendorSchemas(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory(prefix="schema-vendor-")
         self.addCleanup(self.tmp.cleanup)
         self.root = pathlib.Path(self.tmp.name)
@@ -65,7 +70,7 @@ class VendorSchemas(unittest.TestCase):
             timeout=10,
         )
 
-    def test_copy_and_check_use_actual_schema_files_without_manifest(self):
+    def test_copy_and_check_use_actual_schema_files_without_manifest(self) -> None:
         result = self.vendor()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(sorted(p.name for p in self.target.iterdir()), sorted(NAMES))
@@ -79,7 +84,7 @@ class VendorSchemas(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Stale generated native schema", result.stderr)
 
-    def test_uncommitted_provider_schema_is_rejected(self):
+    def test_uncommitted_provider_schema_is_rejected(self) -> None:
         (self.base / "infoCourse.json").write_text("{}")
         result = self.vendor()
         self.assertNotEqual(result.returncode, 0)

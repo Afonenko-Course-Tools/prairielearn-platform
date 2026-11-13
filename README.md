@@ -84,3 +84,7 @@ Native schemas входят в runtime bundle `schemas/native-upstream/`: contro
 через `python tools/vendor-native-schemas.py --exporter /absolute/exporter-checkout`
 и проверяет `--check`. Helper читает committed upstream files непосредственно
 из выбранного Git checkout, без второго manifest source SHA.
+
+Локальный статический gate и его отрицательные контроли: `npm run quality`,
+`npm run quality:controls`. Подготовка штатных инструментов, границы анализа
+и точные рассмотренные контексты описаны в [docs/quality.md](docs/quality.md).

@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from publication_types import ImageReferences, PublishedRegistry
+from publication_types import ImageReferences, PublishedRegistry  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 @runtime_checkable

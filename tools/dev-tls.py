@@ -19,7 +19,7 @@ import secrets
 import shlex
 import shutil
 import stat
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import sys
 import tempfile
 from collections.abc import Generator, Sequence
@@ -84,7 +84,7 @@ def execute(
     *args: str | Path | int, allow_failure: bool = False
 ) -> subprocess.CompletedProcess[bytes]:
     try:
-        p = subprocess.run([str(x) for x in args], capture_output=True, timeout=30)
+        p = subprocess.run([str(x) for x in args], capture_output=True, timeout=30)  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
     except (OSError, subprocess.TimeoutExpired) as e:
         raise TLSError(str(e)) from e
     if p.returncode and not allow_failure:

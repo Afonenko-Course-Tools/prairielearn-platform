@@ -36,7 +36,7 @@ def block(name: str) -> str:
 
 
 class CommunityPublication(unittest.TestCase):
-    def test_exclusive_component_jobs_and_no_other_runtime_rebuild(self):
+    def test_exclusive_component_jobs_and_no_other_runtime_rebuild(self) -> None:
         text = WORKFLOW.read_text()
         self.assertIn("if: ${{ inputs.components == 'all' }}", text)
         c = community()
@@ -123,7 +123,7 @@ esac
             )
             return cp, {p.name: p.read_text() for p in root.iterdir() if p.is_file()}
 
-    def test_actual_source_guard(self):
+    def test_actual_source_guard(self) -> None:
         cp, files = self.run_block("Зафиксировать reviewed Community source")
         self.assertEqual(cp.returncode, 0, cp.stderr)
         self.assertEqual(
@@ -144,7 +144,7 @@ esac
         )
         self.assertNotEqual(cp.returncode, 0)
 
-    def test_actual_digest_and_label_readback(self):
+    def test_actual_digest_and_label_readback(self) -> None:
         cp, files = self.run_block("Проверить Community digest и source readback")
         self.assertEqual(cp.returncode, 0, cp.stderr)
         self.assertEqual(
@@ -171,7 +171,7 @@ esac
             self.assertNotEqual(cp.returncode, 0)
             self.assertNotIn("community-image.txt", files)
 
-    def test_all_mode_requires_reviewed_source_without_exporter_input(self):
+    def test_all_mode_requires_reviewed_source_without_exporter_input(self) -> None:
         name = "Resolve immutable version"
         cp, files = self.run_block(name, {"COMPONENTS": "all"})
         self.assertEqual(cp.returncode, 0, cp.stderr)

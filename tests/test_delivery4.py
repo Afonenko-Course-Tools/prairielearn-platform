@@ -1,6 +1,8 @@
 """Типизированные Native-ответы сохраняют controls и приватный ключ в delivery v5."""
 
-import json, sys, unittest
+import json
+import sys
+import unittest
 from pathlib import Path
 import test_delivery5 as fixtures
 

@@ -1,6 +1,7 @@
 """Actual offline container execution at the declared PL CPU/memory limits."""
 
 from __future__ import annotations
+from platform_modules import grader_hook
 
 from collections.abc import Callable, Mapping
 from types import FunctionType
@@ -38,10 +39,16 @@ class _MutationSetup(Protocol):
 
 
 grader = fixtures.grader
-mutation_setup: object = getattr(fixtures.MutationJob, "setup_mutation")
-if not isinstance(mutation_setup, _MutationSetup) or not isinstance(
-    mutation_setup, FunctionType
-):
+
+
+def _mutation_setup(value: object) -> _MutationSetup:
+    if not isinstance(value, _MutationSetup):
+        raise AssertionError("Mutation setup не поддерживает descriptor binding")
+    return value
+
+
+mutation_setup = _mutation_setup(fixtures.MutationJob.setup_mutation)
+if not isinstance(mutation_setup, FunctionType):
     raise AssertionError("Fixture mutation setup должен быть прежней unbound функцией")
 
 
@@ -65,13 +72,13 @@ class SandboxIdentityPreflight(unittest.TestCase):
                 name: SimpleNamespace(
                     pw_uid=uid, pw_gid=uid, pw_shell="/usr/sbin/nologin"
                 )
-                for name, uid in zip(("sbuser", "nativebuild"), ids)
+                for name, uid in zip(("sbuser", "nativebuild"), ids, strict=True)
             }
 
             def groups(name: str, gid: int) -> list[int]:
                 return [gid]
 
-            protect: object = getattr(grader, "_protect_input_identity")
+            protect: object = grader_hook(grader, "_protect_input_identity")
             if not isinstance(protect, _ProtectIdentity):
                 raise AssertionError("Identity preflight hook grader недоступен")
             with (

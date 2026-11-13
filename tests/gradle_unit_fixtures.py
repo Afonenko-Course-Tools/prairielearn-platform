@@ -83,7 +83,7 @@ def unit_platform(case: unittest.TestCase) -> Path:
     view: object = getattr(case, "_unit_platform_view", None)
     if not isinstance(view, Path):
         view = case.enterContext(platform_tree())
-        setattr(case, "_unit_platform_view", view)
+        setattr(case, "_unit_platform_view", view)  # noqa: B010 — cache extends an arbitrary unittest.TestCase
     return view
 
 

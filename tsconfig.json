@@ -12,10 +12,17 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "bridge/**/*.mjs",
-    "tools/**/*.mjs",
-    "tests/**/*.mjs",
-    "types/**/*.d.ts"
+    "**/*.mjs",
+    "**/*.js",
+    "**/*.cjs",
+    "**/*.ts",
+    "**/*.mts",
+    "**/*.cts"
   ],
-  "exclude": ["node_modules", "tests/fixtures"]
+  "exclude": [
+    "node_modules",
+    "**/fixtures",
+    "**/upstream",
+    "schemas/native-upstream"
+  ]
 }

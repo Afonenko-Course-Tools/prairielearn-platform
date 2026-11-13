@@ -381,7 +381,10 @@ class Outcome(TypedDict, Generic[CountsT]):
     reportFormat: NotRequired[str]
 
 
-class JavaOutcome(Outcome["JUnitCounts"]):
+JUnitCountType: TypeAlias = "JUnitCounts"
+
+
+class JavaOutcome(Outcome[JUnitCountType]):
     pass
 
 

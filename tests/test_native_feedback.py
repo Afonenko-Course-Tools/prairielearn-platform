@@ -12,11 +12,13 @@ boundary = runpy.run_path(
 
 
 class NativeFeedbackTests(unittest.TestCase):
+    job: Path
+    cfg: dict[str, object]
     setUp = fixture_set_up(fixtures.MutationJob.setUp)
     run_job = fixture_run_job(fixtures.MutationJob.run_job)
     setup_mutation = fixtures.MutationJob.setup_mutation
 
-    def test_mutation_success_preserves_score(self):
+    def test_mutation_success_preserves_score(self) -> None:
         self.setup_mutation()
         result = self.run_job()
         native = boundary(result, self.cfg)

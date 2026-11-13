@@ -12,7 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools/dev-tls.py"
 sys.path.insert(0, str(ROOT / "tools"))
-from json_boundary import JSONObject, json_object
+from json_boundary import JSONObject, json_object  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 def run(*args: str | Path | int) -> subprocess.CompletedProcess[str]:

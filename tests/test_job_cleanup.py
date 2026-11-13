@@ -232,7 +232,7 @@ class JobCleanup(unittest.TestCase):
             run.assert_not_called()
             name.assert_not_called()
         self.assertEqual(job.containerName, original_name)
-        stopped: object = getattr(job, "_containers_stopped")
+        stopped: object = getattr(job, "_containers_stopped", None)
         if type(stopped) is not bool:
             raise AssertionError("Приватное состояние остановки должно быть bool")
         self.assertFalse(stopped)
@@ -406,10 +406,10 @@ class JobCleanup(unittest.TestCase):
 
                     def other_owner(path: Path) -> SimpleNamespace:
                         return SimpleNamespace(
-                            st_dev=real(path).st_dev,
-                            st_ino=real(path).st_ino,
+                            st_dev=real(path).st_dev,  # noqa: B023 — mock is consumed synchronously inside this loop iteration
+                            st_ino=real(path).st_ino,  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                             st_uid=os.getuid() + 1,
-                            st_mode=real(path).st_mode,
+                            st_mode=real(path).st_mode,  # noqa: B023 — mock is consumed synchronously inside this loop iteration
                         )
 
                     contexts.append(patch.object(Path, "lstat", other_owner))

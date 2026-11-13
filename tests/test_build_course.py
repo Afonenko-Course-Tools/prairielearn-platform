@@ -16,7 +16,7 @@ spec.loader.exec_module(builder)
 
 
 class BuilderContract(unittest.TestCase):
-    def test_existing_output_is_preserved(self):
+    def test_existing_output_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             source = root / "source"
@@ -34,7 +34,7 @@ class BuilderContract(unittest.TestCase):
                 )
             self.assertEqual((out / "sentinel").read_text(), "keep")
 
-    def test_old_shell_exporter_cannot_build(self):
+    def test_old_shell_exporter_cannot_build(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             source = root / "source"
@@ -61,7 +61,7 @@ class BuilderContract(unittest.TestCase):
                 )
             self.assertFalse((root / "out").exists())
 
-    def test_atomic_publication_does_not_overwrite_concurrent_directory(self):
+    def test_atomic_publication_does_not_overwrite_concurrent_directory(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             source = root / "from"
@@ -73,7 +73,9 @@ class BuilderContract(unittest.TestCase):
                 builder.publish_directory(source, target)
             self.assertEqual((target / "keep").read_text(), "keep")
 
-    def test_full_exporter_copies_native_and_private_checks_without_receipts(self):
+    def test_full_exporter_copies_native_and_private_checks_without_receipts(
+        self,
+    ) -> None:
         import test_build_course_launch as launch
 
         helper = launch.LaunchContract()

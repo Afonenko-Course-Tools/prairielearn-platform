@@ -1,6 +1,12 @@
 """Выбранные bytes проходят в grader без физического дерева и собственных proof."""
 
-import base64, copy, json, shutil, sys, tempfile, unittest
+import base64
+import copy
+import json
+import shutil
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
@@ -77,7 +83,7 @@ class SelectedDelivery(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(job.root))
         return job
 
-    def test_actual_selected_bytes_need_no_origin_tree_or_fingerprint(self):
+    def test_actual_selected_bytes_need_no_origin_tree_or_fingerprint(self) -> None:
         job = self.prepare()
         self.assertEqual(
             (job.root / "student/Answer.java").read_bytes(), b"public class Answer {}"
@@ -100,13 +106,13 @@ class SelectedDelivery(unittest.TestCase):
             & job.keys()
         )
 
-    def test_changed_selected_bytes_are_used_directly(self):
+    def test_changed_selected_bytes_are_used_directly(self) -> None:
         self.m["projects"][0]["sources"][0] = row("Answer.java", b"CURRENT_BYTES")
         self.assertEqual(
             (self.prepare().root / "student/Answer.java").read_bytes(), b"CURRENT_BYTES"
         )
 
-    def test_bad_paths_data_duplicates_and_limits_fail_before_scratch(self):
+    def test_bad_paths_data_duplicates_and_limits_fail_before_scratch(self) -> None:
         original = copy.deepcopy(self.m)
         bad_selections: list[list[SelectedFile]] = [
             [row("../escape", b"x")],
@@ -123,7 +129,7 @@ class SelectedDelivery(unittest.TestCase):
                 with self.assertRaises(g.JobError):
                     self.prepare()
 
-    def test_fixed_archive_additional_flag_survives_profile_translation(self):
+    def test_fixed_archive_additional_flag_survives_profile_translation(self) -> None:
         self.m["projects"][0]["check"]["additional-java-sources"] = {
             "archive": "answer.zip",
             "primary-required": True,
@@ -147,12 +153,12 @@ class SelectedDelivery(unittest.TestCase):
             False,
         )
 
-    def test_missing_required_check_is_project_defect(self):
+    def test_missing_required_check_is_project_defect(self) -> None:
         self.m["projects"][0]["readiness"] = {"ready": False, "missing": ["tests"]}
         with self.assertRaises(g.ProjectDefect):
             self.prepare()
 
-    def test_optional_reference_unavailable_is_explicit(self):
+    def test_optional_reference_unavailable_is_explicit(self) -> None:
         p = self.m["projects"][0]
         p["check"]["references"] = [
             {"name": "correct", "root": "author/correct", "optional": True}
@@ -171,7 +177,7 @@ class SelectedDelivery(unittest.TestCase):
         with self.assertRaisesRegex(g.JobError, "reference-unavailable:correct"):
             self.prepare("reference:correct")
 
-    def test_named_reference_uses_its_selected_bytes(self):
+    def test_named_reference_uses_its_selected_bytes(self) -> None:
         p = self.m["projects"][0]
         p["check"]["references"] = [
             {"name": "correct", "root": "author/correct", "optional": False}
@@ -196,7 +202,9 @@ class SelectedDelivery(unittest.TestCase):
             b"REFERENCE",
         )
 
-    def test_different_cases_can_replace_same_submission_from_distinct_fixtures(self):
+    def test_different_cases_can_replace_same_submission_from_distinct_fixtures(
+        self,
+    ) -> None:
         p = self.m["projects"][0]
         p["check"]["contract-cases"] = "cases.json"
         cases = {
@@ -234,7 +242,7 @@ class SelectedDelivery(unittest.TestCase):
                 name.encode(),
             )
 
-    def test_same_fixture_reused_by_cases_is_one_functional_pair(self):
+    def test_same_fixture_reused_by_cases_is_one_functional_pair(self) -> None:
         p = self.m["projects"][0]
         p["check"]["contract-cases"] = "cases.json"
         p["contractCases"] = row(
@@ -271,7 +279,7 @@ class SelectedDelivery(unittest.TestCase):
         with self.assertRaises(g.JobError):
             self.prepare("contract:one")
 
-    def test_contract_scenario_uses_functional_fixture_targets(self):
+    def test_contract_scenario_uses_functional_fixture_targets(self) -> None:
         p = self.m["projects"][0]
         p["check"]["contract-cases"] = "cases.json"
         p["contractCases"] = row(
@@ -315,7 +323,7 @@ class RealSelectedGrader(unittest.TestCase):
     setUp = SelectedDelivery.setUp
     prepare = SelectedDelivery.prepare
 
-    def test_real_grader_preserves_success_student_and_tool_failure(self):
+    def test_real_grader_preserves_success_student_and_tool_failure(self) -> None:
         import os
 
         os.environ["PATH"] = "/usr/lib/jvm/java-25-openjdk/bin:" + os.environ["PATH"]

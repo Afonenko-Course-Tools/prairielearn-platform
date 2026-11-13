@@ -11,11 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class PublicationWorkflows(unittest.TestCase):
     def workflow(self, name: str):
-        return yaml.load(
+        return yaml.load(  # nosec B506 # BaseLoader constructs strings/collections only and preserves workflow on as text
             (ROOT / ".github/workflows" / name).read_text(), Loader=yaml.BaseLoader
         )
 
-    def test_dispatch_modes_have_separate_jobs_and_metadata_keeps_public_assets(self):
+    def test_dispatch_modes_have_separate_jobs_and_metadata_keeps_public_assets(
+        self,
+    ) -> None:
         workflow = self.workflow("publish-runtime.yml")
         inputs = workflow["on"]["workflow_dispatch"]["inputs"]
         self.assertEqual(set(inputs), {"version", "reviewed_commit", "components"})
@@ -40,7 +42,7 @@ class PublicationWorkflows(unittest.TestCase):
 
     def test_contract_and_release_workflows_execute_current_consumers_without_fixture_export(
         self,
-    ):
+    ) -> None:
         for name in ["check.yml", "publish-runtime.yml"]:
             with self.subTest(workflow=name):
                 workflow = self.workflow(name)
@@ -58,7 +60,7 @@ class PublicationWorkflows(unittest.TestCase):
                     )
                     self.assertNotIn("PL_DELIVERY4_FIXTURES", step.get("run", ""))
 
-    def test_every_workflow_shell_block_has_valid_bash_syntax(self):
+    def test_every_workflow_shell_block_has_valid_bash_syntax(self) -> None:
         for name in ["check.yml", "publish-runtime.yml"]:
             workflow = self.workflow(name)
             for job_name, job in workflow["jobs"].items():

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
     shutil.which("ansible-playbook"), "Для локальной packaging проверки нужен Ansible"
 )
 class AnsibleInstitutionPackaging(unittest.TestCase):
-    def test_fresh_release_copies_catalog_and_repeat_is_unchanged(self):
+    def test_fresh_release_copies_catalog_and_repeat_is_unchanged(self) -> None:
         import yaml
 
         tasks = yaml.safe_load(

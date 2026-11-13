@@ -158,7 +158,7 @@ def preflight() -> _Supervisor:
         raise GraderError("Missing fish runtime profile")
     bundle = ROOT / bundle_name
     supervisor = types.ModuleType("bounded_supervisor")
-    exec(
+    exec(  # nosec B102 # load trusted runtime/tests Python bytes; submitted student files run in separate bounded processes
         compile(
             (bundle / "supervisor.py").read_text(),
             str(bundle / "supervisor.py"),
@@ -202,7 +202,7 @@ def grade(job_dir: str | Path) -> Outcome[ResultCounts]:
             (job / folder).chmod(0o700)
         prefix = ["runuser", "-u", "sbuser", "--", "/usr/local/bin/landlock_sandbox"]
     checker = types.ModuleType("trusted_checks")
-    exec(
+    exec(  # nosec B102 # load trusted runtime/tests Python bytes; submitted student files run in separate bounded processes
         compile(
             file(job / "tests", "checks.py").read_text(), "<trusted-checks>", "exec"
         ),

@@ -58,12 +58,12 @@ class ProxyIntegration(unittest.TestCase):
         conn.request("GET", path, headers=headers or {})
         return conn.getresponse()
 
-    def test_native_path_and_query_are_preserved(self):
+    def test_native_path_and_query_are_preserved(self) -> None:
         response = self.request("/pl/example?x=1")
         self.assertEqual(response.status, 200)
         self.assertEqual(read_payload(response)["path"], "/pl/example?x=1")
 
-    def test_client_identity_and_forwarding_headers_are_stripped(self):
+    def test_client_identity_and_forwarding_headers_are_stripped(self) -> None:
         response = self.request(
             "/pl/example",
             {
@@ -88,7 +88,7 @@ class ProxyIntegration(unittest.TestCase):
         self.assertNotEqual(headers["x-forwarded-for"], "1.2.3.4")
         self.assertEqual(headers["x-forwarded-proto"], "https")
 
-    def test_auth_routes_fail_closed(self):
+    def test_auth_routes_fail_closed(self) -> None:
         for path in [
             "/pl/shibcallback",
             "/pl/shibcallback?ticket=forged",
@@ -99,7 +99,7 @@ class ProxyIntegration(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.request(path).status, 503)
 
-    def test_websocket_upgrade_reaches_upstream(self):
+    def test_websocket_upgrade_reaches_upstream(self) -> None:
         response = self.request(
             "/socket.io/?EIO=4&transport=websocket",
             {
@@ -114,5 +114,5 @@ class ProxyIntegration(unittest.TestCase):
             response.getheader("Sec-WebSocket-Accept"), "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
         )
 
-    def test_unknown_route_is_not_proxied(self):
+    def test_unknown_route_is_not_proxied(self) -> None:
         self.assertEqual(self.request("/unexpected").status, 404)

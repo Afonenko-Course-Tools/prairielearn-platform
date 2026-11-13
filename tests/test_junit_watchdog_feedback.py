@@ -1,5 +1,7 @@
 """Общий watchdog JUnit остаётся infra, но объясняет предел времени без private данных."""
 
+from platform_modules import grader_hook
+
 import json
 from collections.abc import Mapping, Sequence
 from typing import Literal, Protocol, runtime_checkable
@@ -63,7 +65,7 @@ class WatchdogProducer(unittest.TestCase):
         self, reason: Literal["timeout", "output_limit"] | None
     ) -> JavaOutcome:
         (self.job / "tests/grading-job.json").write_text(json.dumps(self.config))
-        original: object = getattr(grader, "_run")
+        original: object = grader_hook(grader, "_run")
         if not isinstance(original, GraderRun):
             raise AssertionError("Частный контракт grader _run недоступен")
 
@@ -147,7 +149,7 @@ class WatchdogProducer(unittest.TestCase):
             "status": "success",
             "artifact": {"path": "build/libs/answer.jar", "bytes": 1},
         }
-        validate_build: object = getattr(operator.g, "_validate_build_observation")
+        validate_build = grader_hook(operator.g, "_validate_build_observation")
         if not isinstance(validate_build, BuildObservationValidator):
             raise AssertionError("Частный контракт build observation недоступен")
         validate_build({**result, "buildEvidence": proof}, "answer.jar")
