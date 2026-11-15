@@ -4,7 +4,7 @@ COPY tools/integer-manual-points.mjs tools/integer-manual-points.d.mts /PrairieL
 COPY images/prairielearn/patch-integer-manual-points.py /tmp/patch-integer-manual-points.py
 COPY images/prairielearn/patch-integer-point-display.py /tmp/patch-integer-point-display.py
 # Compile the opt-in schema, server and hydrated client before the existing src/dist hooks.
-RUN python3 -B /tmp/patch-integer-manual-points.py /PrairieLearn/apps/prairielearn && python3 -B /tmp/patch-integer-point-display.py /PrairieLearn/apps/prairielearn && cd /PrairieLearn/apps/prairielearn && npm run build && rm /tmp/patch-integer-manual-points.py /tmp/patch-integer-point-display.py
+RUN python3 -B /tmp/patch-integer-manual-points.py /PrairieLearn/apps/prairielearn && python3 -B /tmp/patch-integer-point-display.py /PrairieLearn/apps/prairielearn && npm --prefix /PrairieLearn/apps/prairielearn run build && rm /tmp/patch-integer-manual-points.py /tmp/patch-integer-point-display.py
 COPY images/prairielearn/patch-localhost-cookies.py /tmp/patch-localhost-cookies.py
 RUN python3 -B /tmp/patch-localhost-cookies.py /PrairieLearn/apps/prairielearn/src/lib/config.ts /PrairieLearn/apps/prairielearn/dist/lib/config.js && rm /tmp/patch-localhost-cookies.py
 COPY images/prairielearn/patch-local-grader.py /tmp/patch-local-grader.py

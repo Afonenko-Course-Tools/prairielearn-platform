@@ -23,19 +23,13 @@
               "pattern": "^ghcr\\.io/[a-z0-9-]+/sp-git-workspace@sha256:[a-f0-9]{64}$"
             }
           },
-          "required": [
-            "image"
-          ],
+          "required": ["image"],
           "additionalProperties": false
         }
       },
       "additionalProperties": false
     }
   },
-  "required": [
-    "schemaVersion",
-    "profiles",
-    "workspaceImages"
-  ],
+  "required": ["schemaVersion", "profiles", "workspaceImages"],
   "additionalProperties": false
 }

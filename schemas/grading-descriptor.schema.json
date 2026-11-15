@@ -23,10 +23,7 @@
       "minItems": 1
     },
     "mode": {
-      "enum": [
-        "implementation",
-        "student-tests"
-      ]
+      "enum": ["implementation", "student-tests"]
     },
     "runtime": {
       "type": "string"
@@ -41,18 +38,10 @@
           "const": "UTF-8"
         },
         "compiler-options": {
-          "const": [
-            "-proc:none",
-            "-Xmaxerrs",
-            "5"
-          ]
+          "const": ["-proc:none", "-Xmaxerrs", "5"]
         }
       },
-      "required": [
-        "release",
-        "encoding",
-        "compiler-options"
-      ],
+      "required": ["release", "encoding", "compiler-options"],
       "additionalProperties": false
     },
     "limits": {
@@ -97,9 +86,7 @@
               "const": "weighted"
             }
           },
-          "required": [
-            "mode"
-          ],
+          "required": ["mode"],
           "additionalProperties": false
         },
         {
@@ -109,9 +96,7 @@
               "const": "all-pass"
             }
           },
-          "required": [
-            "mode"
-          ],
+          "required": ["mode"],
           "additionalProperties": false
         },
         {
@@ -140,20 +125,13 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "id",
-                  "weight",
-                  "tests"
-                ],
+                "required": ["id", "weight", "tests"],
                 "additionalProperties": false
               },
               "minItems": 1
             }
           },
-          "required": [
-            "mode",
-            "groups"
-          ],
+          "required": ["mode", "groups"],
           "additionalProperties": false
         },
         {
@@ -163,21 +141,14 @@
               "const": "threshold"
             },
             "basis": {
-              "enum": [
-                "score",
-                "passed-tests"
-              ]
+              "enum": ["score", "passed-tests"]
             },
             "value": {
               "type": "number",
               "minimum": 0
             }
           },
-          "required": [
-            "mode",
-            "basis",
-            "value"
-          ],
+          "required": ["mode", "basis", "value"],
           "additionalProperties": false
         }
       ]
@@ -193,10 +164,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "min-executed",
-        "allow-skipped"
-      ],
+      "required": ["min-executed", "allow-skipped"],
       "additionalProperties": false
     },
     "variants": {
@@ -217,10 +185,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "correct",
-        "mutants"
-      ],
+      "required": ["correct", "mutants"],
       "additionalProperties": false
     },
     "apiPrecheck": {
@@ -241,10 +206,7 @@
           "pattern": "^[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*$"
         }
       },
-      "required": [
-        "files",
-        "entry"
-      ],
+      "required": ["files", "entry"],
       "additionalProperties": false
     },
     "additionalJavaSources": {
@@ -305,10 +267,7 @@
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\\.jar$"
         }
       },
-      "required": [
-        "kind",
-        "artifact"
-      ],
+      "required": ["kind", "artifact"],
       "additionalProperties": false
     }
   },
@@ -333,9 +292,7 @@
         }
       },
       "then": {
-        "required": [
-          "variants"
-        ],
+        "required": ["variants"],
         "properties": {
           "runtime": {
             "const": "java25-mutation-v1"
@@ -345,19 +302,13 @@
       "else": {
         "properties": {
           "runtime": {
-            "enum": [
-              "java25-junit-v1",
-              "fish-git-v1",
-              "java25-gradle-junit-v1"
-            ]
+            "enum": ["java25-junit-v1", "fish-git-v1", "java25-gradle-junit-v1"]
           }
         },
         "not": {
           "anyOf": [
             {
-              "required": [
-                "variants"
-              ]
+              "required": ["variants"]
             }
           ]
         }
@@ -376,54 +327,38 @@
         }
       },
       "then": {
-        "required": [
-          "java"
-        ]
+        "required": ["java"]
       },
       "else": {
         "not": {
-          "required": [
-            "java"
-          ]
+          "required": ["java"]
         }
       }
     },
     {
       "if": {
-        "required": [
-          "apiPrecheck"
-        ]
+        "required": ["apiPrecheck"]
       },
       "then": {
         "properties": {
           "runtime": {
-            "enum": [
-              "java25-junit-v1",
-              "java25-gradle-junit-v1"
-            ]
+            "enum": ["java25-junit-v1", "java25-gradle-junit-v1"]
           },
           "mode": {
             "const": "implementation"
           }
         },
-        "required": [
-          "java"
-        ]
+        "required": ["java"]
       }
     },
     {
       "if": {
-        "required": [
-          "additionalJavaSources"
-        ]
+        "required": ["additionalJavaSources"]
       },
       "then": {
         "properties": {
           "runtime": {
-            "enum": [
-              "java25-junit-v1",
-              "java25-gradle-junit-v1"
-            ]
+            "enum": ["java25-junit-v1", "java25-gradle-junit-v1"]
           },
           "mode": {
             "const": "implementation"
@@ -438,14 +373,10 @@
             "const": "java25-gradle-junit-v1"
           }
         },
-        "required": [
-          "runtime"
-        ]
+        "required": ["runtime"]
       },
       "then": {
-        "required": [
-          "javaBuild"
-        ],
+        "required": ["javaBuild"],
         "properties": {
           "mode": {
             "const": "implementation"
@@ -454,9 +385,7 @@
       },
       "else": {
         "not": {
-          "required": [
-            "javaBuild"
-          ]
+          "required": ["javaBuild"]
         }
       }
     }

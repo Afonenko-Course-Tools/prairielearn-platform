@@ -1,4 +1,6 @@
 FROM docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e
+# APT packages follow the base image distribution repositories; no snapshot is configured.
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-jsonschema fish git && rm -rf /var/lib/apt/lists/*
 ENV PL_CONTAINMENT=official PYTHONDONTWRITEBYTECODE=1
 WORKDIR /platform

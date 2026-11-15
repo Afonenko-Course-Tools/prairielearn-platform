@@ -13,9 +13,7 @@
   ],
   "baseGitSha": "d85412b29739fec05a58127caa39f614a2091fc3",
   "finalWorkingGitSha": "a2f7cc609e0aa3ca8fc55dd2998e04b345da6f65",
-  "secondCommitChangedFiles": [
-    "README.md"
-  ],
+  "secondCommitChangedFiles": ["README.md"],
   "allIQandAIPointsExactlyUnchanged": true,
   "selectedInstanceQuestions": 353,
   "fullCredits": 82,

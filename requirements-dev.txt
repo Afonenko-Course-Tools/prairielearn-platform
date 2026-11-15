@@ -1,3 +1,9 @@
 -r requirements.txt
 types-jsonschema==4.26.0.20261006
 types-PyYAML==6.0.12.20261103
+ruff
+pyright
+bandit
+yamllint
+ansible-lint
+sqlfluff

@@ -1,15 +1,31 @@
 """Конечные C3 F0: штатный adapter, изолированные candidate classes, без integration."""
 
+from __future__ import annotations
+
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
-from pathlib import Path
-import subprocess
 import shutil
+import subprocess  # nosec B404 # trusted experiment runner intentionally starts argv processes
 import tempfile
 import time
+from collections.abc import Sequence
+from pathlib import Path
+from typing import NotRequired, TypedDict, Unpack
+
+from consumer import Counts, ExperimentCase, read_counts
+
+
+class Process(TypedDict):
+    argv: list[str]
+    terminal: str
+    seconds: float
+    exit_code: NotRequired[int]
+    env: NotRequired[dict[str, str | None]]
+    stdout: NotRequired[str]
+    stderr: NotRequired[str]
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -26,27 +42,28 @@ FLAGS = [
     "-XX:+DisableAttachMechanism",
     "--illegal-native-access=deny",
 ]
-PROCESSES = []
-EXECUTIONS = []
+PROCESSES: list[Process] = []
+EXECUTIONS: list[dict[str, object]] = []
 
 
-def sha(path):
+def sha(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run(command, cwd, timeout=40):
+def run(command: Sequence[str | Path], cwd: Path, timeout: float = 40) -> str:
     start = time.monotonic()
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 # trusted experiment runner uses explicit argv without shell
             list(map(str, command)),
             cwd=cwd,
+            check=False,
             text=True,
             capture_output=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
         PROCESSES.append(
-            dict(
+            Process(
                 argv=list(map(str, command)),
                 terminal="TIMEOUT_KILLED",
                 seconds=time.monotonic() - start,
@@ -54,7 +71,7 @@ def run(command, cwd, timeout=40):
         )
         raise AssertionError("Ограниченный процесс превысил timeout") from error
     PROCESSES.append(
-        dict(
+        Process(
             argv=list(map(str, command)),
             terminal="EXIT",
             exit_code=result.returncode,
@@ -74,28 +91,28 @@ def run(command, cwd, timeout=40):
     return result.stdout
 
 
-def java(*args):
+def java(*args: str | Path) -> list[str | Path]:
     return [JDK / "bin/java", *args]
 
 
-def javac(*args):
+def javac(*args: str | Path) -> list[str | Path]:
     return [JDK / "bin/javac", "--release", "25", "-g", "-proc:none", *args]
 
 
 def execute(
-    work,
-    fixture,
-    transformed,
+    work: Path,
+    fixture: Path,
+    transformed: bool,
     *,
-    student_source=None,
-    helpers=(),
-    quota=32768,
-    properties=(),
-    stale=False,
-    student_extra=(),
-):
+    student_source: Path | None = None,
+    helpers: Sequence[Path] = (),
+    quota: int = 32768,
+    properties: Sequence[str] = (),
+    stale: bool = False,
+    student_extra: Sequence[Path] = (),
+) -> tuple[Counts, object] | tuple[None, None]:
     work.mkdir()
-    observation = {
+    observation: dict[str, object] = {
         "mode": "implementation",
         "candidate": transformed,
         "fixture": str(fixture),
@@ -239,19 +256,19 @@ def execute(
     params = work / "params.json"
     params.write_text(
         json.dumps(
-            dict(
-                results_file=str(work / "raw.json"),
-                counts_file=str(work / "counts.json"),
-                signature="f0-private-signature",
-                test_classes=[fixture.stem],
-                student_classes=[
+            {
+                "results_file": str(work / "raw.json"),
+                "counts_file": str(work / "counts.json"),
+                "signature": "f0-private-signature",
+                "test_classes": [fixture.stem],
+                "student_classes": [
                     str(p.relative_to(student))[:-6].replace("/", ".")
                     for p in sorted(student.rglob("*.class"))
                 ],
-                student_classes_root=str(student),
-                submission_mode="implementation",
-                public_cases=[],
-            )
+                "student_classes_root": str(student),
+                "submission_mode": "implementation",
+                "public_cases": [],
+            }
         )
     )
     observation["generated_hashes"] = {
@@ -281,69 +298,109 @@ def execute(
     except AssertionError:
         if not stale:
             raise
-        assert (
-            PROCESSES[-1]["exit_code"] != 0
-            and "Stale trusted class" in PROCESSES[-1]["stderr"]
-        ), PROCESSES[-1]
+        if not (
+            PROCESSES[-1].get("exit_code", None) != 0
+            and "Stale trusted class" in PROCESSES[-1].get("stderr", "")
+        ):
+            raise AssertionError(PROCESSES[-1]) from None
         observation["expected_rejection"] = "stale manifest, before Jupiter"
-        assert not (work / "counts.json").exists()
+        if not (not (work / "counts.json").exists()):
+            raise AssertionError from None
         return None, None
-    assert len(PROCESSES) == before + 1
-    counts = json.loads((work / "counts.json").read_text())
-    raw = json.loads((work / "raw.json").read_text())
+    if not (len(PROCESSES) == before + 1):
+        raise AssertionError
+    counts = read_counts(json.loads((work / "counts.json").read_text()))
+    raw: object = json.loads((work / "raw.json").read_text())
     observation["counts"] = counts
     observation["raw"] = raw
     return counts, raw
 
 
-def case(counts, method):
+def case(counts: Counts, method: str) -> ExperimentCase:
     return next(c for c in counts["cases"] if ("[method:" + method + "(") in c["id"])
 
 
-def pair(work, name, **kwargs):
+class ExecuteOptions(TypedDict, total=False):
+    student_source: Path | None
+    helpers: Sequence[Path]
+    quota: int
+    properties: Sequence[str]
+    student_extra: Sequence[Path]
+
+
+capture_disabled: bool = False
+
+
+def pair(
+    work: Path, name: str, **kwargs: Unpack[ExecuteOptions]
+) -> tuple[Counts, Counts, object]:
     fixture = HERE / "fixtures" / name
-    left, raw = execute(work / (name + "-baseline"), fixture, False, **kwargs)
-    right, craw = execute(work / (name + "-candidate"), fixture, not DISABLED, **kwargs)
-    assert left["outcomes"] == right["outcomes"], (name, left, right)
-    assert left["eventErrors"] == right["eventErrors"] == 0
+    left, _raw = execute(work / (name + "-baseline"), fixture, False, **kwargs)
+    if not (left is not None):
+        raise AssertionError
+    right, craw = execute(
+        work / (name + "-candidate"), fixture, not capture_disabled, **kwargs
+    )
+    if not (right is not None):
+        raise AssertionError
+    if not (left["outcomes"] == right["outcomes"]):
+        raise AssertionError((name, left, right))
+    if not (left["eventErrors"] == right["eventErrors"] == 0):
+        raise AssertionError
     return left, right, craw
 
 
-def group1(work):
-    left, right, raw = pair(work, "TypedTest.java")
-    assert (right["executed"], right["passed"], right["failed"]) == (2, 1, 1)
+def group1(work: Path) -> dict[str, object]:
+    _left, right, _raw = pair(work, "TypedTest.java")
+    if not ((right["executed"], right["passed"], right["failed"]) == (2, 1, 1)):
+        raise AssertionError
     checks = case(right, "typed").get("checks", [])
-    assert len(checks) >= 8, "ordinary assertions have no checks"
-    assert [(c["expected"], c["actual"]) for c in checks[:6]] == [
-        ("42", "42"),
-        ("9000000000", "9000000000"),
-        ("1.0", "1.01"),
-        ("NaN", "NaN"),
-        ("-0.0", "0.0"),
-        ("null", "null"),
-    ]
-    assert checks[2]["delta"] == ".1" or checks[2]["delta"] == "0.1"
-    assert not any("differenceIndex" in checks[n] for n in (2, 4))
-    assert case(right, "failed")["checks"][0]["delegated"] == "threw"
-    assert len({c["site"] for c in checks[:8]}) == 8
-    assert all(c["_bci"].isdigit() for c in checks)
+    if not (len(checks) >= 8):
+        raise AssertionError("ordinary assertions have no checks")
+    if not (
+        [(c["expected"], c["actual"]) for c in checks[:6]]
+        == [
+            ("42", "42"),
+            ("9000000000", "9000000000"),
+            ("1.0", "1.01"),
+            ("NaN", "NaN"),
+            ("-0.0", "0.0"),
+            ("null", "null"),
+        ]
+    ):
+        raise AssertionError
+    if not (checks[2]["delta"] == ".1" or checks[2]["delta"] == "0.1"):
+        raise AssertionError
+    if not (not any("differenceIndex" in checks[n] for n in (2, 4))):
+        raise AssertionError
+    if not (require_checks(case(right, "failed"))[0]["delegated"] == "threw"):
+        raise AssertionError
+    if not (len({c["site"] for c in checks[:8]}) == 8):
+        raise AssertionError
+    if not (all(c["_bci"].isdigit() for c in checks)):
+        raise AssertionError
     return {
         "status": "PASS",
         "controls": "typed descriptors/category2/boxed null/delta/NaN/zero/lazy supplier/single evaluation/live BCI; same outcomes, tier1 flags only",
     }
 
 
-def group2(work):
-    left, right, raw = pair(
+def group2(work: Path) -> dict[str, object]:
+    _left, right, _raw = pair(
         work,
         "ControlTest.java",
         student_source=HERE / "fixtures/ControlStudent.java",
         helpers=[HERE / "fixtures/TrustedHelper.java"],
     )
-    assert (right["executed"], right["passed"], right["containerFailures"]) == (1, 1, 0)
-    assert len(right["cases"][0]["checks"]) == 2 and all(
-        c["actual"] == "73" for c in right["cases"][0]["checks"]
-    )
+    if not (
+        (right["executed"], right["passed"], right["containerFailures"]) == (1, 1, 0)
+    ):
+        raise AssertionError
+    if not (
+        len(require_checks(right["cases"][0])) == 2
+        and all(c["actual"] == "73" for c in require_checks(right["cases"][0]))
+    ):
+        raise AssertionError
     execute(
         work / "stale",
         HERE / "fixtures/ControlTest.java",
@@ -358,46 +415,64 @@ def group2(work):
     }
 
 
-def group3(work):
+def group3(work: Path) -> dict[str, object]:
     props = [
         "-Djunit.jupiter.execution.parallel.enabled=true",
         "-Djunit.jupiter.execution.parallel.config.strategy=fixed",
         "-Djunit.jupiter.execution.parallel.config.fixed.parallelism=4",
     ]
-    left, right, raw = pair(work, "LeafTest.java", properties=props)
-    assert (right["executed"], right["passed"], right["failed"]) == (6, 6, 0)
-    assert len({c["id"] for c in right["cases"]}) == 6
-    assert all(len(c["checks"]) == 1 for c in right["cases"])
-    assert sorted(c["checks"][0]["actual"] for c in right["cases"]) == [
-        "101",
-        "11",
-        "202",
-        "22",
-        "31",
-        "32",
-    ]
-    assert (
-        len({case(right, m)["checks"][0]["_thread"] for m in ["first", "second"]}) == 2
-    )
+    _left, right, _raw = pair(work, "LeafTest.java", properties=props)
+    if not ((right["executed"], right["passed"], right["failed"]) == (6, 6, 0)):
+        raise AssertionError
+    if not (len({c["id"] for c in right["cases"]}) == 6):
+        raise AssertionError
+    if not (all(len(require_checks(c)) == 1 for c in right["cases"])):
+        raise AssertionError
+    if not (
+        sorted(require_checks(c)[0]["actual"] for c in right["cases"])
+        == [
+            "101",
+            "11",
+            "202",
+            "22",
+            "31",
+            "32",
+        ]
+    ):
+        raise AssertionError
+    if not (
+        len({require_checks(case(right, m))[0]["_thread"] for m in ["first", "second"]})
+        == 2
+    ):
+        raise AssertionError
     return {
         "status": "PASS",
         "controls": "two same-name parameter rows, two dynamic lambdas, two simultaneous barrier leaves; unique real UIDs, values and worker threads",
     }
 
 
-def group4(work):
-    left, right, raw = pair(work, "TimeoutTest.java")
-    assert (right["executed"], right["passed"], right["failed"]) == (4, 3, 1)
-    assert [
-        case(right, m)["checks"][0]["actual"] for m in ["same", "separate", "expires"]
-    ] == ["12", "34", "56"]
-    assert (
-        case(right, "same")["checks"][0]["_thread"]
-        != case(right, "separate")["checks"][0]["_thread"]
-    )
-    pre = case(right, "preemptive")["checks"]
-    assert len(pre) == 1 and "78" not in [c["actual"] for c in pre]
-    assert pre[0]["availability"].startswith("incomplete")
+def group4(work: Path) -> dict[str, object]:
+    _left, right, _raw = pair(work, "TimeoutTest.java")
+    if not ((right["executed"], right["passed"], right["failed"]) == (4, 3, 1)):
+        raise AssertionError
+    if not (
+        [
+            require_checks(case(right, m))[0]["actual"]
+            for m in ["same", "separate", "expires"]
+        ]
+        == ["12", "34", "56"]
+    ):
+        raise AssertionError
+    if not (
+        require_checks(case(right, "same"))[0]["_thread"]
+        != require_checks(case(right, "separate"))[0]["_thread"]
+    ):
+        raise AssertionError
+    pre = require_checks(case(right, "preemptive"))
+    if not (len(pre) == 1 and "78" not in [c["actual"] for c in pre]):
+        raise AssertionError
+    if not (pre[0]["availability"].startswith("incomplete")):
+        raise AssertionError
     return {
         "status": "UNKNOWN",
         "confirmed": "@Timeout SAME_THREAD, SEPARATE_THREAD, real expired leaf, correct threads/outcomes; finally scope revoked",
@@ -406,68 +481,99 @@ def group4(work):
     }
 
 
-def group5(work):
-    import runpy, copy
+def group5(work: Path) -> dict[str, object]:
+    import copy
 
-    projection = runpy.run_path(str(HERE / "consumer.py"))["project"]
-    left, right, raw = pair(work, "ValueTest.java")
-    assert right["passed"] == 4
-    diff = case(right, "bytes")["checks"][0]
-    assert (
-        diff["differenceIndex"],
-        diff["differenceExpected"],
-        diff["differenceActual"],
-        diff["_snapshotArrayPayloadBytes"],
-    ) == ("11017", "01", "02", "24000")
-    assert "length=12000" in diff["expected"] and "length=12000" in diff["actual"]
-    assert case(right, "actualFixture")["checks"][0]["actual"] == "10003"
-    quota = case(right, "quota")["checks"][0]
-    assert quota["_snapshotArrayPayloadBytes"] == "0" and quota[
-        "availability"
-    ].startswith("incomplete")
-    seq = case(right, "sequences")["checks"]
-    assert seq[0]["availability"] == "complete" and "Анна" in seq[0]["actual"]
-    assert "differenceIndex" not in seq[-1] and seq[-1]["delta"] == "0.1"
-    a, bounds, bounds_raw = pair(work, "BoundTest.java")
-    assert bounds["passed"] == 3
-    assert all(
-        c["checks"][0]["availability"].startswith("incomplete") for c in bounds["cases"]
-    )
-    assert all(len(c["checks"][0]["actual"]) <= 2048 for c in bounds["cases"])
-    a, b, quota_raw = pair(work, "QuotaTest.java", quota=256)
-    q = b["cases"][0]["checks"][0]
-    assert q["_snapshotArrays"] == "0"
-    assert q["_snapshotArrayPayloadBytes"] == "0" and q["availability"].startswith(
-        "incomplete"
-    )
-    assert projection(b, quota_raw)["score"] == 1
-    a, b, score_raw = pair(work, "ScoreTest.java")
+    from consumer import project as projection
+
+    _left, right, _raw = pair(work, "ValueTest.java")
+    if not (right["passed"] == 4):
+        raise AssertionError
+    diff = require_checks(case(right, "bytes"))[0]
+    if not (
+        (
+            diff["differenceIndex"],
+            diff["differenceExpected"],
+            diff["differenceActual"],
+            diff["_snapshotArrayPayloadBytes"],
+        )
+        == ("11017", "01", "02", "24000")
+    ):
+        raise AssertionError
+    if not ("length=12000" in diff["expected"] and "length=12000" in diff["actual"]):
+        raise AssertionError
+    if not (require_checks(case(right, "actualFixture"))[0]["actual"] == "10003"):
+        raise AssertionError
+    quota = require_checks(case(right, "quota"))[0]
+    if not (
+        quota["_snapshotArrayPayloadBytes"] == "0"
+        and quota["availability"].startswith("incomplete")
+    ):
+        raise AssertionError
+    seq = require_checks(case(right, "sequences"))
+    if not (seq[0]["availability"] == "complete" and "Анна" in seq[0]["actual"]):
+        raise AssertionError
+    if not ("differenceIndex" not in seq[-1] and seq[-1]["delta"] == "0.1"):
+        raise AssertionError
+    _a, bounds, _bounds_raw = pair(work, "BoundTest.java")
+    if not (bounds["passed"] == 3):
+        raise AssertionError
+    if not (
+        all(
+            require_checks(c)[0]["availability"].startswith("incomplete")
+            for c in bounds["cases"]
+        )
+    ):
+        raise AssertionError
+    if not (all(len(require_checks(c)[0]["actual"]) <= 2048 for c in bounds["cases"])):
+        raise AssertionError
+    _a, b, quota_raw = pair(work, "QuotaTest.java", quota=256)
+    q = require_checks(b["cases"][0])[0]
+    if not (q["_snapshotArrays"] == "0"):
+        raise AssertionError
+    if not (
+        q["_snapshotArrayPayloadBytes"] == "0"
+        and q["availability"].startswith("incomplete")
+    ):
+        raise AssertionError
+    if not (projection(b, quota_raw)["score"] == 1):
+        raise AssertionError
+    _a, b, score_raw = pair(work, "ScoreTest.java")
     native = projection(b, score_raw)
-    assert (b["executed"], b["passed"], native["score"], len(native["tests"])) == (
-        10,
-        9,
-        0.9,
-        10,
-    )
+    if not (
+        (b["executed"], b["passed"], native["score"], len(native["tests"]))
+        == (
+            10,
+            9,
+            0.9,
+            10,
+        )
+    ):
+        raise AssertionError
     observed = next(
         c
         for c in native["feedback"]["cases"]
         if c["name"] == "Несколько проверок и reporter"
     )
-    assert (
+    if not (
         len(observed["checks"]) == 4 and observed["checks"][-1]["delegated"] == "threw"
-    )
-    assert (
+    ):
+        raise AssertionError
+    if "reporter" not in observed:
+        raise AssertionError
+    if not (
         observed["reporter"]["actual"] == "Предметный результат"
         and observed["reporter"]["origin"] == "trusted-TestReporter"
-    )
-    assert "_bci" not in json.dumps(native) and "_thread" not in json.dumps(native)
+    ):
+        raise AssertionError
+    if not ("_bci" not in json.dumps(native) and "_thread" not in json.dumps(native)):
+        raise AssertionError
     for change in ["unknown-field", "absolute-location", "duplicate-counts"]:
         malformed = copy.deepcopy(b)
         if change == "unknown-field":
-            malformed["cases"][0]["checks"][0]["foreign"] = "x"
+            require_checks(malformed["cases"][0])[0]["foreign"] = "x"
         elif change == "absolute-location":
-            malformed["cases"][0]["checks"][0]["site"] = "/private/File.java:1:1"
+            require_checks(malformed["cases"][0])[0]["site"] = "/private/File.java:1:1"
         else:
             malformed["executed"] += 1
         try:
@@ -476,10 +582,11 @@ def group5(work):
         except ValueError:
             pass
     D1 = X / "repos/java-early-projects"
-    assert (
+    if not (
         run(["git", "rev-parse", "HEAD"], D1).strip()
         == "8ba3d43d993362f947af0b0889b5717ad3d369c2"
-    )
+    ):
+        raise AssertionError
     reverse = D1 / "projects/arrays/reverse-array"
     c, reverse_raw = execute(
         work / "d1-reverse",
@@ -491,53 +598,73 @@ def group5(work):
             / "projects/common/java/process/src/test/java/coursesupport/JavaProcess.java"
         ],
     )
-    assert (c["executed"], c["passed"]) == (4, 4)
-    assert all(
-        any(check["property"] == "равенство массивов" for check in value["checks"])
-        for value in c["cases"]
-    )
-    assert len(projection(c, reverse_raw)["tests"]) == 4
+    if not (c is not None):
+        raise AssertionError
+    if not ((c["executed"], c["passed"]) == (4, 4)):
+        raise AssertionError
+    if not (
+        all(
+            any(
+                check["property"] == "равенство массивов"
+                for check in require_checks(value)
+            )
+            for value in c["cases"]
+        )
+    ):
+        raise AssertionError
+    if not (len(projection(c, reverse_raw)["tests"]) == 4):
+        raise AssertionError
     # Original three selected immutable sequence bindings, not a replacement for D1 State.
     archive = X / "private-author-inputs/projects/objects/book-selection"
-    forms = {}
+    forms: dict[str, dict[str, object]] = {}
     for binding, book in [
         ("reference", "course-cases288/reference/Book.java"),
         ("valid-named", "valid-named/Book.java"),
         ("valid-flexible", "valid-flexible/flexible/Book.java"),
     ]:
-        c, rr = execute(
+        c, _rr = execute(
             work / ("book-" + binding),
             archive / "tests/junit/private/ContractTest.java",
             True,
             student_extra=[archive / "tests/fixtures" / book],
             helpers=[archive / "tests/bindings" / binding / "TaskBinding.java"],
         )
-        assert (c["executed"], c["passed"]) == (2, 2)
+        if not (c is not None):
+            raise AssertionError
+        if not ((c["executed"], c["passed"]) == (2, 2)):
+            raise AssertionError
         values = [
             check
             for row in c["cases"]
-            for check in row["checks"]
+            for check in require_checks(row)
             if check["actual"].startswith("[[")
         ]
-        assert values and all(check["availability"] == "complete" for check in values)
+        if not (
+            values and all(check["availability"] == "complete" for check in values)
+        ):
+            raise AssertionError
         forms[binding] = {
             "leaves": 2,
             "value_checks": len(values),
             "availability": "complete",
         }
     book = D1 / "projects/objects/book-selection"
-    d1, rr = execute(
+    d1, _rr = execute(
         work / "d1-book",
         book / "checks/src/test/java/BookSelectionTest.java",
         True,
         student_extra=[book / "reference/src/main/java/Book.java"],
     )
-    assert (d1["executed"], d1["passed"]) == (23, 23)
-    first = case(d1, "fullConstructor")["checks"][0]
-    assert (
+    if not (d1 is not None):
+        raise AssertionError
+    if not ((d1["executed"], d1["passed"]) == (23, 23)):
+        raise AssertionError
+    first = require_checks(case(d1, "fullConstructor"))[0]
+    if not (
         first["availability"].startswith("incomplete")
         and "<opaque:BookSelectionTest$State>" in first["actual"]
-    )
+    ):
+        raise AssertionError
     descriptors = run(
         [
             JDK / "bin/javap",
@@ -574,46 +701,60 @@ def group5(work):
     }
 
 
-def group6(work):
-    left, right, raw = pair(
+def group6(work: Path) -> dict[str, object]:
+    _left, right, _raw = pair(
         work, "CallbackTest.java", student_source=HERE / "fixtures/CallbackStudent.java"
     )
-    checks = case(right, "callbacks")["checks"]
-    assert len(checks) == 9
-    assert [c["actual"] for c in checks[:4]] == [
-        "java.lang.IllegalStateException",
-        "java.lang.IllegalStateException",
-        "не бросил",
-        "Возврат",
-    ]
-    assert [c["actual"] for c in checks[-3:]] == [
-        "true",
-        "false",
-        "java.lang.IllegalStateException",
-    ]
-    assert (
-        case(right, "before")["checks"] == []
+    checks = require_checks(case(right, "callbacks"))
+    if not (len(checks) == 9):
+        raise AssertionError
+    if not (
+        [c["actual"] for c in checks[:4]]
+        == [
+            "java.lang.IllegalStateException",
+            "java.lang.IllegalStateException",
+            "не бросил",
+            "Возврат",
+        ]
+    ):
+        raise AssertionError
+    if not (
+        [c["actual"] for c in checks[-3:]]
+        == [
+            "true",
+            "false",
+            "java.lang.IllegalStateException",
+        ]
+    ):
+        raise AssertionError
+    if not (
+        require_checks(case(right, "before")) == []
         and case(right, "before")["status"] == "failed"
-    )
-    assert not any("differenceIndex" in c for c in checks)
+    ):
+        raise AssertionError
+    if not (not any("differenceIndex" in c for c in checks)):
+        raise AssertionError
     return {
         "status": "PASS",
         "controls": "throws correct/wrong/no-throw, doesNotThrow return/failure, BooleanSupplier true/false/throw; nine single callback calls, one lazy message, identical return/Throwable and leaf outcomes; thrown-before-call has no values",
     }
 
 
-def main():
-    global DISABLED
+def main() -> None:
+    global capture_disabled
     parser = argparse.ArgumentParser()
     parser.add_argument("--group", type=int, choices=range(1, 7))
     parser.add_argument("--capture-disabled", action="store_true")
     args = parser.parse_args()
-    DISABLED = args.capture_disabled
-    assert os.environ.get("XDG_CACHE_HOME") == "/home/tolya/Java/.cache/codex-tools"
-    receipt = {
-        "groups": {
-            f"F0-{n}": {"status": "UNKNOWN", "reason": "NOT_RUN"} for n in range(1, 7)
-        },
+    capture_disabled = args.capture_disabled
+    if not (os.environ.get("XDG_CACHE_HOME") == "/home/tolya/Java/.cache/codex-tools"):
+        raise AssertionError
+    groups: dict[str, dict[str, object]] = {
+        f"F0-{n}": {"status": "UNKNOWN", "reason": "NOT_RUN"} for n in range(1, 7)
+    }
+    jdk: dict[str, str] = {}
+    receipt: dict[str, object] = {
+        "groups": groups,
         "processes": PROCESSES,
         "executions": EXECUTIONS,
         "flags": FLAGS,
@@ -624,45 +765,49 @@ def main():
             for p in sorted(HERE.rglob("*"))
             if p.suffix in (".java", ".py", ".md")
         },
-        "jdk": {
-            "release": sha(JDK / "release"),
-            "java": sha(JDK / "bin/java"),
-            "javac": sha(JDK / "bin/javac"),
-        },
+        "jdk": (
+            jdk := {
+                "release": sha(JDK / "release"),
+                "java": sha(JDK / "bin/java"),
+                "javac": sha(JDK / "bin/javac"),
+            }
+        ),
         "jar": {"path": str(JUNIT), "sha256": sha(JUNIT)},
         "integration": "HOLD",
     }
     run(java("-version"), ROOT)
-    receipt["jdk"]["version"] = PROCESSES[-1]["stderr"]
+    jdk["version"] = PROCESSES[-1].get("stderr", "")
     work = Path(tempfile.mkdtemp(prefix="c3-f0-v2-final-"))
     evidence = X / ("c3-f0-v2-final-evidence-" + str(time.time_ns()))
     active = None
     try:
-        for n in ([args.group] if args.group else range(1, 7)):
+        for n in [args.group] if args.group else range(1, 7):
             active = n
             group_work = work / str(n)
             group_work.mkdir()
             before = len(PROCESSES)
             start = time.monotonic()
-            receipt["groups"][f"F0-{n}"] = globals()["group" + str(n)](group_work)
-            receipt["groups"][f"F0-{n}"].update(
+            groups[f"F0-{n}"] = (group1, group2, group3, group4, group5, group6)[n - 1](
+                group_work
+            )
+            groups[f"F0-{n}"].update(
                 seconds=time.monotonic() - start, process_range=[before, len(PROCESSES)]
             )
-            print("F0-" + str(n), receipt["groups"][f"F0-{n}"]["status"], flush=True)
+            print("F0-" + str(n), groups[f"F0-{n}"]["status"], flush=True)
             (X / "c3-f0-v2-checkpoint.json").write_text(
                 json.dumps(receipt, indent=2, ensure_ascii=False)
             )
     except Exception as error:
-        receipt["groups"][f"F0-{active}"] = {"status": "FAIL", "reason": str(error)}
+        groups[f"F0-{active}"] = {"status": "FAIL", "reason": str(error)}
         receipt["failure"] = str(error)
         raise
     finally:
         receipt["result"] = (
             "FAIL"
-            if any(v["status"] == "FAIL" for v in receipt["groups"].values())
+            if any(v["status"] == "FAIL" for v in groups.values())
             else (
                 "UNKNOWN"
-                if any(v["status"] == "UNKNOWN" for v in receipt["groups"].values())
+                if any(v["status"] == "UNKNOWN" for v in groups.values())
                 else "PASS"
             )
         )
@@ -674,6 +819,13 @@ def main():
             json.dumps(receipt, indent=2, ensure_ascii=False)
         )
     raise SystemExit(0 if receipt["result"] == "PASS" else 2)
+
+
+def require_checks(case: ExperimentCase) -> list[dict[str, str]]:
+    """Сохранить обязательное наличие checks в проверках candidate-наблюдений."""
+    if "checks" not in case:
+        raise KeyError("checks")
+    return case["checks"]
 
 
 if __name__ == "__main__":

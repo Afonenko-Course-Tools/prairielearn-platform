@@ -1,6 +1,15 @@
 """Типы выбранных проверок; границы подтверждаются собственными JSON Schema."""
+
 from __future__ import annotations
-from typing import TYPE_CHECKING, Generic, Literal, NotRequired, TypeAlias, TypeVar, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Generic,
+    Literal,
+    NotRequired,
+    TypeAlias,
+    TypeVar,
+    TypedDict,
+)
 
 if TYPE_CHECKING:
     from junit_result import JUnitCase, JUnitCounts, RawResult, RawTest
@@ -23,7 +32,7 @@ class ReferenceDeclaration(TypedDict):
 
 
 class SourceProfile(TypedDict):
-    mode: Literal['implementation', 'student-tests']
+    mode: Literal["implementation", "student-tests"]
     root: str
     include: list[str]
 
@@ -38,39 +47,81 @@ class VariantDeclaration(TypedDict):
     mutants: list[str]
 
 
-CountExpectation = TypedDict('CountExpectation', {'at-least': NotRequired[JSONInteger], 'exactly': NotRequired[JSONInteger]})
-ScoreExpectation = TypedDict('ScoreExpectation', {'at-least': NotRequired[float], 'exactly': NotRequired[float], 'less-than': NotRequired[float]})
-Expectations = TypedDict('Expectations', {
-    'student-compilation': NotRequired[str], 'job': NotRequired[str],
-    'classification': NotRequired[str], 'required-tests': NotRequired[str],
-    'failed-tests': NotRequired[CountExpectation], 'executed-tests': NotRequired[CountExpectation],
-    'test-ids': NotRequired[list[str]], 'score': NotRequired[ScoreExpectation],
-})
-JavaOverrides = TypedDict('JavaOverrides', {
-    'release': NotRequired[JSONInteger], 'encoding': NotRequired[str],
-    'compiler-options': NotRequired[list[str]],
-})
-LimitOverrides = TypedDict('LimitOverrides', {
-    'outer-seconds': NotRequired[float], 'compile-seconds': NotRequired[float],
-    'run-seconds': NotRequired[float], 'networking': NotRequired[bool],
-    'max-output-bytes': NotRequired[JSONInteger],
-})
-DiscoveryOverrides = TypedDict('DiscoveryOverrides', {'min-executed': NotRequired[JSONInteger], 'allow-skipped': NotRequired[bool]})
-AdditionalSourceDeclaration = TypedDict('AdditionalSourceDeclaration', {
-    'archive': str, 'max-files': JSONInteger, 'max-file-bytes': JSONInteger, 'max-total-bytes': JSONInteger,
-    'max-archive-bytes': JSONInteger, 'primary-required': NotRequired[bool], 'allow-additional': NotRequired[bool],
-})
-JavaBuildDeclaration = TypedDict('JavaBuildDeclaration', {
-    'kind': str, 'artifact': str, 'main-class': NotRequired[str],
-})
+CountExpectation = TypedDict(
+    "CountExpectation",
+    {"at-least": NotRequired[JSONInteger], "exactly": NotRequired[JSONInteger]},
+)
+ScoreExpectation = TypedDict(
+    "ScoreExpectation",
+    {
+        "at-least": NotRequired[float],
+        "exactly": NotRequired[float],
+        "less-than": NotRequired[float],
+    },
+)
+Expectations = TypedDict(
+    "Expectations",
+    {
+        "student-compilation": NotRequired[str],
+        "job": NotRequired[str],
+        "classification": NotRequired[str],
+        "required-tests": NotRequired[str],
+        "failed-tests": NotRequired[CountExpectation],
+        "executed-tests": NotRequired[CountExpectation],
+        "test-ids": NotRequired[list[str]],
+        "score": NotRequired[ScoreExpectation],
+    },
+)
+JavaOverrides = TypedDict(
+    "JavaOverrides",
+    {
+        "release": NotRequired[JSONInteger],
+        "encoding": NotRequired[str],
+        "compiler-options": NotRequired[list[str]],
+    },
+)
+LimitOverrides = TypedDict(
+    "LimitOverrides",
+    {
+        "outer-seconds": NotRequired[float],
+        "compile-seconds": NotRequired[float],
+        "run-seconds": NotRequired[float],
+        "networking": NotRequired[bool],
+        "max-output-bytes": NotRequired[JSONInteger],
+    },
+)
+DiscoveryOverrides = TypedDict(
+    "DiscoveryOverrides",
+    {"min-executed": NotRequired[JSONInteger], "allow-skipped": NotRequired[bool]},
+)
+AdditionalSourceDeclaration = TypedDict(
+    "AdditionalSourceDeclaration",
+    {
+        "archive": str,
+        "max-files": JSONInteger,
+        "max-file-bytes": JSONInteger,
+        "max-total-bytes": JSONInteger,
+        "max-archive-bytes": JSONInteger,
+        "primary-required": NotRequired[bool],
+        "allow-additional": NotRequired[bool],
+    },
+)
+JavaBuildDeclaration = TypedDict(
+    "JavaBuildDeclaration",
+    {
+        "kind": str,
+        "artifact": str,
+        "main-class": NotRequired[str],
+    },
+)
 
 
 class WeightedScoring(TypedDict):
-    mode: Literal['weighted']
+    mode: Literal["weighted"]
 
 
 class AllPassScoring(TypedDict):
-    mode: Literal['all-pass']
+    mode: Literal["all-pass"]
 
 
 class ScoringGroup(TypedDict):
@@ -80,13 +131,13 @@ class ScoringGroup(TypedDict):
 
 
 class GroupScoring(TypedDict):
-    mode: Literal['contract-groups']
+    mode: Literal["contract-groups"]
     groups: list[ScoringGroup]
 
 
 class ThresholdScoring(TypedDict):
-    mode: Literal['threshold']
-    basis: Literal['score', 'passed-tests']
+    mode: Literal["threshold"]
+    basis: Literal["score", "passed-tests"]
     value: float
 
 
@@ -98,19 +149,30 @@ class VerificationExpectations(TypedDict):
     starter: NotRequired[Expectations]
 
 
-ProjectCheck = TypedDict('ProjectCheck', {
-    'runtime': str, 'profile': NotRequired[str], 'source-profile': NotRequired[str],
-    'sourceProfile': NotRequired[SourceProfile], 'mode': NotRequired[str],
-    'java': NotRequired[JavaOverrides], 'limits': NotRequired[LimitOverrides],
-    'scoring': NotRequired[Scoring], 'discovery': NotRequired[DiscoveryOverrides],
-    'references': NotRequired[list[ReferenceDeclaration]], 'tests': NotRequired[list[str]],
-    'verification-tests': NotRequired[list[str]], 'contract-cases': NotRequired[str],
-    'verification-expectations': NotRequired[VerificationExpectations],
-    'variants': NotRequired[VariantDeclaration], 'api-precheck': NotRequired[ApiPrecheck],
-    'verification-api-precheck': NotRequired[ApiPrecheck],
-    'additional-java-sources': NotRequired[AdditionalSourceDeclaration],
-    'java-build': NotRequired[JavaBuildDeclaration],
-})
+ProjectCheck = TypedDict(
+    "ProjectCheck",
+    {
+        "runtime": str,
+        "profile": NotRequired[str],
+        "source-profile": NotRequired[str],
+        "sourceProfile": NotRequired[SourceProfile],
+        "mode": NotRequired[str],
+        "java": NotRequired[JavaOverrides],
+        "limits": NotRequired[LimitOverrides],
+        "scoring": NotRequired[Scoring],
+        "discovery": NotRequired[DiscoveryOverrides],
+        "references": NotRequired[list[ReferenceDeclaration]],
+        "tests": NotRequired[list[str]],
+        "verification-tests": NotRequired[list[str]],
+        "contract-cases": NotRequired[str],
+        "verification-expectations": NotRequired[VerificationExpectations],
+        "variants": NotRequired[VariantDeclaration],
+        "api-precheck": NotRequired[ApiPrecheck],
+        "verification-api-precheck": NotRequired[ApiPrecheck],
+        "additional-java-sources": NotRequired[AdditionalSourceDeclaration],
+        "java-build": NotRequired[JavaBuildDeclaration],
+    },
+)
 
 
 class SelectedReference(TypedDict):
@@ -196,14 +258,25 @@ class Scenario(TypedDict):
     optional: bool
 
 
-JavaConfig = TypedDict('JavaConfig', {
-    'release': JSONInteger, 'encoding': str, 'compiler-options': list[str],
-})
-RunLimits = TypedDict('RunLimits', {
-    'outer-seconds': float, 'compile-seconds': float, 'run-seconds': float,
-    'networking': bool, 'max-output-bytes': JSONInteger,
-})
-Discovery = TypedDict('Discovery', {'min-executed': JSONInteger, 'allow-skipped': bool})
+JavaConfig = TypedDict(
+    "JavaConfig",
+    {
+        "release": JSONInteger,
+        "encoding": str,
+        "compiler-options": list[str],
+    },
+)
+RunLimits = TypedDict(
+    "RunLimits",
+    {
+        "outer-seconds": float,
+        "compile-seconds": float,
+        "run-seconds": float,
+        "networking": bool,
+        "max-output-bytes": JSONInteger,
+    },
+)
+Discovery = TypedDict("Discovery", {"min-executed": JSONInteger, "allow-skipped": bool})
 
 
 class AdditionalSourcePolicy(TypedDict):
@@ -237,12 +310,12 @@ class GradingDescriptorBase(TypedDict):
 
 
 class JavaGradingDescriptor(GradingDescriptorBase):
-    runtime: Literal['java25-junit-v1', 'java25-mutation-v1', 'java25-gradle-junit-v1']
+    runtime: Literal["java25-junit-v1", "java25-mutation-v1", "java25-gradle-junit-v1"]
     java: JavaConfig
 
 
 class FishGradingDescriptor(GradingDescriptorBase):
-    runtime: Literal['fish-git-v1']
+    runtime: Literal["fish-git-v1"]
 
 
 GradingDescriptor = JavaGradingDescriptor | FishGradingDescriptor
@@ -308,7 +381,10 @@ class Outcome(TypedDict, Generic[CountsT]):
     reportFormat: NotRequired[str]
 
 
-class JavaOutcome(Outcome['JUnitCounts']):
+JUnitCountType: TypeAlias = "JUnitCounts"
+
+
+class JavaOutcome(Outcome[JUnitCountType]):
     pass
 
 

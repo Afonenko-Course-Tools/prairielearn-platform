@@ -1,8 +1,7 @@
 package org.prairielearn.feedback;
 
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
 import org.json.simple.*;
 import org.json.simple.parser.JSONParser;
 import org.junit.platform.engine.TestExecutionResult;
@@ -13,7 +12,10 @@ import org.junit.platform.launcher.*;
 import org.junit.platform.launcher.core.*;
 import org.opentest4j.AssertionFailedError;
 import org.prairielearn.autograder.AutograderInfo;
-import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 
 /** Результаты и диагностика через публичные события JUnit и OpenTest4J. */
 public final class PlatformJUnitAdapter implements TestExecutionListener {
@@ -33,45 +35,66 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
     private PlatformJUnitAdapter(List<String> studentClasses) {
         this.studentClasses = studentClasses;
     }
+
     private static String bounded(String value, int maximum) {
         return value == null ? "" : value.substring(0, Math.min(maximum, value.length()));
     }
+
     private Map<String, Object> report(TestIdentifier test) {
-        return cases.computeIfAbsent(test.getUniqueId(), id -> {
-            Map<String, Object> value = new LinkedHashMap<>();
-            value.put("id", id);
-            value.put("name", bounded(test.getDisplayName(), 8192));
-            if (test.getSource().orElse(null) instanceof MethodSource method)
-                value.put("test", method.getClassName() + "#" + method.getMethodName());
-            return value;
-        });
+        return cases.computeIfAbsent(
+                test.getUniqueId(),
+                id -> {
+                    Map<String, Object> value = new LinkedHashMap<>();
+                    value.put("id", id);
+                    value.put("name", bounded(test.getDisplayName(), 8192));
+                    if (test.getSource().orElse(null) instanceof MethodSource method)
+                        value.put("test", method.getClassName() + "#" + method.getMethodName());
+                    return value;
+                });
     }
+
     private void register(TestIdentifier test) {
         if (!registered.add(test.getUniqueId())) return;
         double weight = 1;
         String name = test.getDisplayName(), description = "";
         for (var tag : test.getTags())
-            if (tag.getName().startsWith("points=")) weight = Double.parseDouble(tag.getName().substring(7));
+            if (tag.getName().startsWith("points="))
+                weight = Double.parseDouble(tag.getName().substring(7));
         if (test.getSource().orElse(null) instanceof MethodSource method) {
-            AutograderInfo info = method.getJavaMethod().getDeclaredAnnotation(AutograderInfo.class);
+            AutograderInfo info =
+                    method.getJavaMethod().getDeclaredAnnotation(AutograderInfo.class);
             if (info != null) {
                 if (info.points() > 0) weight = info.points();
                 if (!info.name().isEmpty()) name = info.name();
                 description = info.description();
             }
         }
-        if (!Double.isFinite(weight) || weight < 0) throw new IllegalArgumentException("Invalid JUnit points");
-        TestIdentifier owner = plan.getParent(test).orElse(null);
+        if (!Double.isFinite(weight) || weight < 0)
+            throw new IllegalArgumentException("Invalid JUnit points");
+        TestPlan activePlan = Objects.requireNonNull(plan, "JUnit plan has not started");
+        TestIdentifier owner = activePlan.getParent(test).orElse(null);
         while (owner != null && !(owner.getSource().orElse(null) instanceof ClassSource))
-            owner = plan.getParent(owner).orElse(null);
-        grading.put(test.getUniqueId(), Map.of("weight", weight, "name", name,
-            "description", description, "owner", owner == null ? "" : owner.getUniqueId()));
+            owner = activePlan.getParent(owner).orElse(null);
+        grading.put(
+                test.getUniqueId(),
+                Map.of(
+                        "weight",
+                        weight,
+                        "name",
+                        name,
+                        "description",
+                        description,
+                        "owner",
+                        owner == null ? "" : owner.getUniqueId()));
     }
-    @Override public synchronized void testPlanExecutionStarted(TestPlan plan) {
+
+    @Override
+    public synchronized void testPlanExecutionStarted(TestPlan plan) {
         this.plan = plan;
         for (TestIdentifier root : plan.getRoots()) {
             List<TestIdentifier> nodes = new ArrayList<>();
-            nodes.add(root); nodes.addAll(plan.getDescendants(root));
+            nodes.add(root);
+            nodes.addAll(plan.getDescendants(root));
             for (TestIdentifier node : nodes) {
                 if (node.isTest()) register(node);
                 if (node.getSource().orElse(null) instanceof ClassSource)
@@ -85,25 +108,38 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
             }
         }
     }
-    @Override public synchronized void dynamicTestRegistered(TestIdentifier test) {
+
+    @Override
+    public synchronized void dynamicTestRegistered(TestIdentifier test) {
         if (test.isTest()) register(test);
     }
-    @Override public synchronized void executionStarted(TestIdentifier test) {
+
+    @Override
+    public synchronized void executionStarted(TestIdentifier test) {
         if (test.isTest()) started.add(test.getUniqueId());
     }
-    @Override public synchronized void executionSkipped(TestIdentifier test, String reason) {
+
+    @Override
+    public synchronized void executionSkipped(TestIdentifier test, String reason) {
         List<TestIdentifier> nodes = new ArrayList<>();
-        nodes.add(test); nodes.addAll(plan.getDescendants(test));
-        for (TestIdentifier child : nodes) if (child.isTest()) {
-            outcomes.put(child.getUniqueId(), "skipped");
-            report(child).put("status", "skipped");
-            report(child).put("message", bounded(reason, 8192));
-        }
+        nodes.add(test);
+        TestPlan activePlan = Objects.requireNonNull(plan, "JUnit plan has not started");
+        nodes.addAll(activePlan.getDescendants(test));
+        for (TestIdentifier child : nodes)
+            if (child.isTest()) {
+                outcomes.put(child.getUniqueId(), "skipped");
+                report(child).put("status", "skipped");
+                report(child).put("message", bounded(reason, 8192));
+            }
     }
+
     private boolean studentFrame(StackTraceElement frame) {
-        return studentClasses.stream().anyMatch(name -> frame.getClassName().equals(name)
-            || frame.getClassName().startsWith(name + "$"));
+        return studentClasses.stream()
+                .anyMatch(name ->
+                        frame.getClassName().equals(name)
+                                || frame.getClassName().startsWith(name + "$"));
     }
+
     private String failureKind(Throwable failure) {
         String name = failure.getClass().getName();
         if (name.equals("coursesupport.JavaProcess$StudentTimeout")) return "timeout";
@@ -113,9 +149,11 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         for (int depth = 0; cause != null && depth < 16; depth++, cause = cause.getCause())
             for (StackTraceElement frame : cause.getStackTrace())
                 if (studentFrame(frame)) return "runtime";
-        if (failure instanceof AssertionError || failure instanceof ReflectiveOperationException) return "wrong-answer";
+        if (failure instanceof AssertionError || failure instanceof ReflectiveOperationException)
+            return "wrong-answer";
         return "infrastructure";
     }
+
     private static Map<String, String> diagnostic(Throwable failure) {
         StringWriter trace = new StringWriter();
         failure.printStackTrace(new PrintWriter(trace));
@@ -123,9 +161,15 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         StringBuilder relevant = new StringBuilder();
         Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Throwable cause = failure;
-        for (int depth = 0; cause != null && depth < 16 && seen.add(cause); depth++, cause = cause.getCause()) {
+        for (int depth = 0;
+                cause != null && depth < 16 && seen.add(cause);
+                depth++, cause = cause.getCause()) {
             if (depth > 0) {
-                String label = "Причина: " + cause.getClass().getName() + ": " + bounded(cause.getMessage(), 8192);
+                String label =
+                        "Причина: "
+                                + cause.getClass().getName()
+                                + ": "
+                                + bounded(cause.getMessage(), 8192);
                 if (message.length() < 8192) {
                     if (!message.isEmpty()) message.append('\n');
                     message.append(label);
@@ -135,22 +179,32 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
             for (StackTraceElement frame : cause.getStackTrace()) {
                 if (relevant.length() >= 8192) break;
                 String name = frame.getClassName();
-                if (!name.startsWith("org.junit.") && !name.startsWith("org.opentest4j.")
-                        && !name.startsWith("java.") && !name.startsWith("jdk.")
+                if (!name.startsWith("org.junit.")
+                        && !name.startsWith("org.opentest4j.")
+                        && !name.startsWith("java.")
+                        && !name.startsWith("jdk.")
                         && !name.equals(PlatformJUnitAdapter.class.getName()))
                     relevant.append("at ").append(frame).append('\n');
             }
         }
-        return Map.of("message", bounded(message.toString(), 8192),
-            "exceptionType", failure.getClass().getName(),
-            "stackTrace", bounded(relevant.toString(), 8192),
-            "teacherTrace", bounded(trace.toString(), 32768));
+        return Map.of(
+                "message",
+                bounded(message.toString(), 8192),
+                "exceptionType",
+                failure.getClass().getName(),
+                "stackTrace",
+                bounded(relevant.toString(), 8192),
+                "teacherTrace",
+                bounded(trace.toString(), 32768));
     }
-    @Override public synchronized void executionFinished(TestIdentifier test, TestExecutionResult result) {
+
+    @Override
+    public synchronized void executionFinished(TestIdentifier test, TestExecutionResult result) {
         if (!test.isTest()) {
             if (result.getStatus() != TestExecutionResult.Status.SUCCESSFUL) {
                 containerFailures++;
-                result.getThrowable().ifPresent(failure -> containerDiagnostics.add(diagnostic(failure)));
+                result.getThrowable()
+                        .ifPresent(failure -> containerDiagnostics.add(diagnostic(failure)));
             }
             return;
         }
@@ -158,34 +212,56 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         outcomes.put(test.getUniqueId(), status);
         Map<String, Object> value = report(test);
         value.put("status", status.equals("successful") ? "passed" : status);
-        result.getThrowable().ifPresent(failure -> {
-            value.putAll(diagnostic(failure));
-            if (failure instanceof AssertionFailedError assertion) {
-                if (assertion.isExpectedDefined()) value.put("expected", bounded(assertion.getExpected().getStringRepresentation(), 8192));
-                if (assertion.isActualDefined()) value.put("actual", bounded(assertion.getActual().getStringRepresentation(), 8192));
-            }
-            if (result.getStatus() == TestExecutionResult.Status.FAILED)
-                failureKinds.put(test.getUniqueId(), failureKind(failure));
-        });
+        result.getThrowable()
+                .ifPresent(failure -> {
+                    value.putAll(diagnostic(failure));
+                    if (failure instanceof AssertionFailedError assertion) {
+                        if (assertion.isExpectedDefined())
+                            value.put(
+                                    "expected",
+                                    bounded(
+                                            assertion.getExpected().getStringRepresentation(),
+                                            8192));
+                        if (assertion.isActualDefined())
+                            value.put(
+                                    "actual",
+                                    bounded(assertion.getActual().getStringRepresentation(), 8192));
+                    }
+                    if (result.getStatus() == TestExecutionResult.Status.FAILED)
+                        failureKinds.put(test.getUniqueId(), failureKind(failure));
+                });
     }
-    @Override public synchronized void reportingEntryPublished(TestIdentifier test, ReportEntry entry) {
-        if (test.isTest()) for (String key : List.of("expected", "actual"))
-            if (entry.getKeyValuePairs().containsKey(key))
-                report(test).put(key, bounded(entry.getKeyValuePairs().get(key), 8192));
+
+    @Override
+    public synchronized void reportingEntryPublished(TestIdentifier test, ReportEntry entry) {
+        if (test.isTest())
+            for (String key : List.of("expected", "actual"))
+                if (entry.getKeyValuePairs().containsKey(key))
+                    report(test).put(key, bounded(entry.getKeyValuePairs().get(key), 8192));
     }
-    @Override public synchronized void testPlanExecutionFinished(TestPlan plan) { complete = true; }
-    private Map<String, Object> result() {
+
+    @Override
+    public synchronized void testPlanExecutionFinished(TestPlan plan) {
+        complete = true;
+    }
+
+    private synchronized Map<String, Object> result() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("complete", complete);
-        result.put("registered", List.copyOf(registered)); result.put("started", List.copyOf(started));
-        result.put("outcomes", outcomes); result.put("failureKinds", failureKinds);
-        result.put("cases", List.copyOf(cases.values())); result.put("grading", grading);
+        result.put("registered", List.copyOf(registered));
+        result.put("started", List.copyOf(started));
+        result.put("outcomes", outcomes);
+        result.put("failureKinds", failureKinds);
+        result.put("cases", List.copyOf(cases.values()));
+        result.put("grading", grading);
         result.put("classMaximums", classMaximums);
         result.put("containerFailures", containerFailures);
         result.put("containerDiagnostics", containerDiagnostics);
         return result;
     }
-    public static void main(String[] args) throws Exception {
+
+    public static void main(String[] args)
+            throws IOException, org.json.simple.parser.ParseException {
         JSONObject params;
         try (Reader reader = Files.newBufferedReader(Path.of(args[0]))) {
             params = (JSONObject) new JSONParser().parse(reader);
@@ -193,12 +269,20 @@ public final class PlatformJUnitAdapter implements TestExecutionListener {
         List<String> students = new ArrayList<>();
         for (Object name : (JSONArray) params.get("student_classes")) students.add((String) name);
         PlatformJUnitAdapter listener = new PlatformJUnitAdapter(students);
-        var selectors = ((JSONArray) params.get("test_classes")).stream()
-            .map(name -> selectClass((String) name)).toList();
+        List<org.junit.platform.engine.discovery.ClassSelector> selectors = new ArrayList<>();
+        for (Object name : (JSONArray) params.get("test_classes"))
+            selectors.add(selectClass((String) name));
         Launcher launcher = LauncherFactory.create();
-        launcher.execute(LauncherDiscoveryRequestBuilder.request().selectors(selectors)
-            .configurationParameter("junit.platform.stacktrace.pruning.enabled", "false").build(), listener);
-        Files.writeString(Path.of((String) params.get("feedback_file")), JSONValue.toJSONString(listener.result()));
+        launcher.execute(
+                LauncherDiscoveryRequestBuilder.request()
+                        .selectors(selectors)
+                        .configurationParameter(
+                                "junit.platform.stacktrace.pruning.enabled", "false")
+                        .build(),
+                listener);
+        Files.writeString(
+                Path.of((String) params.get("feedback_file")),
+                JSONValue.toJSONString(listener.result()));
         System.exit(0);
     }
 }

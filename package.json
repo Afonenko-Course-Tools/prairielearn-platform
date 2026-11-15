@@ -6,9 +6,13 @@
     "@types/node": "24.19.0",
     "pgsql-parser": "18.3.2",
     "typescript": "6.0.3",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "prettier": "^3.8.1"
   },
   "scripts": {
-    "typecheck": "tsc --project tsconfig.json"
+    "typecheck": "tsc --project tsconfig.json",
+    "format:check": "prettier --check '**/*.{json,yml,yaml,mjs}'",
+    "quality": "bash tools/check-quality.sh",
+    "quality:controls": "bash tools/quality/controls.sh"
   }
 }

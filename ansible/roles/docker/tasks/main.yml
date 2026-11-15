@@ -8,7 +8,7 @@
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Установить официальный ключ Docker
   environment:
@@ -17,12 +17,12 @@
   ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
     dest: /etc/apt/keyrings/docker.asc
-    mode: '0644'
+    mode: "0644"
 
 - name: Настроить официальный repository Docker
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/docker.sources
-    mode: '0644'
+    mode: "0644"
     content: |
       Types: deb
       URIs: https://download.docker.com/linux/ubuntu
@@ -34,21 +34,28 @@
 
 - name: Установить Docker и Compose
   ansible.builtin.apt:
-    name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
-    update_cache: '{{ docker_repository.changed }}'
+    name:
+      [
+        docker-ce,
+        docker-ce-cli,
+        containerd.io,
+        docker-buildx-plugin,
+        docker-compose-plugin,
+      ]
+    update_cache: "{{ docker_repository.changed }}"
     state: present
 
 - name: Сохранять config image IDs при offline Docker save/load
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
-    mode: '0644'
+    mode: "0644"
     content: |
       {"features":{"containerd-snapshotter":false}}
   register: docker_store_config
 
 - name: Включить службы
   ansible.builtin.systemd_service:
-    name: '{{ item }}'
+    name: "{{ item }}"
     enabled: true
     state: '{{ "restarted" if docker_store_config.changed else "started" }}'
   loop: [docker]

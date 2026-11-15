@@ -1,15 +1,29 @@
 """Конечные C3 F0: штатный adapter, изолированные candidate classes, без integration."""
 
-import argparse
+from __future__ import annotations
+
 import hashlib
-import importlib.util
 import json
 import os
-from pathlib import Path
-import subprocess
 import shutil
-import tempfile
+import subprocess  # nosec B404 # trusted experiment runner intentionally starts argv processes
 import time
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import NotRequired, TypedDict
+
+from consumer import Counts, ExperimentCase, read_counts
+
+
+class Process(TypedDict):
+    argv: list[str]
+    terminal: str
+    seconds: float
+    exit_code: NotRequired[int]
+    env: NotRequired[dict[str, str | None]]
+    stdout: NotRequired[str]
+    stderr: NotRequired[str]
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -26,27 +40,28 @@ FLAGS = [
     "-XX:+DisableAttachMechanism",
     "--illegal-native-access=deny",
 ]
-PROCESSES = []
-EXECUTIONS = []
+PROCESSES: list[Process] = []
+EXECUTIONS: list[dict[str, object]] = []
 
 
-def sha(path):
+def sha(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run(command, cwd, timeout=40):
+def run(command: Sequence[str | Path], cwd: Path, timeout: float = 40) -> str:
     start = time.monotonic()
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 # trusted experiment runner uses explicit argv without shell
             list(map(str, command)),
             cwd=cwd,
+            check=False,
             text=True,
             capture_output=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
         PROCESSES.append(
-            dict(
+            Process(
                 argv=list(map(str, command)),
                 terminal="TIMEOUT_KILLED",
                 seconds=time.monotonic() - start,
@@ -54,7 +69,7 @@ def run(command, cwd, timeout=40):
         )
         raise AssertionError("Ограниченный процесс превысил timeout") from error
     PROCESSES.append(
-        dict(
+        Process(
             argv=list(map(str, command)),
             terminal="EXIT",
             exit_code=result.returncode,
@@ -74,33 +89,33 @@ def run(command, cwd, timeout=40):
     return result.stdout
 
 
-def java(*args):
+def java(*args: str | Path) -> list[str | Path]:
     return [JDK / "bin/java", *args]
 
 
-def javac(*args):
+def javac(*args: str | Path) -> list[str | Path]:
     return [JDK / "bin/javac", "--release", "25", "-g", "-proc:none", *args]
 
 
 def execute(
-    work,
-    fixture,
-    transformed,
+    work: Path,
+    fixture: Path,
+    transformed: bool,
     *,
-    student_source=None,
-    helpers=(),
-    quota=32768,
-    properties=(),
-    stale=False,
-    student_extra=(),
-    projection_types=(),
-    diagnostic_pause=None,
-    policy_edit=None,
-    expected_rejection=None,
-    trusted_edit=None,
-):
+    student_source: Path | None = None,
+    helpers: Sequence[Path] = (),
+    quota: int = 32768,
+    properties: Sequence[str] = (),
+    stale: bool = False,
+    student_extra: Sequence[Path] = (),
+    projection_types: Sequence[str] = (),
+    diagnostic_pause: str | None = None,
+    policy_edit: Callable[[str], str] | None = None,
+    expected_rejection: str | None = None,
+    trusted_edit: Callable[[Path], None] | None = None,
+) -> tuple[Counts, object] | tuple[None, None]:
     work.mkdir()
-    observation = {
+    observation: dict[str, object] = {
         "mode": "implementation",
         "candidate": transformed,
         "fixture": str(fixture),
@@ -140,20 +155,23 @@ def execute(
         state_source = module_source / "org/prairielearn/feedback/internal/State.java"
         state_text = state_source.read_text()
         commit_anchor = "      synchronized (LOCK) {\n        if (live(context)) {\n          handle.values = check;"
-        assert state_text.count(commit_anchor) == 1
+        if not (state_text.count(commit_anchor) == 1):
+            raise AssertionError
         state_text = state_text.replace(
             commit_anchor,
             '      if (context.grant != null) PublicationProbe.pause("commit");\n'
             + commit_anchor,
         )
         end_anchor = "    if (check == null)\n      return;\n    synchronized (LOCK) {\n      if (check.ready && live(check.context))"
-        assert state_text.count(end_anchor) == 1
+        if not (state_text.count(end_anchor) == 1):
+            raise AssertionError
         state_text = state_text.replace(
             end_anchor,
             '    if (check == null)\n      return;\n    if (check.context.grant != null) PublicationProbe.pause("end");\n    synchronized (LOCK) {\n      if (check.ready && live(check.context))',
         )
         finish_anchor = "      return List.copyOf(result);"
-        assert state_text.count(finish_anchor) == 1
+        if not (state_text.count(finish_anchor) == 1):
+            raise AssertionError
         state_text = state_text.replace(
             finish_anchor,
             "      var frozen=List.copyOf(result); PublicationProbe.capture(frozen); return frozen;",
@@ -297,19 +315,19 @@ def execute(
     params = work / "params.json"
     params.write_text(
         json.dumps(
-            dict(
-                results_file=str(work / "raw.json"),
-                counts_file=str(work / "counts.json"),
-                signature="f0-private-signature",
-                test_classes=[fixture.stem],
-                student_classes=[
+            {
+                "results_file": str(work / "raw.json"),
+                "counts_file": str(work / "counts.json"),
+                "signature": "f0-private-signature",
+                "test_classes": [fixture.stem],
+                "student_classes": [
                     str(p.relative_to(student))[:-6].replace("/", ".")
                     for p in sorted(student.rglob("*.class"))
                 ],
-                student_classes_root=str(student),
-                submission_mode="implementation",
-                public_cases=[],
-            )
+                "student_classes_root": str(student),
+                "submission_mode": "implementation",
+                "public_cases": [],
+            }
         )
     )
     observation["generated_hashes"] = {
@@ -339,20 +357,31 @@ def execute(
     except AssertionError:
         if not stale and not expected_rejection:
             raise
-        assert (
-            PROCESSES[-1]["exit_code"] != 0
-            and (expected_rejection or "Stale trusted class") in PROCESSES[-1]["stderr"]
-        ), PROCESSES[-1]
+        if not (
+            PROCESSES[-1].get("exit_code", None) != 0
+            and (expected_rejection or "Stale trusted class")
+            in PROCESSES[-1].get("stderr", "")
+        ):
+            raise AssertionError(PROCESSES[-1]) from None
         observation["expected_rejection"] = "stale manifest, before Jupiter"
-        assert not (work / "counts.json").exists()
+        if not (not (work / "counts.json").exists()):
+            raise AssertionError from None
         return None, None
-    assert len(PROCESSES) == before + 1
-    counts = json.loads((work / "counts.json").read_text())
-    raw = json.loads((work / "raw.json").read_text())
+    if not (len(PROCESSES) == before + 1):
+        raise AssertionError
+    counts = read_counts(json.loads((work / "counts.json").read_text()))
+    raw: object = json.loads((work / "raw.json").read_text())
     observation["counts"] = counts
     observation["raw"] = raw
     return counts, raw
 
 
-def case(counts, method):
+def case(counts: Counts, method: str) -> ExperimentCase:
     return next(c for c in counts["cases"] if ("[method:" + method + "(") in c["id"])
+
+
+def require_checks(case: ExperimentCase) -> list[dict[str, str]]:
+    """Сохранить обязательное наличие checks в проверках candidate-наблюдений."""
+    if "checks" not in case:
+        raise KeyError("checks")
+    return case["checks"]

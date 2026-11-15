@@ -28,10 +28,7 @@
                   "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?/)(?!.*\\\\).+$"
                 }
               },
-              "required": [
-                "fixture",
-                "submission"
-              ],
+              "required": ["fixture", "submission"],
               "additionalProperties": false
             },
             "minItems": 1
@@ -40,16 +37,10 @@
             "type": "object",
             "properties": {
               "student-compilation": {
-                "enum": [
-                  "success",
-                  "failure"
-                ]
+                "enum": ["success", "failure"]
               },
               "job": {
-                "enum": [
-                  "complete",
-                  "failure"
-                ]
+                "enum": ["complete", "failure"]
               },
               "classification": {
                 "enum": [
@@ -129,19 +120,12 @@
             "additionalProperties": false
           }
         },
-        "required": [
-          "id",
-          "sources",
-          "expected"
-        ],
+        "required": ["id", "sources", "expected"],
         "additionalProperties": false
       },
       "minItems": 0
     }
   },
-  "required": [
-    "schemaVersion",
-    "cases"
-  ],
+  "required": ["schemaVersion", "cases"],
   "additionalProperties": false
 }

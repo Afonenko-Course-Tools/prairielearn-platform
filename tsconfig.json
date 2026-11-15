@@ -11,6 +11,18 @@
     "skipLibCheck": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["bridge/**/*.mjs", "tools/**/*.mjs", "tests/**/*.mjs", "types/**/*.d.ts"],
-  "exclude": ["node_modules", "tests/fixtures"]
+  "include": [
+    "**/*.mjs",
+    "**/*.js",
+    "**/*.cjs",
+    "**/*.ts",
+    "**/*.mts",
+    "**/*.cts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/fixtures",
+    "**/upstream",
+    "schemas/native-upstream"
+  ]
 }

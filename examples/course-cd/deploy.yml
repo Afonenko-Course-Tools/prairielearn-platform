@@ -35,13 +35,13 @@
       ansible.builtin.file:
         path: "{{ site_directory }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     - name: Доставить и распаковать готовый student-сайт
       ansible.builtin.unarchive:
         src: "{{ site_archive }}"
         dest: "{{ site_directory }}"
-        mode: 'u=rwX,go=rX'
+        mode: "u=rwX,go=rX"
 
     - name: Показать результат
       ansible.builtin.debug:

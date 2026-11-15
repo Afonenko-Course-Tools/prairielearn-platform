@@ -1,6 +1,10 @@
 {
-  "include": ["tools", "runtime", "images", "tests", "experiments"],
-  "exclude": ["tests/fixtures", "runtime/java25-junit-v1/upstream"],
+  "include": ["."],
+  "exclude": [
+    "**/fixtures",
+    "runtime/java25-junit-v1/upstream",
+    "node_modules"
+  ],
   "typeCheckingMode": "strict",
   "pythonVersion": "3.12",
   "pythonPlatform": "Linux",

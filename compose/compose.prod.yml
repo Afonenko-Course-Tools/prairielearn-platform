@@ -15,58 +15,58 @@ services:
         source: ../tools/sync-native-course.mjs
         target: /PrairieLearn/apps/prairielearn/tools/sync-native-course.mjs
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../tools/course-sync-policy.mjs
         target: /PrairieLearn/apps/prairielearn/tools/course-sync-policy.mjs
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../tools/institution-bootstrap.mjs
         target: /PrairieLearn/apps/prairielearn/tools/institution-bootstrap.mjs
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../tools/bootstrap-native-course.mjs
         target: /PrairieLearn/apps/prairielearn/tools/bootstrap-native-course.mjs
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../tools/native-course-payload.mjs
         target: /PrairieLearn/apps/prairielearn/tools/native-course-payload.mjs
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../config/institutions.json
         target: /PrairieLearn/apps/prairielearn/config/institutions.json
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ../tools/start-pl.sh
         target: /platform/start-pl.sh
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - postgres:/var/postgres
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind
         source: ${HOST_JOBS_DIR}
         target: /jobs
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${PL_PRIVATE:?Нужен каталог приватной конфигурации}
         target: /run/pl-gateway
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${PL_PRIVATE}/pl.json
         target: /PrairieLearn/config.json
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${COURSE_DIR:?Нужен проверенный native course}
         target: /course
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
     cpus: 2
     mem_limit: 5g
     healthcheck:
@@ -78,7 +78,7 @@ services:
   gateway:
     image: ${GATEWAY_IMAGE:?Нужен exact Gateway image}
     pull_policy: never
-    user: '1000:1000'
+    user: "1000:1000"
     read_only: true
     tmpfs: [/tmp:mode=1777]
     cap_drop: [ALL]
@@ -86,17 +86,17 @@ services:
     init: true
     restart: unless-stopped
     depends_on:
-      pl: {condition: service_healthy}
+      pl: { condition: service_healthy }
     volumes:
       - type: bind
         source: ${GATEWAY_PRIVATE:?Нужен private Gateway config}
         target: /run/config
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${GATEWAY_DATA:?Нужен постоянный каталог Gateway SQLite}
         target: /var/lib/gateway
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
     mem_limit: 256m
     cpus: 0.5
   proxy:
@@ -104,7 +104,7 @@ services:
     pull_policy: never
     ports: ["${PL_BIND_IP:?Нужен IP VM}:443:443"]
     depends_on:
-      gateway: {condition: service_started}
+      gateway: { condition: service_started }
     restart: unless-stopped
     read_only: true
     tmpfs: [/var/cache/nginx, /var/run, /tmp]
@@ -115,17 +115,17 @@ services:
         source: ${NGINX_CONFIG:?Нужен nginx config}
         target: /etc/nginx/nginx.conf
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${PROXY_PRIVATE:?Нужен private proxy каталог}
         target: /etc/nginx/private
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
       - type: bind
         source: ${TLS_DIR:?Нужен TLS каталог}
         target: /tls
         read_only: true
-        bind: {create_host_path: false}
+        bind: { create_host_path: false }
     mem_limit: 128m
     cpus: 0.5
 volumes:

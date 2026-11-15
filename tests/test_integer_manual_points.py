@@ -1,4 +1,5 @@
 """Pinned native manual grading boundary и атомарность source patch."""
+
 from pathlib import Path
 import importlib.util
 import tempfile
@@ -12,15 +13,19 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 PATCH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PATCH)
-sys.path.insert(0, str(ROOT / 'tools'))
-import delivery_verification as verification
-import grading_job
-import test_delivery5 as fixtures
+sys.path.insert(0, str(ROOT / "tools"))
+import delivery_verification as verification  # noqa: E402 — import after the local test/tool path bootstrap
+import grading_job  # noqa: E402 — import after the local test/tool path bootstrap
+import test_delivery5 as fixtures  # noqa: E402 — import after the local test/tool path bootstrap
 
 
 class NativeIntegerManualPointsPatch(unittest.TestCase):
-    def test_real_native_guard_runs_after_all_score_conversions_before_writes(self) -> None:
-        source = (ROOT / "tests/fixtures/native-credit-upstream/lib/manualGrading.ts").read_text()
+    def test_real_native_guard_runs_after_all_score_conversions_before_writes(
+        self,
+    ) -> None:
+        source = (
+            ROOT / "tests/fixtures/native-credit-upstream/lib/manualGrading.ts"
+        ).read_text()
         changed = PATCH.patch(source, "lib/manualGrading.ts")
         guard = changed.index("if (pointPolicy.integer_manual_points)")
         self.assertGreater(guard, changed.index("} else if (score.score_perc != null)"))
@@ -30,7 +35,9 @@ class NativeIntegerManualPointsPatch(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Already patched"):
             PATCH.patch(changed, "lib/manualGrading.ts")
 
-    def test_changed_upstream_anchor_rejects_without_partial_source_writes(self) -> None:
+    def test_changed_upstream_anchor_rejects_without_partial_source_writes(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             schema = root / "src/schemas/infoCourse.ts"
@@ -46,25 +53,36 @@ class NativeIntegerManualPointsPatch(unittest.TestCase):
 
 
 class IntegerManualPointsDeliveryAdmission(fixtures.DeliveryFixture):
-    def test_real_delivery_admits_boolean_policy_without_mutating_official_schema(self) -> None:
-        schema = ROOT / 'schemas/native-upstream/infoCourse.json'
+    def test_real_delivery_admits_boolean_policy_without_mutating_official_schema(
+        self,
+    ) -> None:
+        schema = ROOT / "schemas/native-upstream/infoCourse.json"
         original = schema.read_bytes()
         for enabled in [True, False]:
-            course = self.read_json('infoCourse.json')
-            course['options'] = {'integerManualPoints': enabled}
-            self.put('infoCourse.json', course)
-            self.assertEqual(verification.package_integrity(self.d, self.root)['status'], 'success')
+            course = self.read_json("infoCourse.json")
+            course["options"] = {"integerManualPoints": enabled}
+            self.put("infoCourse.json", course)
+            self.assertEqual(
+                verification.package_integrity(self.d, self.root)["status"], "success"
+            )
         self.assertEqual(schema.read_bytes(), original)
 
     def test_real_delivery_rejects_nonboolean_and_other_unknown_options(self) -> None:
         for options in [
-            {'integerManualPoints': 1}, {'integerManualPoints': 'true'},
-            {'integerManualPoints': None}, {'integerManualPoints': True, 'unknown': True},
+            {"integerManualPoints": 1},
+            {"integerManualPoints": "true"},
+            {"integerManualPoints": None},
+            {"integerManualPoints": True, "unknown": True},
         ]:
-            course = self.read_json('infoCourse.json')
-            course['options'] = options
-            self.put('infoCourse.json', course)
-            with self.subTest(options=options), self.assertRaisesRegex(grading_job.JobError, 'Invalid native infoCourse.json'):
+            course = self.read_json("infoCourse.json")
+            course["options"] = options
+            self.put("infoCourse.json", course)
+            with (
+                self.subTest(options=options),
+                self.assertRaisesRegex(
+                    grading_job.JobError, "Invalid native infoCourse.json"
+                ),
+            ):
                 verification.package_integrity(self.d, self.root)
 
 

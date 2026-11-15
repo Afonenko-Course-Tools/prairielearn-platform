@@ -1,7 +1,10 @@
 """Проверяемая граница JSON для собственных операторских инструментов."""
+
 from typing import TypeAlias, TypeGuard
 
-JSONValue: TypeAlias = 'None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]'
+JSONValue: TypeAlias = (
+    "None | bool | int | float | str | list[JSONValue] | dict[str, JSONValue]"
+)
 JSONObject: TypeAlias = dict[str, JSONValue]
 
 
@@ -22,14 +25,14 @@ def json_value(value: object) -> JSONValue:
         result: JSONObject = {}
         for key, item in value.items():
             if not isinstance(key, str):
-                raise ValueError('JSON object keys must be strings')
+                raise ValueError("JSON object keys must be strings")
             result[key] = json_value(item)
         return result
-    raise ValueError('Expected a JSON value')
+    raise ValueError("Expected a JSON value")
 
 
 def json_object(value: object) -> JSONObject:
     result = json_value(value)
     if not isinstance(result, dict):
-        raise ValueError('Expected a JSON object')
+        raise ValueError("Expected a JSON object")
     return result

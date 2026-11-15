@@ -19,10 +19,7 @@
     },
     "role": {
       "type": "string",
-      "enum": [
-        "student",
-        "teacher"
-      ]
+      "enum": ["student", "teacher"]
     },
     "email": {
       "anyOf": [
@@ -37,11 +34,5 @@
       ]
     }
   },
-  "required": [
-    "userUid",
-    "instance",
-    "courseKey",
-    "role",
-    "email"
-  ]
+  "required": ["userUid", "instance", "courseKey", "role", "email"]
 }

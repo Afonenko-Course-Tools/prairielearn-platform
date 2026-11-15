@@ -19,22 +19,44 @@ import resource
 import selectors
 import secrets
 import signal
-import subprocess
+import subprocess  # nosec B404 # subprocess is the intentional argv process boundary; no shell import shortcut
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import TYPE_CHECKING, Literal, NotRequired, Protocol, TypeGuard, TypedDict, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    NotRequired,
+    Protocol,
+    TypeGuard,
+    TypedDict,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:
-    from grading_types import AdditionalSourcePolicy, AdditionalSourcesEvidence, BuildEvidence, ApiPrecheck, Discovery, JavaBuild, JavaOutcome, Scoring
+    from grading_types import (
+        AdditionalSourcePolicy,
+        AdditionalSourcesEvidence,
+        BuildEvidence,
+        ApiPrecheck,
+        Discovery,
+        JavaBuild,
+        JavaOutcome,
+        Scoring,
+    )
     from junit_result import JUnitCounts, RawResult, RawTest
 
 # Внутренний вид ручного допуска: defaults остаются у прежних потребителей.
-_ExecutionLimits = TypedDict('_ExecutionLimits', {
-    'outer-seconds': NotRequired[float], 'compile-seconds': NotRequired[float],
-    'run-seconds': NotRequired[float], 'max-output-bytes': NotRequired[int],
-    'networking': bool,
-})
+_ExecutionLimits = TypedDict(
+    "_ExecutionLimits",
+    {
+        "outer-seconds": NotRequired[float],
+        "compile-seconds": NotRequired[float],
+        "run-seconds": NotRequired[float],
+        "max-output-bytes": NotRequired[int],
+        "networking": bool,
+    },
+)
 
 
 class _ExecutionConfig(TypedDict):
@@ -58,7 +80,11 @@ class _RuntimeProfile(TypedDict):
 
 
 def _runtime_profile(value: object) -> TypeGuard[_RuntimeProfile]:
-    return _object(value) and isinstance(value.get('bundle'), str) and isinstance(value.get('mode'), str)
+    return (
+        _object(value)
+        and isinstance(value.get("bundle"), str)
+        and isinstance(value.get("mode"), str)
+    )
 
 
 def _number(value: object) -> TypeGuard[int | float]:
@@ -70,9 +96,9 @@ def _exact_cap(value: object, maximum: int) -> TypeGuard[int]:
 
 
 def _output_limit(limits: Mapping[str, object]) -> int:
-    value = limits['max-output-bytes']
+    value = limits["max-output-bytes"]
     if type(value) is not int:
-        raise GraderError('Maximum output limit is 65536')
+        raise GraderError("Maximum output limit is 65536")
     return value
 
 
@@ -107,18 +133,18 @@ class GradingBoundary(TypedDict):
 
 
 class _ApiSuccess(TypedDict):
-    status: Literal['success']
+    status: Literal["success"]
 
 
 class _ApiMismatch(TypedDict):
-    status: Literal['mismatch']
+    status: Literal["mismatch"]
     expected: str
     observed: str
     message: str
 
 
 class _ApiUnsafe(TypedDict):
-    status: Literal['unsafe']
+    status: Literal["unsafe"]
     message: str
 
 
@@ -135,10 +161,14 @@ def _record(value: object) -> TypeGuard[dict[str, object]]:
 
 def _api_observation(value: object) -> TypeGuard[_ApiSuccess | _ApiMismatch]:
     return _object(value) and (
-        value.get('status') == 'success'
-        or (value.get('status') == 'mismatch' and all(
-            isinstance(value.get(key), str) for key in ('expected', 'observed', 'message')
-        ))
+        value.get("status") == "success"
+        or (
+            value.get("status") == "mismatch"
+            and all(
+                isinstance(value.get(key), str)
+                for key in ("expected", "observed", "message")
+            )
+        )
     )
 
 
@@ -151,7 +181,9 @@ class _NativeFailureStages(TypedDict, total=False):
 
 
 class _NativeContext(TypedDict, total=False):
-    build: Callable[[Path, dict[str, float], dict[str, str]], tuple[BuildEvidence, int, None]]
+    build: Callable[
+        [Path, dict[str, float], dict[str, str]], tuple[BuildEvidence, int, None]
+    ]
     build_result: BuildEvidence
     studentCompiled: bool
     durations: dict[str, float]
@@ -206,7 +238,9 @@ MANAGEMENT_MEMBERS = (
 )
 
 
-def _validate_role_records(roles: Mapping[str, AccessRole], owner_uids: set[int], owner_gids: set[int]) -> None:
+def _validate_role_records(
+    roles: Mapping[str, AccessRole], owner_uids: set[int], owner_gids: set[int]
+) -> None:
     if set(roles) != {"sbuser", "nativebuild"}:
         raise GraderError("Both fixed Java access roles are required")
     uids: set[int] = set()
@@ -227,7 +261,8 @@ def _validate_role_records(roles: Mapping[str, AccessRole], owner_uids: set[int]
 
 
 def _role_records() -> dict[str, AccessRole]:
-    import pwd, grp
+    import pwd
+    import grp
 
     try:
         roles: dict[str, AccessRole] = {
@@ -254,7 +289,8 @@ def _role_records() -> dict[str, AccessRole]:
 
 
 def _protect_input_identity(job: Path) -> None:
-    import pwd, grp
+    import pwd
+    import grp
 
     owners = {p.stat().st_uid for p in (job, job / "student", job / "tests")}
     groups = {p.stat().st_gid for p in (job, job / "student", job / "tests")}
@@ -319,7 +355,7 @@ def _grading_environment() -> dict[str, str]:
         "PATH": home + "/bin:/usr/bin:/bin",
         "JAVA_HOME": home,
         "HOME": "/nonexistent",
-        "TMPDIR": "/tmp",
+        "TMPDIR": "/tmp",  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
     }
@@ -336,8 +372,6 @@ def _grading_java() -> str:
 def _validate_build_root_record(record: BuildRootRecord, gid: int) -> None:
     if record != {"uid": 0, "gid": gid, "mode": 0o750, "directory": True}:
         raise GraderError("Complete build JDK root is not private to nativebuild")
-
-
 
 
 def _build_process_records(proc: Path, uid: int) -> dict[int, BuildProcessRecord]:
@@ -425,7 +459,6 @@ def _hardened_tool_state() -> None:
             raise GraderError("Management restored to private grading JDK")
 
 
-
 def _grading_boundary_unchecked() -> GradingBoundary:
     if not Path("/.dockerenv").is_file() or os.geteuid() != 0:
         raise GraderError("Java role boundary requires container namespace supervisor")
@@ -457,7 +490,7 @@ def _grading_boundary_unchecked() -> GradingBoundary:
     ]:
         code, _, reason = _run_unchecked(
             [*prefix, "/usr/bin/test", flag, str(path)],
-            Path("/tmp"),
+            Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
             5,
             1024,
             env=_grading_environment(),
@@ -484,11 +517,20 @@ def _child_file_limit() -> None:
     resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
 
 
-def _run_unchecked(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT, *, env: Mapping[str, str] | None = None, diagnostics: dict[str, str] | None = None, stage: str = "process") -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
+def _run_unchecked(
+    command: Sequence[str],
+    cwd: Path,
+    timeout: float,
+    output_limit: int = OUTPUT_LIMIT,
+    *,
+    env: Mapping[str, str] | None = None,
+    diagnostics: dict[str, str] | None = None,
+    stage: str = "process",
+) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
     if diagnostics is not None:
         diagnostics["stage"] = stage
     try:
-        process = subprocess.Popen(
+        process = subprocess.Popen(  # nosec B603 # explicit argv sequence is passed without shell; execution belongs to this component
             command,
             cwd=cwd,
             stdout=subprocess.PIPE,
@@ -506,7 +548,9 @@ def _run_unchecked(command: Sequence[str], cwd: Path, timeout: float, output_lim
         if diagnostics is not None:
             diagnostics[stage + ".termination"] = "spawn-error"
             diagnostics[stage + ".stderr"] = str(exc)[:output_limit]
-        raise GraderError("Required grading executable is unavailable: " + str(exc)) from exc
+        raise GraderError(
+            "Required grading executable is unavailable: " + str(exc)
+        ) from exc
     if process.stdout is None:
         raise GraderError("Required grading output pipe is unavailable")
     output = bytearray()
@@ -558,10 +602,19 @@ def _run_unchecked(command: Sequence[str], cwd: Path, timeout: float, output_lim
         if diagnostics is not None:
             diagnostics["stage"] = stage
             diagnostics[stage + ".exitCode"] = str(returncode)
-            diagnostics[stage + ".termination"] = "interrupted" if interrupted else reason or ("signal" if returncode < 0 else "exit")
+            diagnostics[stage + ".termination"] = (
+                "interrupted"
+                if interrupted
+                else reason or ("signal" if returncode < 0 else "exit")
+            )
             remaining_bytes = output_limit
             for name, data in streams.items():
-                value = bytes(data).decode("utf-8", errors="replace").encode("utf-8")[:remaining_bytes].decode("utf-8", errors="ignore")
+                value = (
+                    bytes(data)
+                    .decode("utf-8", errors="replace")
+                    .encode("utf-8")[:remaining_bytes]
+                    .decode("utf-8", errors="ignore")
+                )
                 diagnostics[stage + "." + name] = value
                 remaining_bytes -= len(value.encode("utf-8"))
     text = bytes(output).decode("utf-8", errors="replace")
@@ -569,7 +622,16 @@ def _run_unchecked(command: Sequence[str], cwd: Path, timeout: float, output_lim
     return returncode, text, reason
 
 
-def _run(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = OUTPUT_LIMIT, *, env: Mapping[str, str] | None = None, diagnostics: dict[str, str] | None = None, stage: str = "process") -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
+def _run(
+    command: Sequence[str],
+    cwd: Path,
+    timeout: float,
+    output_limit: int = OUTPUT_LIMIT,
+    *,
+    env: Mapping[str, str] | None = None,
+    diagnostics: dict[str, str] | None = None,
+    stage: str = "process",
+) -> tuple[int, str, Literal["timeout", "output_limit"] | None]:
     official = os.environ.get("PL_CONTAINMENT") == "official"
     return _run_unchecked(
         command,
@@ -577,7 +639,8 @@ def _run(command: Sequence[str], cwd: Path, timeout: float, output_limit: int = 
         timeout,
         output_limit,
         env=(_grading_environment() if official and env is None else env),
-        diagnostics=diagnostics, stage=stage,
+        diagnostics=diagnostics,
+        stage=stage,
     )
 
 
@@ -644,14 +707,20 @@ def _primary_files(job: Path, config: Mapping[str, object]) -> list[str]:
 PLATFORM = Path(__file__).resolve().parents[2]
 
 
-def preflight(runtime: str, registry: object = None) -> tuple[_RuntimeProfile, Path, str]:
+def preflight(
+    runtime: str, registry: object = None
+) -> tuple[_RuntimeProfile, Path, str]:
     return _preflight(runtime, registry)
 
 
 def _preflight(runtime: str, registry: object) -> tuple[_RuntimeProfile, Path, str]:
     try:
-        value: object = registry if registry is not None else json.loads((PLATFORM / "runtime-profiles.json").read_text())
-        if not _object(value) or not _object(profiles := value.get('profiles')):
+        value: object = (
+            registry
+            if registry is not None
+            else json.loads((PLATFORM / "runtime-profiles.json").read_text())
+        )
+        if not _object(value) or not _object(profiles := value.get("profiles")):
             raise GraderError("Missing or invalid runtime configuration")
         profile = profiles[runtime]
         if not _runtime_profile(profile):
@@ -665,7 +734,6 @@ def _preflight(runtime: str, registry: object) -> tuple[_RuntimeProfile, Path, s
         return profile, bundle, output.strip()
     except (KeyError, OSError, ValueError) as error:
         raise GraderError("Missing or invalid runtime configuration") from error
-
 
 
 def _files_any(root: Path, name: str) -> Path:
@@ -707,7 +775,9 @@ def _source_classes(files: Sequence[str | Path]) -> list[str]:
     return names
 
 
-def _invalid(message: str, output: str = "", classification: str = "student-compilation-failure") -> JavaOutcome:
+def _invalid(
+    message: str, output: str = "", classification: str = "student-compilation-failure"
+) -> JavaOutcome:
     result: JavaOutcome = {
         "gradable": classification == "student-compilation-failure",
         "dependentExecution": "not-run",
@@ -742,9 +812,13 @@ class _JUnitHelpers(TypedDict):
 def _junit_result_helpers() -> _JUnitHelpers:
     import runpy
 
-    values: dict[str, object] = runpy.run_path(str(PLATFORM / "runtime/junit_result.py"))
+    values: dict[str, object] = runpy.run_path(
+        str(PLATFORM / "runtime/junit_result.py")
+    )
     validator, reader = values.get("validate_counts"), values.get("read_junit_report")
-    if not isinstance(validator, _CountsValidator) or not isinstance(reader, _ReportReader):
+    if not isinstance(validator, _CountsValidator) or not isinstance(
+        reader, _ReportReader
+    ):
         raise GraderError("Канонический JUnit decoder недоступен")
     return {"validate_counts": validator, "read_junit_report": reader}
 
@@ -808,11 +882,7 @@ def _validated_config(config: object) -> TypeGuard[_ExecutionConfig]:
         "additionalJavaSources",
         "javaBuild",
     }
-    if (
-        not _record(config)
-        or set(config) - allowed
-        or config.get("schemaVersion") != 1
-    ):
+    if not _record(config) or set(config) - allowed or config.get("schemaVersion") != 1:
         raise GraderError("Expected closed schemaVersion1 JUnit grading descriptor")
     native = config.get("runtime") == "java25-gradle-junit-v1"
     if native != ("javaBuild" in config):
@@ -879,15 +949,15 @@ def _validated_config(config: object) -> TypeGuard[_ExecutionConfig]:
                 "primaryRequired" in policy
                 and type(policy["primaryRequired"]) is not bool
             )
-            or ("allowAdditional" in policy and type(policy["allowAdditional"]) is not bool)
+            or (
+                "allowAdditional" in policy
+                and type(policy["allowAdditional"]) is not bool
+            )
             or not isinstance(policy["archive"], str)
             or not re.fullmatch(
                 r"[A-Za-z0-9][A-Za-z0-9_-]{0,100}\.zip", policy["archive"]
             )
-            or any(
-                not _exact_cap(policy[k], limit)
-                for k, limit in caps.items()
-            )
+            or any(not _exact_cap(policy[k], limit) for k, limit in caps.items())
         ):
             raise GraderError("Invalid closed additional Java sources policy")
         reserved = [
@@ -936,8 +1006,11 @@ def _validated_config(config: object) -> TypeGuard[_ExecutionConfig]:
         value = limits.get(name, default)
         if not _number(value) or value <= 0:
             raise GraderError("Limits must be positive numbers")
-    compile_limit, run_limit, outer_limit = (limits.get("compile-seconds", 15),
-                                             limits.get("run-seconds", 10), limits.get("outer-seconds", 30))
+    compile_limit, run_limit, outer_limit = (
+        limits.get("compile-seconds", 15),
+        limits.get("run-seconds", 10),
+        limits.get("outer-seconds", 30),
+    )
     if not _number(compile_limit) or not _number(run_limit) or not _number(outer_limit):
         raise GraderError("Limits must be positive numbers")
     if compile_limit > outer_limit or run_limit > outer_limit:
@@ -990,9 +1063,11 @@ def _validated_config(config: object) -> TypeGuard[_ExecutionConfig]:
         or type(discovery["allow-skipped"]) is not bool
     ):
         raise GraderError("Invalid discovery policy")
-    if (not isinstance(config.get("runtime"), str)
+    if (
+        not isinstance(config.get("runtime"), str)
         or not _string_list(config.get("sourceFiles"))
-        or not _string_list(config.get("testFiles"))):
+        or not _string_list(config.get("testFiles"))
+    ):
         raise GraderError("Source and test file lists must be nonempty")
     return True
 
@@ -1013,9 +1088,16 @@ COMPILER = [
 
 # Закреплённые версии библиотек публичного JUnit.
 _PUBLIC_LIBRARIES: tuple[tuple[str, str], ...] = (
-    ("json-simple-1.1.1.jar", "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1"),
-    ("junit-platform-console-standalone-1.14.1.jar", "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072"),
+    (
+        "json-simple-1.1.1.jar",
+        "108045c9675ebf6d6ec4d8dcc331693f9b944ac7c87de52dccff2c55e8dfa6f1",
+    ),
+    (
+        "junit-platform-console-standalone-1.14.1.jar",
+        "a09c656d60ada792cf12ed1e8dc7ead3edc98dde034332e97dfcb5b4268b9072",
+    ),
 )
+
 
 class _JobRuntime:
     """Immutable libraries/official adapter compiled once, private to one job."""
@@ -1030,24 +1112,39 @@ class _JobRuntime:
         self.compiled = False
         for filename, expected in _PUBLIC_LIBRARIES:
             self._copy_bound(bundle / filename, self.library_dir / filename, expected)
-        self.libs = os.pathsep.join(str(self.library_dir / name) for name, _ in _PUBLIC_LIBRARIES)
+        self.libs = os.pathsep.join(
+            str(self.library_dir / name) for name, _ in _PUBLIC_LIBRARIES
+        )
 
     @staticmethod
     def _copy_bound(source: Path, destination: Path, expected: str) -> None:
         if source.is_symlink() or not source.is_file():
-            raise GraderError("Qualified runtime library missing or unsafe: " + source.name)
+            raise GraderError(
+                "Qualified runtime library missing or unsafe: " + source.name
+            )
         digest = hashlib.sha256()
         with source.open("rb") as reader, destination.open("xb") as writer:
             while block := reader.read(1024 * 1024):
                 digest.update(block)
                 writer.write(block)
         if digest.hexdigest() != expected:
-            raise GraderError("Qualified runtime library digest mismatch: " + source.name)
+            raise GraderError(
+                "Qualified runtime library digest mismatch: " + source.name
+            )
         destination.chmod(0o644)
 
     def compiler(self) -> list[str]:
-        executable = str(HARDENED_JDK / "bin/javac") if os.environ.get("PL_CONTAINMENT") == "official" else "javac"
-        return [executable, "-J-XX:TieredStopAtLevel=1", "-J-XX:ActiveProcessorCount=2", *COMPILER]
+        executable = (
+            str(HARDENED_JDK / "bin/javac")
+            if os.environ.get("PL_CONTAINMENT") == "official"
+            else "javac"
+        )
+        return [
+            executable,
+            "-J-XX:TieredStopAtLevel=1",
+            "-J-XX:ActiveProcessorCount=2",
+            *COMPILER,
+        ]
 
     @staticmethod
     def private_classpath(outputs: Sequence[Path]) -> str:
@@ -1055,12 +1152,22 @@ class _JobRuntime:
             if output.is_symlink() or not output.is_dir():
                 raise GraderError("Private classpath requires fresh class directories")
             for path in output.rglob("*"):
-                if path.is_symlink() or (not path.is_dir() and
-                                         (not path.is_file() or path.suffix != ".class")):
-                    raise GraderError("Private classpath contains unexpected resources or services")
+                if path.is_symlink() or (
+                    not path.is_dir()
+                    and (not path.is_file() or path.suffix != ".class")
+                ):
+                    raise GraderError(
+                        "Private classpath contains unexpected resources or services"
+                    )
         return os.pathsep.join(map(str, outputs))
 
-    def ensure_adapter(self, job: Path, limits: _ExecutionLimits, durations: dict[str, float], diagnostics: dict[str, str]) -> None:
+    def ensure_adapter(
+        self,
+        job: Path,
+        limits: _ExecutionLimits,
+        durations: dict[str, float],
+        diagnostics: dict[str, str],
+    ) -> None:
         if self.compiled:
             durations["runnerCompilation"] = 0.0
             return
@@ -1072,12 +1179,17 @@ class _JobRuntime:
             self.private_classpath([precompiled])
             shutil.copytree(precompiled, self.adapter, dirs_exist_ok=True)
             durations["runnerCompilation"] = 0.0
-            diagnostics["runnerCompilation"] = "Official adapter supplied by immutable image"
+            diagnostics["runnerCompilation"] = (
+                "Official adapter supplied by immutable image"
+            )
         else:
             files = [
                 str(self.bundle / "PlatformApiPrecheck.java"),
                 str(self.bundle / "PlatformJUnitAdapter.java"),
-                str(self.bundle / "upstream/org/prairielearn/autograder/AutograderInfo.java"),
+                str(
+                    self.bundle
+                    / "upstream/org/prairielearn/autograder/AutograderInfo.java"
+                ),
             ]
             start = time.monotonic()
             code, text, reason = _run(
@@ -1091,7 +1203,9 @@ class _JobRuntime:
                 ],
                 job,
                 limits.get("compile-seconds", 15),
-                _output_limit(limits), diagnostics=diagnostics, stage="runnerCompilation",
+                _output_limit(limits),
+                diagnostics=diagnostics,
+                stage="runnerCompilation",
             )
             durations["runnerCompilation"] = time.monotonic() - start
             diagnostics["runnerCompilation"] = text.replace(str(job), "/grade").replace(
@@ -1115,8 +1229,15 @@ class _JobRuntime:
 
 
 def _api_precheck(
-    job: Path, config: ApiPrecheck, stage: Path, student: Path, files: list[str],
-    runtime: _JobRuntime, limits: _ExecutionLimits, durations: dict[str, float], diagnostics: dict[str, str],
+    job: Path,
+    config: ApiPrecheck,
+    stage: Path,
+    student: Path,
+    files: list[str],
+    runtime: _JobRuntime,
+    limits: _ExecutionLimits,
+    durations: dict[str, float],
+    diagnostics: dict[str, str],
 ) -> tuple[_ApiObservation, Path, str | None]:
     """Trusted Java API code executes with the same official containment as JUnit."""
     runtime.ensure_adapter(job, limits, durations, diagnostics)
@@ -1134,7 +1255,9 @@ def _api_precheck(
         ],
         job,
         limits.get("compile-seconds", 15),
-        _output_limit(limits), diagnostics=diagnostics, stage="apiCompilation",
+        _output_limit(limits),
+        diagnostics=diagnostics,
+        stage="apiCompilation",
     )
     durations["apiCompilation"] = time.monotonic() - start
     diagnostics["apiCompilation"] = text.replace(str(job), "/grade").replace(
@@ -1222,7 +1345,9 @@ def _api_precheck(
         ],
         scratch,
         limits.get("run-seconds", 10),
-        _output_limit(limits), diagnostics=diagnostics, stage="apiExecution",
+        _output_limit(limits),
+        diagnostics=diagnostics,
+        stage="apiExecution",
     )
     durations["apiExecution"] = time.monotonic() - start
     diagnostics["apiExecution"] = text.replace(str(stage), "/scratch")
@@ -1249,19 +1374,40 @@ def _api_precheck(
 
 
 def _execute(
-    job: Path, config: _ExecutionConfig, sources: list[str], tests: list[str],
-    bundle: Path, toolchain: str, runtime: _JobRuntime,
-    student_tests: bool = False, native_context: _NativeContext | None = None,
+    job: Path,
+    config: _ExecutionConfig,
+    sources: list[str],
+    tests: list[str],
+    bundle: Path,
+    toolchain: str,
+    runtime: _JobRuntime,
+    student_tests: bool = False,
+    native_context: _NativeContext | None = None,
 ) -> JavaOutcome:
     context: JavaOutcome = {
-        "gradable": False, "grading_error": True,
-        "classification": "infrastructure-failure", "infrastructure": "failure",
-        "studentCompilation": "not-run", "trustedCompilation": "not-run",
-        "durations": {}, "diagnostics": {}, "toolchain": toolchain,
+        "gradable": False,
+        "grading_error": True,
+        "classification": "infrastructure-failure",
+        "infrastructure": "failure",
+        "studentCompilation": "not-run",
+        "trustedCompilation": "not-run",
+        "durations": {},
+        "diagnostics": {},
+        "toolchain": toolchain,
     }
     try:
-        return _execute_impl(job, config, sources, tests, bundle, toolchain, runtime,
-                             student_tests, native_context, context)
+        return _execute_impl(
+            job,
+            config,
+            sources,
+            tests,
+            bundle,
+            toolchain,
+            runtime,
+            student_tests,
+            native_context,
+            context,
+        )
     except GraderError as error:
         context["message"] = str(error)
         error.outcome = context
@@ -1302,14 +1448,17 @@ def _execute_impl(
         library_dir = runtime.library_dir
         libs = runtime.libs
 
-
-        def compile_phase(name: str, files: Sequence[str], output: Path, classpath: str) -> tuple[int, Literal["timeout", "output_limit"] | None]:
+        def compile_phase(
+            name: str, files: Sequence[str], output: Path, classpath: str
+        ) -> tuple[int, Literal["timeout", "output_limit"] | None]:
             start = time.monotonic()
             code, text, reason = _run(
                 [*runtime.compiler(), "-cp", classpath, "-d", str(output), *files],
                 job,
                 limits.get("compile-seconds", 15),
-                _output_limit(limits), diagnostics=diagnostics, stage=name,
+                _output_limit(limits),
+                diagnostics=diagnostics,
+                stage=name,
             )
             status = "success" if code == 0 and reason is None else "failure"
             if name == "studentCompilation":
@@ -1377,7 +1526,9 @@ def _execute_impl(
                 build_result, code, reason = builder(stage, durations, diagnostics)
                 native_context.update(build_result=build_result)
             else:
-                code, reason = compile_phase("studentCompilation", sources, student, production_classpath)
+                code, reason = compile_phase(
+                    "studentCompilation", sources, student, production_classpath
+                )
         if reason:
             raise GraderError("Student compilation infrastructure limit: " + reason)
         if code:
@@ -1576,8 +1727,12 @@ def _execute_impl(
         ]
         start = time.monotonic()
         code, text, reason = _run(
-            command, job, limits.get("run-seconds", 10), _output_limit(limits),
-            diagnostics=diagnostics, stage="execution",
+            command,
+            job,
+            limits.get("run-seconds", 10),
+            _output_limit(limits),
+            diagnostics=diagnostics,
+            stage="execution",
         )
         context["output"] = text
         durations["execution"] = time.monotonic() - start
@@ -1624,7 +1779,9 @@ def _execute_impl(
         # applies the student boundary before writing native RESULTS.
         if "infrastructure" in counts.get("failureKinds", {}).values():
             traces = "\n".join(case.get("teacherTrace", "") for case in counts["cases"])
-            raise GraderError("Trusted check raised an unexpected exception:\n" + traces)
+            raise GraderError(
+                "Trusted check raised an unexpected exception:\n" + traces
+            )
         base.update(
             rawResult=raw,
             reportFormat="junit-listener",
@@ -1656,16 +1813,27 @@ def _execute_impl(
         )
         if incomplete or not raw.get("gradable"):
             if not student_tests:
-                traces = "\n".join(item.get("teacherTrace", "") for item in counts.get("containerDiagnostics", []))
-                raise GraderError("Trusted JUnit discovery/execution is incomplete\n" + traces)
-            return {**base, "score": 0, "classification": "student-test-quality-failure"}
+                traces = "\n".join(
+                    item.get("teacherTrace", "")
+                    for item in counts.get("containerDiagnostics", [])
+                )
+                raise GraderError(
+                    "Trusted JUnit discovery/execution is incomplete\n" + traces
+                )
+            return {
+                **base,
+                "score": 0,
+                "classification": "student-test-quality-failure",
+            }
         kinds = set(counts.get("failureKinds", {}).values())
         if counts["failed"] and ("timeout" in kinds or "output-limit" in kinds):
             timed_out = "timeout" in kinds
             return {
                 **base,
                 "score": _score(raw, counts, config["scoring"]),
-                "classification": "student-timeout" if timed_out else "student-output-overflow",
+                "classification": "student-timeout"
+                if timed_out
+                else "student-output-overflow",
                 "timed_out": timed_out,
                 "output_limited": not timed_out,
             }
@@ -1673,8 +1841,13 @@ def _execute_impl(
             **base,
             "score": _score(raw, counts, config["scoring"]),
             "classification": (
-                ("student-runtime-failure" if "runtime" in kinds else "behavior-failure")
-                if counts["failed"] else "success"
+                (
+                    "student-runtime-failure"
+                    if "runtime" in kinds
+                    else "behavior-failure"
+                )
+                if counts["failed"]
+                else "success"
             ),
         }
 
@@ -1686,34 +1859,9 @@ NATIVE_RECIPE = (
 )
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def _admit_java_job() -> None:
     _hardened_tool_state()
     _grading_boundary()
-
 
 
 def _verify_landlock_helper() -> None:
@@ -1723,10 +1871,19 @@ def _verify_landlock_helper() -> None:
             raise GraderError("Unsafe installed Landlock helper path")
         for parent in path.parents:
             info = parent.lstat()
-            if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o7022:
+            if (
+                not stat.S_ISDIR(info.st_mode)
+                or info.st_uid != 0
+                or info.st_mode & 0o7022
+            ):
                 raise GraderError("Unsafe installed Landlock helper parent")
         info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 0 or info.st_mode & 0o7022:
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or info.st_gid != 0
+            or info.st_mode & 0o7022
+        ):
             raise GraderError("Unsafe installed Landlock helper identity")
         try:
             os.getxattr(path, "security.capability", follow_symlinks=False)
@@ -1739,8 +1896,9 @@ def _verify_landlock_helper() -> None:
         raise GraderError("Installed Landlock helper is unavailable") from error
 
 
-
-def _native_containment(job: Path, private_paths: Sequence[Path]) -> tuple[int, list[str]]:
+def _native_containment(
+    job: Path, private_paths: Sequence[Path]
+) -> tuple[int, list[str]]:
     runuser = shutil.which("runuser")
     if (
         os.environ.get("PL_CONTAINMENT") != "official"
@@ -1772,7 +1930,7 @@ def _native_containment(job: Path, private_paths: Sequence[Path]) -> tuple[int, 
     # These are actual UID/readability checks, before the first Gradle child.
     code, text, reason = _run(
         [*prefix, "/usr/bin/id", "-u"],
-        Path("/tmp"),
+        Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
         5,
         1024,
         env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
@@ -1782,7 +1940,7 @@ def _native_containment(job: Path, private_paths: Sequence[Path]) -> tuple[int, 
     for path in private_paths:
         code, text, reason = _run(
             [*prefix, "/usr/bin/test", "-r", str(path)],
-            Path("/tmp"),
+            Path("/tmp"),  # nosec B108 # /tmp is only a process working/base directory, not a fixed writable file name
             5,
             1024,
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
@@ -1792,7 +1950,16 @@ def _native_containment(job: Path, private_paths: Sequence[Path]) -> tuple[int, 
     return uid, prefix
 
 
-def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], extra_names: Mapping[str, str], stage: Path, runtime: _JobRuntime, durations: dict[str, float], diagnostics: dict[str, str]) -> tuple[BuildEvidence, int, None]:
+def _native_build(
+    job: Path,
+    config: _ExecutionConfig,
+    sources: Sequence[str],
+    extra_names: Mapping[str, str],
+    stage: Path,
+    runtime: _JobRuntime,
+    durations: dict[str, float],
+    diagnostics: dict[str, str],
+) -> tuple[BuildEvidence, int, None]:
     build, limits = config.get("javaBuild"), config["limits"]
     if build is None:
         raise GraderError("Native Java build policy required")
@@ -1802,7 +1969,14 @@ def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], e
     runtime.root.chmod(0o700)
     canary = stage / "private-build-canary"
     canary.write_bytes(secrets.token_bytes(32))
-    uid, prefix = _native_containment(job, [canary, job / "tests/grading-job.json", *map(Path, _files(job / "tests", config["testFiles"]))])
+    uid, prefix = _native_containment(
+        job,
+        [
+            canary,
+            job / "tests/grading-job.json",
+            *map(Path, _files(job / "tests", config["testFiles"])),
+        ],
+    )
     _enable_build_reaper()
     if _build_process_records(Path("/proc"), uid):
         raise GraderError("Native build role is not fresh")
@@ -1819,7 +1993,10 @@ def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], e
             os.chown(folder, uid, -1)
         for source in sources:
             path = Path(source)
-            name = extra_names.get(str(path)) or path.relative_to(job / "student").as_posix()
+            name = (
+                extra_names.get(str(path))
+                or path.relative_to(job / "student").as_posix()
+            )
             target = work / "src" / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(path.read_bytes())
@@ -1841,18 +2018,54 @@ def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], e
                 os.fchown(stream.fileno(), uid, -1)
                 os.fchmod(stream.fileno(), 0o400)
             entropy[role] = "-Djava.security.egd=" + path.as_uri()
-        (work / "gradle.properties").write_text("org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths=" + str(BUILD_JDK) + "\norg.gradle.jvmargs=-Xms64m -Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData -XX:TieredStopAtLevel=1\n")
+        (work / "gradle.properties").write_text(
+            "org.gradle.daemon=false\norg.gradle.workers.max=2\norg.gradle.java.installations.auto-download=false\norg.gradle.java.installations.auto-detect=false\norg.gradle.java.installations.paths="
+            + str(BUILD_JDK)
+            + "\norg.gradle.jvmargs=-Xms64m -Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData -XX:TieredStopAtLevel=1\n"
+        )
         # Gradle removes mutable -D properties from daemon startup arguments.
         # The launcher reads JDK_JAVA_OPTIONS before explicit JAVA_OPTS, so the
         # client overrides this inherited daemon seed with its own fresh seed.
-        environment = {"PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin", "JAVA_HOME": str(BUILD_JDK), "JAVA_OPTS": "-Xms64m -Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData -XX:TieredStopAtLevel=1 " + entropy["client"], "JDK_JAVA_OPTIONS": entropy["daemon"], "HOME": str(work / "home"), "GRADLE_USER_HOME": str(work / "user-cache"), "TMPDIR": str(work / "tmp"), "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+        environment = {
+            "PATH": str(BUILD_JDK) + "/bin:/usr/bin:/bin",
+            "JAVA_HOME": str(BUILD_JDK),
+            "JAVA_OPTS": "-Xms64m -Xmx128m -XX:ActiveProcessorCount=2 -XX:-UsePerfData -XX:TieredStopAtLevel=1 "
+            + entropy["client"],
+            "JDK_JAVA_OPTIONS": entropy["daemon"],
+            "HOME": str(work / "home"),
+            "GRADLE_USER_HOME": str(work / "user-cache"),
+            "TMPDIR": str(work / "tmp"),
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+        }
         try:
-            code, text, reason = _run([*prefix, "/opt/gradle/bin/gradle", "--offline", "--no-daemon", "--console=plain", "--project-cache-dir", str(work / "project-cache"), "jar"], work, limits.get("compile-seconds", 15), _output_limit(limits), env=environment, diagnostics=diagnostics, stage="gradleBuild")
+            code, text, reason = _run(
+                [
+                    *prefix,
+                    "/opt/gradle/bin/gradle",
+                    "--offline",
+                    "--no-daemon",
+                    "--console=plain",
+                    "--project-cache-dir",
+                    str(work / "project-cache"),
+                    "jar",
+                ],
+                work,
+                limits.get("compile-seconds", 15),
+                _output_limit(limits),
+                env=environment,
+                diagnostics=diagnostics,
+                stage="gradleBuild",
+            )
         finally:
             _finish_build_role(uid)
             _grading_boundary()
-        durations["gradleBuild"] = durations["studentCompilation"] = time.monotonic() - start
-        diagnostics["gradleBuild"] = diagnostics["studentCompilation"] = text.replace(str(work), "/build")
+        durations["gradleBuild"] = durations["studentCompilation"] = (
+            time.monotonic() - start
+        )
+        diagnostics["gradleBuild"] = diagnostics["studentCompilation"] = text.replace(
+            str(work), "/build"
+        )
         (private / "gradle.log").write_text(text)
         (private / "gradle.log").chmod(0o600)
         os.chown(private / "gradle.log", job.stat().st_uid, -1)
@@ -1861,7 +2074,11 @@ def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], e
         if code:
             if ":compileJava FAILED" not in text:
                 raise GraderError("Gradle build failed outside student compilation")
-            return {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"}, code, None
+            return (
+                {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "not-run"},
+                code,
+                None,
+            )
         compiled = work / "build/classes/java/main"
         if not compiled.is_dir():
             raise GraderError("Gradle production output missing")
@@ -1881,8 +2098,17 @@ def _native_build(job: Path, config: _ExecutionConfig, sources: Sequence[str], e
         target.parent.mkdir(parents=True)
         target.write_bytes(artifact.read_bytes())
         target.chmod(0o444)
-    return {"schemaVersion": 1, "kind": "gradle-jar-v1", "status": "success", "artifact": {"path": relative, "bytes": size}, "durationSeconds": durations["gradleBuild"]}, 0, None
-
+    return (
+        {
+            "schemaVersion": 1,
+            "kind": "gradle-jar-v1",
+            "status": "success",
+            "artifact": {"path": relative, "bytes": size},
+            "durationSeconds": durations["gradleBuild"],
+        },
+        0,
+        None,
+    )
 
 
 def _path_collision(left: str, right: str) -> bool:
@@ -1899,7 +2125,9 @@ class _AdditionalSubmissionError(Exception):
         )
 
 
-def _flat_additional_sources(root: Path, config: _ExecutionConfig) -> list[tuple[str, bytes]]:
+def _flat_additional_sources(
+    root: Path, config: _ExecutionConfig
+) -> list[tuple[str, bytes]]:
     policy = config.get("additionalJavaSources")
     if policy is None:
         raise GraderError("Additional Java sources policy required")
@@ -1917,13 +2145,22 @@ def _flat_additional_sources(root: Path, config: _ExecutionConfig) -> list[tuple
         except GraderError as error:
             raise _AdditionalSubmissionError("недопустимое имя исходника") from error
         if any(_path_collision(name, trusted) for trusted in reserved):
-            raise _AdditionalSubmissionError("конфликт с доверенным путём " + repr(name))
+            raise _AdditionalSubmissionError(
+                "конфликт с доверенным путём " + repr(name)
+            )
         if path.is_symlink() or not path.is_file():
-            raise _AdditionalSubmissionError("исходник должен быть обычным файлом без symlink")
+            raise _AdditionalSubmissionError(
+                "исходник должен быть обычным файлом без symlink"
+            )
         size = path.stat().st_size
-        if (len(members) >= policy["maxFiles"] or size > policy["maxFileBytes"]
-                or total + size > policy["maxTotalBytes"]):
-            raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
+        if (
+            len(members) >= policy["maxFiles"]
+            or size > policy["maxFileBytes"]
+            or total + size > policy["maxTotalBytes"]
+        ):
+            raise _AdditionalSubmissionError(
+                "превышен лимит количества/размера исходников"
+            )
         with path.open("rb") as source:
             file_limit = policy["maxFileBytes"]
             if not _exact_cap(file_limit, 1048576):
@@ -1934,20 +2171,34 @@ def _flat_additional_sources(root: Path, config: _ExecutionConfig) -> list[tuple
         try:
             data.decode("utf-8")
         except UnicodeError as error:
-            raise _AdditionalSubmissionError("исходник не UTF-8: " + repr(name), "student-compilation-failure") from error
+            raise _AdditionalSubmissionError(
+                "исходник не UTF-8: " + repr(name), "student-compilation-failure"
+            ) from error
         total += len(data)
         members.append((name, data))
     return members
 
 
-def _additional_evidence(policy: AdditionalSourcePolicy, members: Sequence[tuple[str, bytes]], source_names: Sequence[str]) -> AdditionalSourcesEvidence | None:
+def _additional_evidence(
+    policy: AdditionalSourcePolicy,
+    members: Sequence[tuple[str, bytes]],
+    source_names: Sequence[str],
+) -> AdditionalSourcesEvidence | None:
     if not members:
         return None
-    return {"archive": policy["archive"],
-            "files": [{"path": name, "bytes": len(data)} for name, data in members if name not in source_names]}
+    return {
+        "archive": policy["archive"],
+        "files": [
+            {"path": name, "bytes": len(data)}
+            for name, data in members
+            if name not in source_names
+        ],
+    }
 
 
-def _additional_sources(job: Path, config: _ExecutionConfig) -> tuple[list[tuple[str, bytes]], AdditionalSourcesEvidence | None]:
+def _additional_sources(
+    job: Path, config: _ExecutionConfig
+) -> tuple[list[tuple[str, bytes]], AdditionalSourcesEvidence | None]:
     """Fully validate bounded bytes before creating any extracted source file."""
     policy = config.get("additionalJavaSources")
     if policy is None:
@@ -2047,8 +2298,13 @@ def _additional_sources(job: Path, config: _ExecutionConfig) -> tuple[list[tuple
                             "каталог с содержимым " + repr(name)
                         )
                     continue
-                if not policy.get("allowAdditional", True) and name not in config["sourceFiles"]:
-                    raise _AdditionalSubmissionError("не объявлен исходник " + repr(name))
+                if (
+                    not policy.get("allowAdditional", True)
+                    and name not in config["sourceFiles"]
+                ):
+                    raise _AdditionalSubmissionError(
+                        "не объявлен исходник " + repr(name)
+                    )
                 if not name.endswith(".java"):
                     raise _AdditionalSubmissionError(
                         "разрешены только .java: " + repr(name)
@@ -2057,15 +2313,27 @@ def _additional_sources(job: Path, config: _ExecutionConfig) -> tuple[list[tuple
                 file_limit = 1024 * 1024 if primary else policy["maxFileBytes"]
                 if not _exact_cap(file_limit, 1048576):
                     raise GraderError("Invalid closed additional Java sources policy")
-                if (info.file_size > file_limit or not primary and (
-                        extra_count >= policy["maxFiles"] or total + info.file_size > policy["maxTotalBytes"])):
-                    raise _AdditionalSubmissionError("превышен лимит количества/размера исходников")
+                if (
+                    info.file_size > file_limit
+                    or not primary
+                    and (
+                        extra_count >= policy["maxFiles"]
+                        or total + info.file_size > policy["maxTotalBytes"]
+                    )
+                ):
+                    raise _AdditionalSubmissionError(
+                        "превышен лимит количества/размера исходников"
+                    )
                 data = bytearray()
                 with archive.open(info) as member:
                     while chunk := member.read(min(65536, file_limit - len(data) + 1)):
                         data.extend(chunk)
-                        if len(data) > file_limit or (not primary and total + len(data) > policy["maxTotalBytes"]):
-                            raise _AdditionalSubmissionError("превышен фактический лимит bytes")
+                        if len(data) > file_limit or (
+                            not primary and total + len(data) > policy["maxTotalBytes"]
+                        ):
+                            raise _AdditionalSubmissionError(
+                                "превышен фактический лимит bytes"
+                            )
                 if len(data) != info.file_size:
                     raise _AdditionalSubmissionError(
                         "размер записи не совпадает " + repr(name)
@@ -2101,7 +2369,9 @@ def _additional_sources(job: Path, config: _ExecutionConfig) -> tuple[list[tuple
 def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
     job = Path(job_dir).absolute()
     try:
-        config: object = json.loads(_files_any(job, "tests/grading-job.json").read_text())
+        config: object = json.loads(
+            _files_any(job, "tests/grading-job.json").read_text()
+        )
     except (OSError, ValueError) as error:
         raise GraderError("Missing or invalid grading configuration") from error
     if not _validated_config(config):
@@ -2113,7 +2383,9 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
         _admit_java_job()
     profile, bundle, toolchain = preflight(config["runtime"], registry)
     additional_evidence: AdditionalSourcesEvidence | None = None
-    native_context: _NativeContext | None = {} if config["runtime"] == NATIVE_RUNTIME else None
+    native_context: _NativeContext | None = (
+        {} if config["runtime"] == NATIVE_RUNTIME else None
+    )
 
     def finish(value: JavaOutcome) -> JavaOutcome:
         if additional_evidence is not None:
@@ -2150,10 +2422,17 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             result.update(apiPrecheck="not-run", dependentExecution="not-run")
         return finish(result)
     if config.get("additionalJavaSources", {}).get("primaryRequired", True):
-        present = {Path(path).relative_to(job / "student").as_posix() for path in sources}
+        present = {
+            Path(path).relative_to(job / "student").as_posix() for path in sources
+        }
         present.update(name for name, _ in additional)
         if not set(source_names) <= present:
-            return finish(_invalid("Представьте все объявленные Java-файлы отдельно или в ZIP.", classification="unsafe-submission"))
+            return finish(
+                _invalid(
+                    "Представьте все объявленные Java-файлы отдельно или в ZIP.",
+                    classification="unsafe-submission",
+                )
+            )
     if not sources and not additional:
         return finish(
             _invalid(
@@ -2183,8 +2462,23 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             }
         if config["mode"] == "implementation":
             if native_context is not None:
-                def build(stage: Path, durations: dict[str, float], diagnostics: dict[str, str]) -> tuple[BuildEvidence, int, None]:
-                    return _native_build(job, config, sources, extra_names, stage, runtime, durations, diagnostics)
+
+                def build(
+                    stage: Path,
+                    durations: dict[str, float],
+                    diagnostics: dict[str, str],
+                ) -> tuple[BuildEvidence, int, None]:
+                    return _native_build(
+                        job,
+                        config,
+                        sources,
+                        extra_names,
+                        stage,
+                        runtime,
+                        durations,
+                        diagnostics,
+                    )
+
                 native_context["build"] = build
             try:
                 return finish(
@@ -2204,8 +2498,12 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
                     raise
                 prior_build = native_context.get("build_result")
                 if prior_build is None or prior_build["status"] != "success":
-                    native_context["build_result"] = {"schemaVersion": 1, "kind": "gradle-jar-v1",
-                                               "status": "failure", "reason": "build"}
+                    native_context["build_result"] = {
+                        "schemaVersion": 1,
+                        "kind": "gradle-jar-v1",
+                        "status": "failure",
+                        "reason": "build",
+                    }
                 stages: _NativeFailureStages = (
                     {
                         "studentCompilation": "success",
@@ -2237,20 +2535,18 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             or not variants["mutants"]
         ):
             raise GraderError("Mutation profile requires correct and mutant variants")
-        correct_variants, mutant_variants = variants['correct'], variants['mutants']
+        correct_variants, mutant_variants = variants["correct"], variants["mutants"]
         if not _string_list(correct_variants) or not _string_list(mutant_variants):
             raise GraderError("Invalid variant ID")
-        variant_groups = {'correct': correct_variants, 'mutants': mutant_variants}
+        variant_groups = {"correct": correct_variants, "mutants": mutant_variants}
         observations: dict[str, JavaOutcome] = {}
         for kind in ("correct", "mutants"):
             for variant in variant_groups[kind]:
-                if not re.fullmatch(
-                    r"[A-Za-z0-9_-]+", variant
-                ):
+                if not re.fullmatch(r"[A-Za-z0-9_-]+", variant):
                     raise GraderError("Invalid variant ID")
                 selected = [
                     p
-                    for p, n in zip(tests, test_names)
+                    for p, n in zip(tests, test_names, strict=True)
                     if n.startswith("variants/" + variant + "/")
                 ]
                 if not selected:
@@ -2269,15 +2565,9 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
             for r in observations.values()
         )
         correct = all(observations[v].get("score") == 1 for v in correct_variants)
-        killed = all(
-            _failed_count(observations[v]) > 0
-            for v in mutant_variants
-        )
+        killed = all(_failed_count(observations[v]) > 0 for v in mutant_variants)
         accepted = sum(observations[v].get("score") == 1 for v in correct_variants)
-        rejected = sum(
-            _failed_count(observations[v]) > 0
-            for v in mutant_variants
-        )
+        rejected = sum(_failed_count(observations[v]) > 0 for v in mutant_variants)
         message = (
             (
                 "Submission test quality failure: incomplete or disabled tests. "
@@ -2309,8 +2599,8 @@ def grade(job_dir: str | Path, registry: object = None) -> JavaOutcome:
 
 
 def _failed_count(result: JavaOutcome) -> int:
-    counts = result.get('counts')
-    return counts['failed'] if counts is not None else 0
+    counts = result.get("counts")
+    return counts["failed"] if counts is not None else 0
 
 
 @runtime_checkable
@@ -2348,7 +2638,9 @@ def main() -> int:
     if not args.verification:
         import runpy
 
-        boundary: object = runpy.run_path(str(PLATFORM / "runtime/student_feedback.py"))["student_result"]
+        boundary: object = runpy.run_path(
+            str(PLATFORM / "runtime/student_feedback.py")
+        )["student_result"]
         if not isinstance(boundary, _StudentResultBoundary):
             raise GraderError("Native feedback boundary is unavailable")
         try:

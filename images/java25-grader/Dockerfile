@@ -2,7 +2,11 @@
 FROM eclipse-temurin:25-jdk-noble AS jdk
 FROM gradle:9.8.2-jdk25-noble AS gradle
 FROM docker.io/prairielearn/grader-java@sha256:dacce5e76d24cf1eaee21bec3e20b3ea40739408afdc89e6607eb542dc6b7a2e
-USER root
+# Grader supervisor starts as root to assign independent build/student identities.
+# hadolint ignore=DL3002
+USER 0
+# APT packages follow the base image distribution repositories; no snapshot is configured.
+# hadolint ignore=DL3008
 RUN sed -i \
       -e 's#^URIs: http://archive\.ubuntu\.com/ubuntu/$#URIs: https://mirrors.edge.kernel.org/ubuntu/#' \
       -e 's#^URIs: http://security\.ubuntu\.com/ubuntu/$#URIs: https://mirrors.edge.kernel.org/ubuntu/#' \

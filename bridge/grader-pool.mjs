@@ -7,7 +7,9 @@ export async function acquireLocalGrader() {
   if (active < limit) active++;
   else {
     /** @type {Promise<void>} */
-    const ready = new Promise(resolve => { waiting.push(resolve); });
+    const ready = new Promise((resolve) => {
+      waiting.push(resolve);
+    });
     await ready;
   }
   let released = false;

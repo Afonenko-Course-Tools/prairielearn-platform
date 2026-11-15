@@ -1,10 +1,13 @@
-import { pathToFileURL } from 'node:url';
-import { assertProductionRuntime } from './policy.mjs';
+import { pathToFileURL } from "node:url";
+import { assertProductionRuntime } from "./policy.mjs";
 
-const root = process.env.PL_ROOT ?? '/PrairieLearn';
-const { config, loadConfig } = /** @type {import("../types/native-contracts.d.ts").NativeModules["lib/config"]} */(await import(
-  pathToFileURL(`${root}/apps/prairielearn/dist/lib/config.js`).href
-));
+const root = process.env.PL_ROOT ?? "/PrairieLearn";
+const { config, loadConfig } =
+  /** @type {import("../types/native-contracts.d.ts").NativeModules["lib/config"]} */ (
+    await import(
+      pathToFileURL(`${root}/apps/prairielearn/dist/lib/config.js`).href
+    )
+  );
 await loadConfig([`${root}/config.json`]);
 assertProductionRuntime(process.env.NODE_ENV, config);
-console.log('Community gateway native configuration preflight passed');
+console.log("Community gateway native configuration preflight passed");
